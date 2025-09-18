@@ -1,6 +1,6 @@
 # To do
 
-1.  Query Builder fluente
+1.  Query Builder fluente [OK]()
 
     - Exemplo (TypeORM / Prisma / SQLAlchemy):
 
@@ -16,7 +16,7 @@
 
     - Benefício: menos boilerplate, mais legibilidade.
 
-2.  Relations (Eager & Lazy Loading)
+2.  Relations (Eager & Lazy Loading) [OK]()
 
     - Exemplo (TypeORM / Hibernate / Mongoose Populate):
 

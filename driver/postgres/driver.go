@@ -10,18 +10,18 @@ import (
 	"github.com/leandroluk/golem/core"
 )
 
-// region postgresTransaction
+//region postgresTransaction
 
 type postgresTransaction struct {
 	transaction pgx.Tx
 }
 
-func (t *postgresTransaction) Commit(ctx context.Context) error {
-	return t.transaction.Commit(ctx)
+func (transaction *postgresTransaction) Commit(ctx context.Context) error {
+	return transaction.transaction.Commit(ctx)
 }
 
-func (t *postgresTransaction) Rollback(ctx context.Context) error {
-	return t.transaction.Rollback(ctx)
+func (transaction *postgresTransaction) Rollback(ctx context.Context) error {
+	return transaction.transaction.Rollback(ctx)
 }
 
 //endregion
@@ -42,246 +42,246 @@ func NewPostgresDriver(ctx context.Context, connString string) (*PostgresDriver,
 	return &PostgresDriver{pool: pool}, nil
 }
 
-func (d *PostgresDriver) formatTable(schema *core.SchemaCore) string {
+func (driver *PostgresDriver) formatTable(schema *core.SchemaCore) string {
 	if schema.Database != "" {
 		return fmt.Sprintf("%q.%q", schema.Database, schema.Collection)
 	}
 	return fmt.Sprintf("%q", schema.Collection)
 }
 
-func (d *PostgresDriver) buildCondition(c *core.Condition, args *[]any) string {
-	if c == nil {
+func (driver *PostgresDriver) buildCondition(condition *core.Condition, argList *[]any) string {
+	if condition == nil {
 		return "1=1"
 	}
-	if len(c.Children) > 0 {
-		parts := []string{}
-		for _, child := range c.Children {
-			parts = append(parts, d.buildCondition(child, args))
+	if len(condition.Children) > 0 {
+		partList := []string{}
+		for _, child := range condition.Children {
+			partList = append(partList, driver.buildCondition(child, argList))
 		}
-		switch *c.Operator {
+		switch *condition.Operator {
 		case core.OpAnd:
-			return "(" + strings.Join(parts, " AND ") + ")"
+			return "(" + strings.Join(partList, " AND ") + ")"
 		case core.OpOr:
-			return "(" + strings.Join(parts, " OR ") + ")"
+			return "(" + strings.Join(partList, " OR ") + ")"
 		case core.OpNot:
-			return "NOT (" + strings.Join(parts, " AND ") + ")"
+			return "NOT (" + strings.Join(partList, " AND ") + ")"
 		}
 	}
 
-	col := fmt.Sprintf("%q", c.FieldName)
-	switch *c.Operator {
+	column := fmt.Sprintf("%q", condition.FieldName)
+	switch *condition.Operator {
 	case core.OpNil:
-		return col + " IS NULL"
+		return column + " IS NULL"
 	case core.OpEq:
-		*args = append(*args, c.Value)
-		return fmt.Sprintf("%s = $%d", col, len(*args))
+		*argList = append(*argList, condition.Value)
+		return fmt.Sprintf("%s = $%d", column, len(*argList))
 	case core.OpGt:
-		*args = append(*args, c.Value)
-		return fmt.Sprintf("%s > $%d", col, len(*args))
+		*argList = append(*argList, condition.Value)
+		return fmt.Sprintf("%s > $%d", column, len(*argList))
 	case core.OpGte:
-		*args = append(*args, c.Value)
-		return fmt.Sprintf("%s >= $%d", col, len(*args))
+		*argList = append(*argList, condition.Value)
+		return fmt.Sprintf("%s >= $%d", column, len(*argList))
 	case core.OpLt:
-		*args = append(*args, c.Value)
-		return fmt.Sprintf("%s < $%d", col, len(*args))
+		*argList = append(*argList, condition.Value)
+		return fmt.Sprintf("%s < $%d", column, len(*argList))
 	case core.OpLte:
-		*args = append(*args, c.Value)
-		return fmt.Sprintf("%s <= $%d", col, len(*args))
+		*argList = append(*argList, condition.Value)
+		return fmt.Sprintf("%s <= $%d", column, len(*argList))
 	case core.OpLike:
-		*args = append(*args, c.Value)
-		return fmt.Sprintf("%s ILIKE $%d", col, len(*args))
+		*argList = append(*argList, condition.Value)
+		return fmt.Sprintf("%s ILIKE $%d", column, len(*argList))
 	case core.OpIn:
-		values := c.Value.([]any)
-		placeholders := []string{}
-		for _, v := range values {
-			*args = append(*args, v)
-			placeholders = append(placeholders, fmt.Sprintf("$%d", len(*args)))
+		valueList := condition.Value.([]any)
+		placeholderList := []string{}
+		for _, v := range valueList {
+			*argList = append(*argList, v)
+			placeholderList = append(placeholderList, fmt.Sprintf("$%d", len(*argList)))
 		}
-		return fmt.Sprintf("%s IN (%s)", col, strings.Join(placeholders, ", "))
+		return fmt.Sprintf("%s IN (%s)", column, strings.Join(placeholderList, ", "))
 	}
 	return "1=1"
 }
 
 // --- helpers para executar com/sem transação ---
 
-func (d *PostgresDriver) exec(ctx context.Context, sql string, args ...any) error {
+func (driver *PostgresDriver) exec(ctx context.Context, sqlQuery string, args ...any) error {
 	if tx := core.TransactionFrom(ctx); tx != nil {
 		if pgTx, ok := tx.(*postgresTransaction); ok {
-			_, err := pgTx.transaction.Exec(ctx, sql, args...)
+			_, err := pgTx.transaction.Exec(ctx, sqlQuery, args...)
 			return err
 		}
 	}
-	_, err := d.pool.Exec(ctx, sql, args...)
+	_, err := driver.pool.Exec(ctx, sqlQuery, args...)
 	return err
 }
 
-func (d *PostgresDriver) query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+func (driver *PostgresDriver) query(ctx context.Context, sqlQuery string, args ...any) (pgx.Rows, error) {
 	if tx := core.TransactionFrom(ctx); tx != nil {
 		if pgTx, ok := tx.(*postgresTransaction); ok {
-			return pgTx.transaction.Query(ctx, sql, args...)
+			return pgTx.transaction.Query(ctx, sqlQuery, args...)
 		}
 	}
-	return d.pool.Query(ctx, sql, args...)
+	return driver.pool.Query(ctx, sqlQuery, args...)
 }
 
-func (d *PostgresDriver) queryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+func (driver *PostgresDriver) queryRow(ctx context.Context, sqlQuery string, args ...any) pgx.Row {
 	if tx := core.TransactionFrom(ctx); tx != nil {
 		if pgTx, ok := tx.(*postgresTransaction); ok {
-			return pgTx.transaction.QueryRow(ctx, sql, args...)
+			return pgTx.transaction.QueryRow(ctx, sqlQuery, args...)
 		}
 	}
-	return d.pool.QueryRow(ctx, sql, args...)
+	return driver.pool.QueryRow(ctx, sqlQuery, args...)
 }
 
-func (d *PostgresDriver) find(ctx context.Context, schema *core.SchemaCore, options *core.Query, single bool) ([]map[string]any, error) {
-	cols := []string{}
-	for _, f := range schema.Fields {
-		cols = append(cols, fmt.Sprintf("%q", f.DatabaseColumnName))
+func (driver *PostgresDriver) find(ctx context.Context, schema *core.SchemaCore, query *core.Where, single bool) ([]map[string]any, error) {
+	columnNameList := []string{}
+	for _, field := range schema.Fields {
+		columnNameList = append(columnNameList, fmt.Sprintf("%q", field.DatabaseColumnName))
 	}
-	selectCols := strings.Join(cols, ", ")
+	selectColumns := strings.Join(columnNameList, ", ")
 
-	args := []any{}
-	where := d.buildCondition(options.Condition, &args)
+	argList := []any{}
+	whereClause := driver.buildCondition(query.Condition, &argList)
 
-	sqlStr := fmt.Sprintf("SELECT %s FROM %s WHERE %s", selectCols, d.formatTable(schema), where)
+	sqlQuery := fmt.Sprintf("SELECT %s FROM %s WHERE %s", selectColumns, driver.formatTable(schema), whereClause)
 
-	if len(options.Sort) > 0 {
-		orderParts := []string{}
-		for _, s := range options.Sort {
-			dir := "ASC"
-			if s.Order < 0 {
-				dir = "DESC"
+	if len(query.Sort) > 0 {
+		orderPartList := []string{}
+		for _, sortItem := range query.Sort {
+			direction := "ASC"
+			if sortItem.Order < 0 {
+				direction = "DESC"
 			}
-			orderParts = append(orderParts, fmt.Sprintf("%q %s", s.FieldName, dir))
+			orderPartList = append(orderPartList, fmt.Sprintf("%q %s", sortItem.FieldName, direction))
 		}
-		sqlStr += " ORDER BY " + strings.Join(orderParts, ", ")
+		sqlQuery += " ORDER BY " + strings.Join(orderPartList, ", ")
 	}
 	if single {
-		sqlStr += " LIMIT 1"
+		sqlQuery += " LIMIT 1"
 	} else {
-		if options.Limit > 0 {
-			sqlStr += fmt.Sprintf(" LIMIT %d", options.Limit)
+		if query.Limit > 0 {
+			sqlQuery += fmt.Sprintf(" LIMIT %d", query.Limit)
 		}
-		if options.Offset > 0 {
-			sqlStr += fmt.Sprintf(" OFFSET %d", options.Offset)
+		if query.Offset > 0 {
+			sqlQuery += fmt.Sprintf(" OFFSET %d", query.Offset)
 		}
 	}
 
-	rows, err := d.query(ctx, sqlStr, args...)
+	rowList, err := driver.query(ctx, sqlQuery, argList...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rowList.Close()
 
-	colsNames := rows.FieldDescriptions()
-	var results []map[string]any
+	columnDescriptionList := rowList.FieldDescriptions()
+	var resultList []map[string]any
 
-	for rows.Next() {
-		values, err := rows.Values()
+	for rowList.Next() {
+		valueList, err := rowList.Values()
 		if err != nil {
 			return nil, err
 		}
 		rowMap := make(map[string]any)
-		for i, col := range colsNames {
-			rowMap[string(col.Name)] = values[i]
+		for i, col := range columnDescriptionList {
+			rowMap[string(col.Name)] = valueList[i]
 		}
-		results = append(results, rowMap)
+		resultList = append(resultList, rowMap)
 		if single {
 			break
 		}
 	}
-	return results, nil
+	return resultList, nil
 }
 
-func (d *PostgresDriver) Connect(ctx context.Context) error {
-	return d.pool.Ping(ctx)
+func (driver *PostgresDriver) Connect(ctx context.Context) error {
+	return driver.pool.Ping(ctx)
 }
 
-func (d *PostgresDriver) Ping(ctx context.Context) error {
-	return d.pool.Ping(ctx)
+func (driver *PostgresDriver) Ping(ctx context.Context) error {
+	return driver.pool.Ping(ctx)
 }
 
-func (d *PostgresDriver) Close(ctx context.Context) error {
-	d.pool.Close()
+func (driver *PostgresDriver) Close(ctx context.Context) error {
+	driver.pool.Close()
 	return nil
 }
 
-func (d *PostgresDriver) Transaction(ctx context.Context) (core.Transaction, error) {
-	transaction, err := d.pool.BeginTx(ctx, pgx.TxOptions{})
+func (driver *PostgresDriver) Transaction(ctx context.Context) (core.Transaction, error) {
+	tx, err := driver.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
 	}
-	return &postgresTransaction{transaction: transaction}, nil
+	return &postgresTransaction{transaction: tx}, nil
 }
 
-func (d *PostgresDriver) Insert(ctx context.Context, schema *core.SchemaCore, documents ...any) error {
+func (driver *PostgresDriver) Insert(ctx context.Context, schema *core.SchemaCore, documents ...any) error {
 	if len(documents) == 0 {
 		return nil
 	}
 
-	cols := []string{}
-	for _, f := range schema.Fields {
-		cols = append(cols, fmt.Sprintf("%q", f.DatabaseColumnName))
+	columnNameList := []string{}
+	for _, field := range schema.Fields {
+		columnNameList = append(columnNameList, fmt.Sprintf("%q", field.DatabaseColumnName))
 	}
-	colList := "(" + strings.Join(cols, ", ") + ")"
+	columnList := "(" + strings.Join(columnNameList, ", ") + ")"
 
 	for _, doc := range documents {
-		vals, placeholders := core.StructValues(schema, doc)
-		sqlStr := fmt.Sprintf("INSERT INTO %s %s VALUES (%s)",
-			d.formatTable(schema), colList, strings.Join(placeholders, ", "))
+		valueList, placeholderList := core.StructValues(schema, doc)
+		sqlQuery := fmt.Sprintf("INSERT INTO %s %s VALUES (%s)",
+			driver.formatTable(schema), columnList, strings.Join(placeholderList, ", "))
 
-		if err := d.exec(ctx, sqlStr, vals...); err != nil {
+		if err := driver.exec(ctx, sqlQuery, valueList...); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (d *PostgresDriver) FindOne(ctx context.Context, schema *core.SchemaCore, options *core.Query) (any, error) {
-	rows, err := d.find(ctx, schema, options, true)
+func (driver *PostgresDriver) FindOne(ctx context.Context, schema *core.SchemaCore, query *core.Where) (any, error) {
+	rowList, err := driver.find(ctx, schema, query, true)
 	if err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
+	if len(rowList) == 0 {
 		return nil, nil
 	}
-	return rows[0], nil
+	return rowList[0], nil
 }
 
-func (d *PostgresDriver) FindMany(ctx context.Context, schema *core.SchemaCore, options *core.Query) (any, error) {
-	return d.find(ctx, schema, options, false)
+func (driver *PostgresDriver) FindMany(ctx context.Context, schema *core.SchemaCore, query *core.Where) (any, error) {
+	return driver.find(ctx, schema, query, false)
 }
 
-func (d *PostgresDriver) Update(ctx context.Context, schema *core.SchemaCore, condition *core.Condition, changes core.Changes) error {
-	args := []any{}
-	where := d.buildCondition(condition, &args)
+func (driver *PostgresDriver) Update(ctx context.Context, schema *core.SchemaCore, condition *core.Condition, changes core.Changes) error {
+	argList := []any{}
+	whereClause := driver.buildCondition(condition, &argList)
 
-	setParts := []string{}
-	for col, val := range changes {
-		args = append(args, val)
-		setParts = append(setParts, fmt.Sprintf("%q = $%d", col, len(args)))
+	setPartList := []string{}
+	for column, value := range changes {
+		argList = append(argList, value)
+		setPartList = append(setPartList, fmt.Sprintf("%q = $%d", column, len(argList)))
 	}
 
-	sqlStr := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		d.formatTable(schema), strings.Join(setParts, ", "), where)
+	sqlQuery := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
+		driver.formatTable(schema), strings.Join(setPartList, ", "), whereClause)
 
-	return d.exec(ctx, sqlStr, args...)
+	return driver.exec(ctx, sqlQuery, argList...)
 }
 
-func (d *PostgresDriver) Delete(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) error {
-	args := []any{}
-	where := d.buildCondition(condition, &args)
-	sqlStr := fmt.Sprintf("DELETE FROM %s WHERE %s", d.formatTable(schema), where)
-	return d.exec(ctx, sqlStr, args...)
+func (driver *PostgresDriver) Delete(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) error {
+	argList := []any{}
+	whereClause := driver.buildCondition(condition, &argList)
+	sqlQuery := fmt.Sprintf("DELETE FROM %s WHERE %s", driver.formatTable(schema), whereClause)
+	return driver.exec(ctx, sqlQuery, argList...)
 }
 
-func (d *PostgresDriver) Count(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) (int64, error) {
-	args := []any{}
-	where := d.buildCondition(condition, &args)
-	sqlStr := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", d.formatTable(schema), where)
+func (driver *PostgresDriver) Count(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) (int64, error) {
+	argList := []any{}
+	whereClause := driver.buildCondition(condition, &argList)
+	sqlQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", driver.formatTable(schema), whereClause)
 
 	var count int64
-	if err := d.queryRow(ctx, sqlStr, args...).Scan(&count); err != nil {
+	if err := driver.queryRow(ctx, sqlQuery, argList...).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil

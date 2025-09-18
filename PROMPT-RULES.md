@@ -1,0 +1,5 @@
+- respeitar sempre as regions do código iniciando com `//region {name}` e finalizando com `//endregion`
+- sempre gerar o arquivo COMPLETO que for solicitado com a modificação para que seja feito o download com as alterações. a intenção é não sobrecarregar o prompt principal e evitar a necessidade de troca de prompt's.
+- evitar inconsistências na linguagem como colocar genéricos em métodos, golang só aceita genéricos nas struct's ou funções globais.
+- prefira códigos mais verbosos do que códigos idiomáticos como go faz ou seja chega de códigos com 1 letra apenas (aceito somente na referencia de métodos para estrutura ex func(c *StructName) Example() {})
+- evite pluralismo na descrição das coisas, invés disso adicione um posfixo *List onde for necessário
