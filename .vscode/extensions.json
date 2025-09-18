@@ -1,0 +1,25 @@
+{
+  "recommendations": [
+    // Icons for Visual Studio Code
+    "vscode-icons-team.vscode-icons",
+    // Supercharge Git within VS Code — Visualize code authorship at a glance via Git blame annotations and CodeLens,
+    // seamlessly navigate and explore Git repositories, gain valuable insights via rich visualizations and powerful
+    // comparison commands, and so much more
+    "eamodio.gitlens",
+    // Makes it easy to create, manage, and debug containerized applications.
+    "ms-azuretools.vscode-docker",
+    // Adds Mermaid diagram and flowchart support to VS Code's builtin markdown preview
+    "bierner.markdown-mermaid",
+    // All you need to write Markdown (keyboard shortcuts, table of contents, auto preview and more)
+    "yzhang.markdown-all-in-one",
+    // Improve your code commenting by annotating with alert, informational, TODOs, and more!
+    "aaron-bond.better-comments",
+    // Language support for MDX
+    "unifiedjs.vscode-mdx",
+    // Markdown syntax support for the Mermaid charting language
+    "bpruitt-goddard.mermaid-markdown-syntax-highlighting",
+    // fill-labs.dependi
+    "fill-labs.dependi"
+  ],
+  "unwantedRecommendations": []
+}
