@@ -1,3 +1,6 @@
+// Package driver provides database driver implementations for the golem ORM.
+// This file implements the PostgresDriver, which adapts the core.Driver interface
+// to PostgreSQL using pgx/pgxpool.
 package driver
 
 import (
@@ -10,30 +13,23 @@ import (
 	"github.com/leandroluk/golem/core"
 )
 
-//region postgresTransaction
-
-type postgresTransaction struct {
-	transaction pgx.Tx
-}
-
-func (transaction *postgresTransaction) Commit(ctx context.Context) error {
-	return transaction.transaction.Commit(ctx)
-}
-
-func (transaction *postgresTransaction) Rollback(ctx context.Context) error {
-	return transaction.transaction.Rollback(ctx)
-}
-
-//endregion
-
-//region PostgresDriver
-
+// PostgresDriver is the driver implementation for PostgreSQL.
+//
+// It uses pgxpool for connection pooling and implements the core.Driver
+// interface, supporting inserts, queries, updates, deletes, counting,
+// and transaction handling.
 type PostgresDriver struct {
 	pool *pgxpool.Pool
 }
 
+// Ensure PostgresDriver implements core.Driver at compile time.
 var _ core.Driver = (*PostgresDriver)(nil)
 
+// NewPostgresDriver creates a new PostgresDriver given a connection string.
+//
+// Example:
+//
+//	driver, err := driver.NewPostgresDriver(ctx, "postgres://user:pass@localhost:5432/mydb")
 func NewPostgresDriver(ctx context.Context, connString string) (*PostgresDriver, error) {
 	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
@@ -42,6 +38,10 @@ func NewPostgresDriver(ctx context.Context, connString string) (*PostgresDriver,
 	return &PostgresDriver{pool: pool}, nil
 }
 
+// formatTable returns the properly quoted table reference for the schema.
+//
+// If a database name is provided, it returns "database"."table",
+// otherwise just "table".
 func (driver *PostgresDriver) formatTable(schema *core.SchemaCore) string {
 	if schema.Database != "" {
 		return fmt.Sprintf("%q.%q", schema.Database, schema.Collection)
@@ -49,6 +49,8 @@ func (driver *PostgresDriver) formatTable(schema *core.SchemaCore) string {
 	return fmt.Sprintf("%q", schema.Collection)
 }
 
+// buildCondition translates a core.Condition into a PostgreSQL SQL expression,
+// appending values into argList for parameterized queries.
 func (driver *PostgresDriver) buildCondition(condition *core.Condition, argList *[]any) string {
 	if condition == nil {
 		return "1=1"
@@ -102,8 +104,8 @@ func (driver *PostgresDriver) buildCondition(condition *core.Condition, argList 
 	return "1=1"
 }
 
-// --- helpers para executar com/sem transação ---
-
+// exec executes a SQL statement, using an existing transaction if one
+// is available in the context.
 func (driver *PostgresDriver) exec(ctx context.Context, sqlQuery string, args ...any) error {
 	if tx := core.TransactionFrom(ctx); tx != nil {
 		if pgTx, ok := tx.(*postgresTransaction); ok {
@@ -115,6 +117,8 @@ func (driver *PostgresDriver) exec(ctx context.Context, sqlQuery string, args ..
 	return err
 }
 
+// query executes a SQL query returning rows, using an existing transaction
+// if available in the context.
 func (driver *PostgresDriver) query(ctx context.Context, sqlQuery string, args ...any) (pgx.Rows, error) {
 	if tx := core.TransactionFrom(ctx); tx != nil {
 		if pgTx, ok := tx.(*postgresTransaction); ok {
@@ -124,6 +128,8 @@ func (driver *PostgresDriver) query(ctx context.Context, sqlQuery string, args .
 	return driver.pool.Query(ctx, sqlQuery, args...)
 }
 
+// queryRow executes a SQL query returning a single row, using an existing
+// transaction if available in the context.
 func (driver *PostgresDriver) queryRow(ctx context.Context, sqlQuery string, args ...any) pgx.Row {
 	if tx := core.TransactionFrom(ctx); tx != nil {
 		if pgTx, ok := tx.(*postgresTransaction); ok {
@@ -133,6 +139,8 @@ func (driver *PostgresDriver) queryRow(ctx context.Context, sqlQuery string, arg
 	return driver.pool.QueryRow(ctx, sqlQuery, args...)
 }
 
+// find executes a SELECT query and returns the results as a slice of maps,
+// where keys are column names and values are raw values.
 func (driver *PostgresDriver) find(ctx context.Context, schema *core.SchemaCore, query *core.Where, single bool) ([]map[string]any, error) {
 	columnNameList := []string{}
 	for _, field := range schema.Fields {
@@ -193,19 +201,23 @@ func (driver *PostgresDriver) find(ctx context.Context, schema *core.SchemaCore,
 	return resultList, nil
 }
 
+// Connect verifies connectivity to the PostgreSQL server.
 func (driver *PostgresDriver) Connect(ctx context.Context) error {
 	return driver.pool.Ping(ctx)
 }
 
+// Ping checks if the PostgreSQL server is reachable.
 func (driver *PostgresDriver) Ping(ctx context.Context) error {
 	return driver.pool.Ping(ctx)
 }
 
+// Close closes the connection pool and releases resources.
 func (driver *PostgresDriver) Close(ctx context.Context) error {
 	driver.pool.Close()
 	return nil
 }
 
+// Transaction starts a new PostgreSQL transaction using the connection pool.
 func (driver *PostgresDriver) Transaction(ctx context.Context) (core.Transaction, error) {
 	tx, err := driver.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -214,6 +226,7 @@ func (driver *PostgresDriver) Transaction(ctx context.Context) (core.Transaction
 	return &postgresTransaction{transaction: tx}, nil
 }
 
+// Insert inserts one or more documents into the table defined by the schema.
 func (driver *PostgresDriver) Insert(ctx context.Context, schema *core.SchemaCore, documents ...any) error {
 	if len(documents) == 0 {
 		return nil
@@ -237,6 +250,7 @@ func (driver *PostgresDriver) Insert(ctx context.Context, schema *core.SchemaCor
 	return nil
 }
 
+// FindOne retrieves a single row from the database that matches the query.
 func (driver *PostgresDriver) FindOne(ctx context.Context, schema *core.SchemaCore, query *core.Where) (any, error) {
 	rowList, err := driver.find(ctx, schema, query, true)
 	if err != nil {
@@ -248,10 +262,12 @@ func (driver *PostgresDriver) FindOne(ctx context.Context, schema *core.SchemaCo
 	return rowList[0], nil
 }
 
+// FindMany retrieves multiple rows from the database that match the query.
 func (driver *PostgresDriver) FindMany(ctx context.Context, schema *core.SchemaCore, query *core.Where) (any, error) {
 	return driver.find(ctx, schema, query, false)
 }
 
+// Update modifies rows matching the condition with the provided changes.
 func (driver *PostgresDriver) Update(ctx context.Context, schema *core.SchemaCore, condition *core.Condition, changes core.Changes) error {
 	argList := []any{}
 	whereClause := driver.buildCondition(condition, &argList)
@@ -268,6 +284,7 @@ func (driver *PostgresDriver) Update(ctx context.Context, schema *core.SchemaCor
 	return driver.exec(ctx, sqlQuery, argList...)
 }
 
+// Delete removes rows from the database matching the given condition.
 func (driver *PostgresDriver) Delete(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) error {
 	argList := []any{}
 	whereClause := driver.buildCondition(condition, &argList)
@@ -275,6 +292,7 @@ func (driver *PostgresDriver) Delete(ctx context.Context, schema *core.SchemaCor
 	return driver.exec(ctx, sqlQuery, argList...)
 }
 
+// Count returns the number of rows matching the given condition.
 func (driver *PostgresDriver) Count(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) (int64, error) {
 	argList := []any{}
 	whereClause := driver.buildCondition(condition, &argList)
@@ -286,5 +304,3 @@ func (driver *PostgresDriver) Count(ctx context.Context, schema *core.SchemaCore
 	}
 	return count, nil
 }
-
-//endregion

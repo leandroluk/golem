@@ -52,7 +52,7 @@
 
     - Benefício: padrão em apps reais.
 
-5.  Validation e Constraints no Schema
+5.  Validation e Constraints no Schema [Não será feito]()
 
     - Exemplo (Mongoose validators / Hibernate annotations / Prisma constraints)
 
@@ -64,7 +64,7 @@
 
     - Benefício: segurança e integridade mais próximas da camada de domínio.
 
-6.  Aggregations & Raw Queries
+6.  Aggregations & Raw Queries [Não será feito]()
 
     - Exemplo (Mongoose Aggregation, Prisma queryRaw, SQLAlchemy session.execute)
 
@@ -75,7 +75,7 @@
 
     - Benefício: poder quando precisar sair da camada ORM sem perder o driver.
 
-7.  Transactions mais ergonômicas
+7.  Transactions mais ergonômicas [Ok]()
 
     - Exemplo (Prisma `$transaction`, TypeORM `manager.transaction`)
     
@@ -90,7 +90,7 @@
 
     - Benefício: abstrai Begin/Commit/Rollback em função de callback.
 
-8.  Change Tracking & Unit of Work
+8.  Change Tracking & Unit of Work [Não será feito]()
 
     - Exemplo (Hibernate Session, SQLAlchemy session tracking)
 
@@ -100,7 +100,7 @@
 
     - Benefício: simplifica muito o uso, mas aumenta complexidade.
 
-9.  Hooks Globais & Middleware
+9.  Hooks Globais & Middleware [Ok]()
 
     - Além de hooks por entidade, permitir middlewares globais:
 
@@ -115,7 +115,7 @@
 
     - Benefício: logging, tracing, auditoria em todas operações sem repetir código.
 
-10. Code Generation & CLI
+10. Code Generation & CLI [Não será feito]()
 
     - Exemplo (Prisma generate / TypeORM CLI / SQLAlchemy alembic)
 
@@ -125,7 +125,7 @@
 
     - Benefício: acelera muito onboarding.
 
-11. Multi-tenant / Sharding
+11. Multi-tenant / Sharding [Ok]()
 
     - Já falou em multi-tenant no início. ORM pode dar suporte oficial:
 
@@ -137,10 +137,10 @@
 
 12. Advanced Features
 
-    - Caching integrado (Redis + hooks de invalidar).
+    - Caching integrado (Redis + hooks de invalidar). [Ok]()
 
-    - Optimistic Locking (version field, igual Hibernate).
+    - Optimistic Locking (version field, igual Hibernate). [Não será feito]()
 
-    - Query Debug Logging (igual Prisma `DEBUG=*` ou TypeORM `logging: true`).
+    - Query Debug Logging (igual Prisma `DEBUG=*` ou TypeORM `logging: true`). [Ok]()
 
-    - Schema Diff visual (como Prisma Studio).
+    - Schema Diff visual (como Prisma Studio). [Não será feito]()
