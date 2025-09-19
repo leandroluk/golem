@@ -30,7 +30,7 @@
 
     - Benefício: facilita trabalhar com entidades conectadas sem fazer manualmente joins ou várias queries.
 
-3.  Migrations & Schema Sync
+3.  Migrations & Schema Sync [OK (usando golang migrate)]()
 
     - Exemplo (Prisma migrate / TypeORM migration / Alembic SQLAlchemy):
   
@@ -40,7 +40,7 @@
 
     - Benefício: evolução controlada do schema, versionamento e CI/CD integrado.
 
-4.  Soft Deletes & Timestamps
+4.  Soft Deletes & Timestamps [Ok]()
 
     - Exemplo (Mongoose { timestamps: true }, TypeORM @DeleteDateColumn)
 

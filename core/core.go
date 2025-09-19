@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -97,10 +98,12 @@ type Sort struct {
 }
 
 type Where struct {
-	Condition *Condition
-	Limit     int
-	Offset    int
-	Sort      []Sort
+	Condition   *Condition
+	Limit       int
+	Offset      int
+	Sort        []Sort
+	WithDeleted bool
+	OnlyDeleted bool
 }
 
 type Changes map[string]any
@@ -195,7 +198,6 @@ type FindManyPayload[T any] struct {
 
 //region helpers
 
-// offsetOf retorna o offset de memória de um campo selecionado em T.
 func offsetOf[T any, F any](selector func(*T) *F) uintptr {
 	var zero T
 	base := uintptr(unsafe.Pointer(&zero))
@@ -203,8 +205,6 @@ func offsetOf[T any, F any](selector func(*T) *F) uintptr {
 	return uintptr(unsafe.Pointer(ptr)) - base
 }
 
-// fieldNameFromSelectorFor converte um selector (func(*T) *Field) no nome do campo correspondente em T.
-// Exemplo: fieldNameFromSelectorFor[User](func(u *User) *int { return &u.ID }) → "ID".
 func fieldNameFromSelectorFor[T any](selector any) string {
 	if selector == nil {
 		return ""
@@ -246,13 +246,54 @@ func fieldNameFromSelectorFor[T any](selector any) string {
 	return "???"
 }
 
-// mapToStruct mapeia os valores de um row (map[string]any) para um struct de saída.
 func mapToStruct[T any](row map[string]any, out *T) error {
 	value := reflect.ValueOf(out).Elem()
 	for rowKey, rowValue := range row {
 		field := value.FieldByNameFunc(func(name string) bool { return strings.EqualFold(name, rowKey) })
-		if field.IsValid() && field.CanSet() {
-			field.Set(reflect.ValueOf(rowValue))
+		if !field.IsValid() || !field.CanSet() {
+			continue
+		}
+
+		if rowValue == nil {
+			// Se campo é ponteiro, setar nil; caso contrário, ignorar
+			if field.Kind() == reflect.Pointer {
+				field.Set(reflect.Zero(field.Type()))
+			}
+			continue
+		}
+
+		rv := reflect.ValueOf(rowValue)
+
+		// 1) tipo exatamente compatível
+		if rv.Type().AssignableTo(field.Type()) {
+			field.Set(rv)
+			continue
+		}
+
+		// 2) valor → ponteiro (ex.: time.Time → *time.Time)
+		if field.Kind() == reflect.Pointer && rv.Type().AssignableTo(field.Type().Elem()) {
+			ptr := reflect.New(field.Type().Elem())
+			ptr.Elem().Set(rv)
+			field.Set(ptr)
+			continue
+		}
+
+		// 3) ponteiro → valor (ex.: *time.Time → time.Time)
+		if rv.Kind() == reflect.Pointer && !rv.IsNil() && rv.Type().Elem().AssignableTo(field.Type()) {
+			field.Set(rv.Elem())
+			continue
+		}
+
+		// 4) conversões
+		if rv.Type().ConvertibleTo(field.Type()) {
+			field.Set(rv.Convert(field.Type()))
+			continue
+		}
+		if field.Kind() == reflect.Pointer && rv.Type().ConvertibleTo(field.Type().Elem()) {
+			ptr := reflect.New(field.Type().Elem())
+			ptr.Elem().Set(rv.Convert(field.Type().Elem()))
+			field.Set(ptr)
+			continue
 		}
 	}
 	return nil
@@ -273,7 +314,6 @@ func foldConditionsAnd(conds ...*Condition) *Condition {
 	}
 }
 
-// StructValues extrai os valores e placeholders ($1, $2, ...) de um documento de acordo com o schema.
 func StructValues(schema *SchemaCore, doc any) ([]any, []string) {
 	value := reflect.ValueOf(doc)
 	if value.Kind() == reflect.Ptr {
@@ -284,18 +324,52 @@ func StructValues(schema *SchemaCore, doc any) ([]any, []string) {
 	placeholderList := []string{}
 
 	for index, field := range schema.Fields {
-		fieldValue := value.FieldByName(field.GoStructFieldName)
-		valueList = append(valueList, fieldValue.Interface())
+		fv := value.FieldByName(field.GoStructFieldName)
+
+		var v any
+		if fv.Kind() == reflect.Pointer {
+			if fv.IsNil() {
+				v = nil
+			} else {
+				v = fv.Elem().Interface()
+			}
+		} else {
+			v = fv.Interface()
+		}
+
+		valueList = append(valueList, v)
 		placeholderList = append(placeholderList, fmt.Sprintf("$%d", index+1))
 	}
 
 	return valueList, placeholderList
 }
 
-// Include cria um nome de campo type-safe para ser usado em consultas com Include().
-// Exemplo de uso: userModel.FindOne(ctx, qb).Include(func(u *User) *[]Role { return &u.RoleList }).Run(ctx)
 func Include[L any, F any](selector func(*L) *F) string {
 	return fieldNameFromSelectorFor[L](selector)
+}
+
+func setTimeField(field reflect.Value, t time.Time) {
+	if !field.IsValid() || !field.CanSet() {
+		return
+	}
+	timeType := reflect.TypeOf(time.Time{})
+
+	switch field.Kind() {
+	case reflect.Struct:
+		if field.Type() == timeType {
+			field.Set(reflect.ValueOf(t))
+		}
+	case reflect.Pointer:
+		if field.Type().Elem() == timeType {
+			if field.IsNil() {
+				ptr := reflect.New(timeType)
+				ptr.Elem().Set(reflect.ValueOf(t))
+				field.Set(ptr)
+			} else {
+				field.Elem().Set(reflect.ValueOf(t))
+			}
+		}
+	}
 }
 
 //endregion
@@ -319,7 +393,7 @@ const (
 
 //endregion
 
-//region Model
+//region Model - struct and common
 
 type Model[T any] struct {
 	schema *SchemaMeta[T]
@@ -330,48 +404,6 @@ func NewModel[T any](schema *SchemaMeta[T], driver Driver) *Model[T] {
 	return &Model[T]{schema: schema, driver: driver}
 }
 
-func (m *Model[T]) runPre(hook PreHook, doc *T) error {
-	if fnList, ok := m.schema.PreHookList[hook]; ok {
-		for _, fn := range fnList {
-			if err := fn(doc); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (m *Model[T]) runPost(hook PostHook, doc *T) error {
-	if fnList, ok := m.schema.PostHookList[hook]; ok {
-		for _, fn := range fnList {
-			if err := fn(doc); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (m *Model[T]) Create(ctx context.Context, doc *T) error {
-	if err := m.runPre(PreInsert, doc); err != nil {
-		return err
-	}
-	if err := m.driver.Insert(ctx, &m.schema.SchemaCore, doc); err != nil {
-		return err
-	}
-	if err := m.runPost(PostInsert, doc); err != nil {
-		return err
-	}
-	Emit(EventInsert, InsertPayload[T]{Schema: &m.schema.SchemaCore, Doc: doc})
-	return nil
-}
-
-// LoadRelation carrega uma ou mais relações sob demanda (lazy loading).
-// Exemplo:
-//
-//	user, _ := userModel.FindOne(ctx, qb)
-//	_ = userModel.LoadRelation(ctx, user, "RoleList")
-//	_ = userModel.LoadRelation(ctx, user, "RoleList", "Address")
 func (m *Model[T]) LoadRelation(ctx context.Context, doc *T, fieldPtrs ...any) error {
 	value := reflect.ValueOf(doc).Elem()
 
@@ -390,12 +422,10 @@ func (m *Model[T]) LoadRelation(ctx context.Context, doc *T, fieldPtrs ...any) e
 				break
 			}
 		}
-
 		if fieldName == "" {
 			return fmt.Errorf("LoadRelation: campo não encontrado para ponteiro %v", ptr)
 		}
 
-		// reaproveita lógica existente
 		if err := m.loadRelationList(ctx, doc, []string{fieldName}); err != nil {
 			return err
 		}
@@ -403,129 +433,27 @@ func (m *Model[T]) LoadRelation(ctx context.Context, doc *T, fieldPtrs ...any) e
 	return nil
 }
 
-// --- Fluent API para FindOne ---
-
-type FindOneQuery[T any] struct {
-	model           *Model[T]
-	query           *Query[T]
-	includeNameList []string
-}
-
-func (m *Model[T]) FindOne(ctx context.Context, query *Query[T]) *FindOneQuery[T] {
-	return &FindOneQuery[T]{model: m, query: query}
-}
-
-// selector deve retornar ponteiro para o campo (convertido para any).
-// Ex.: .Include(func(u *User) any { return &u.RoleList })
-func (q *FindOneQuery[T]) Include(selector func(*T) any) *FindOneQuery[T] {
-	q.includeNameList = append(q.includeNameList, fieldNameFromSelectorFor[T](selector))
-	return q
-}
-
-func (q *FindOneQuery[T]) Run(ctx context.Context) (*T, error) {
-	return q.model.findOneInternal(ctx, q.query, q.includeNameList...)
-}
-
-// --- Fluent API para FindMany ---
-
-type FindManyQuery[T any] struct {
-	model        *Model[T]
-	qb           *Query[T]
-	includeNames []string
-}
-
-func (m *Model[T]) FindMany(ctx context.Context, qb *Query[T]) *FindManyQuery[T] {
-	return &FindManyQuery[T]{model: m, qb: qb}
-}
-
-func (q *FindManyQuery[T]) Include(selector func(*T) any) *FindManyQuery[T] {
-	q.includeNames = append(q.includeNames, fieldNameFromSelectorFor[T](selector))
-	return q
-}
-
-func (q *FindManyQuery[T]) Run(ctx context.Context) ([]T, error) {
-	return q.model.findManyInternal(ctx, q.qb, q.includeNames...)
-}
-
-// --- Internos usados pelos builders ---
-
-func (m *Model[T]) findOneInternal(ctx context.Context, qb *Query[T], relationList ...string) (*T, error) {
-	var zero T
-	_ = m.runPre(PreFind, &zero)
-
-	raw, err := m.driver.FindOne(ctx, &m.schema.SchemaCore, qb.where)
-	if err != nil || raw == nil {
-		return nil, err
+func (m *Model[T]) withSoftDelete(where *Where) *Where {
+	if where == nil || m.schema.deletedAtField == nil {
+		return where
 	}
+	eff := *where // shallow copy
+	col := m.schema.deletedAtField.DatabaseColumnName
 
-	row, ok := raw.(map[string]any)
-	if !ok {
-		return nil, nil
+	if where.OnlyDeleted {
+		eff.Condition = foldConditionsAnd(
+			where.Condition,
+			(&Condition{FieldName: col}).Nil().Not(),
+		)
+		return &eff
 	}
-
-	value := new(T)
-	if err := mapToStruct(row, value); err != nil {
-		return nil, err
+	if !where.WithDeleted {
+		eff.Condition = foldConditionsAnd(
+			where.Condition,
+			(&Condition{FieldName: col}).Nil(),
+		)
 	}
-
-	if err := m.loadRelationList(ctx, value, relationList); err != nil {
-		return nil, err
-	}
-
-	_ = m.runPost(PostFind, value)
-	Emit(EventFind, FindOnePayload[T]{Schema: &m.schema.SchemaCore, Where: qb.where, Doc: value})
-	return value, nil
-}
-
-func (m *Model[T]) findManyInternal(ctx context.Context, qb *Query[T], relationList ...string) ([]T, error) {
-	var zero T
-	_ = m.runPre(PreFind, &zero)
-
-	raw, err := m.driver.FindMany(ctx, &m.schema.SchemaCore, qb.where)
-	if err != nil || raw == nil {
-		return nil, err
-	}
-
-	rows, ok := raw.([]map[string]any)
-	if !ok {
-		return nil, nil
-	}
-
-	var results []T
-	for _, row := range rows {
-		value := new(T)
-		if err := mapToStruct(row, value); err != nil {
-			return nil, err
-		}
-		if err := m.loadRelationList(ctx, value, relationList); err != nil {
-			return nil, err
-		}
-		_ = m.runPost(PostFind, value)
-		results = append(results, *value)
-	}
-
-	Emit(EventFind, FindManyPayload[T]{Schema: &m.schema.SchemaCore, Where: qb.where, DocList: results})
-	return results, nil
-}
-
-func (m *Model[T]) Update(ctx context.Context, condition *Condition, changes Changes) error {
-	if err := m.driver.Update(ctx, &m.schema.SchemaCore, condition, changes); err != nil {
-		return err
-	}
-	Emit(EventUpdate, UpdatePayload{Schema: &m.schema.SchemaCore, Condition: condition, Changes: changes})
-	return nil
-}
-
-func (m *Model[T]) Delete(ctx context.Context, condition *Condition) error {
-	if err := m.driver.Delete(ctx, &m.schema.SchemaCore, condition); err != nil {
-		return err
-	}
-	Emit(EventDelete, DeletePayload{Schema: &m.schema.SchemaCore, Condition: condition})
-	return nil
-}
-
-func (m *Model[T]) Count(ctx context.Context, qb *Query[T]) (int64, error) {
-	return m.driver.Count(ctx, &m.schema.SchemaCore, qb.where.Condition)
+	return &eff
 }
 
 func (m *Model[T]) loadRelationList(ctx context.Context, doc *T, nameList []string) error {
@@ -617,6 +545,224 @@ func (m *Model[T]) loadRelationList(ctx context.Context, doc *T, nameList []stri
 
 //endregion
 
+//region Model - hook's runners
+
+func (m *Model[T]) runPre(hook PreHook, doc *T) error {
+	if fnList, ok := m.schema.PreHookList[hook]; ok {
+		for _, fn := range fnList {
+			if err := fn(doc); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Model[T]) runPost(hook PostHook, doc *T) error {
+	if fnList, ok := m.schema.PostHookList[hook]; ok {
+		for _, fn := range fnList {
+			if err := fn(doc); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+//endregion
+
+//region Model - Create
+
+func (m *Model[T]) Create(ctx context.Context, doc *T) error {
+	now := time.Now()
+	val := reflect.ValueOf(doc).Elem()
+
+	if m.schema.createdAtField != nil {
+		f := val.FieldByName(m.schema.createdAtField.GoStructFieldName)
+		setTimeField(f, now)
+	}
+	if m.schema.updatedAtField != nil {
+		f := val.FieldByName(m.schema.updatedAtField.GoStructFieldName)
+		setTimeField(f, now)
+	}
+
+	if err := m.runPre(PreInsert, doc); err != nil {
+		return err
+	}
+	if err := m.driver.Insert(ctx, &m.schema.SchemaCore, doc); err != nil {
+		return err
+	}
+	if err := m.runPost(PostInsert, doc); err != nil {
+		return err
+	}
+	Emit(EventInsert, InsertPayload[T]{Schema: &m.schema.SchemaCore, Doc: doc})
+	return nil
+}
+
+//endregion
+
+//region Model - FindOne
+
+type FindOneQuery[T any] struct {
+	model           *Model[T]
+	query           *Query[T]
+	includeNameList []string
+}
+
+func (m *Model[T]) FindOne(ctx context.Context, query *Query[T]) *FindOneQuery[T] {
+	return &FindOneQuery[T]{model: m, query: query}
+}
+
+// selector deve retornar ponteiro para o campo (convertido para any).
+// Ex.: .Include(func(u *User) any { return &u.RoleList })
+func (q *FindOneQuery[T]) Include(selector func(*T) any) *FindOneQuery[T] {
+	q.includeNameList = append(q.includeNameList, fieldNameFromSelectorFor[T](selector))
+	return q
+}
+
+func (q *FindOneQuery[T]) Run(ctx context.Context) (*T, error) {
+	return q.model.findOneInternal(ctx, q.query, q.includeNameList...)
+}
+
+func (m *Model[T]) findOneInternal(ctx context.Context, qb *Query[T], relationList ...string) (*T, error) {
+	var zero T
+	_ = m.runPre(PreFind, &zero)
+
+	// cria cópia com soft delete aplicado
+	where := m.withSoftDelete(qb.where)
+
+	raw, err := m.driver.FindOne(ctx, &m.schema.SchemaCore, where)
+	if err != nil || raw == nil {
+		return nil, err
+	}
+
+	row, ok := raw.(map[string]any)
+	if !ok {
+		return nil, nil
+	}
+
+	value := new(T)
+	if err := mapToStruct(row, value); err != nil {
+		return nil, err
+	}
+
+	if err := m.loadRelationList(ctx, value, relationList); err != nil {
+		return nil, err
+	}
+
+	_ = m.runPost(PostFind, value)
+	Emit(EventFind, FindOnePayload[T]{Schema: &m.schema.SchemaCore, Where: where, Doc: value})
+	return value, nil
+}
+
+//endregion
+
+//region Model - FindMany
+
+type FindManyQuery[T any] struct {
+	model        *Model[T]
+	qb           *Query[T]
+	includeNames []string
+}
+
+func (m *Model[T]) FindMany(ctx context.Context, qb *Query[T]) *FindManyQuery[T] {
+	return &FindManyQuery[T]{model: m, qb: qb}
+}
+
+func (q *FindManyQuery[T]) Include(selector func(*T) any) *FindManyQuery[T] {
+	q.includeNames = append(q.includeNames, fieldNameFromSelectorFor[T](selector))
+	return q
+}
+
+func (q *FindManyQuery[T]) Run(ctx context.Context) ([]T, error) {
+	return q.model.findManyInternal(ctx, q.qb, q.includeNames...)
+}
+
+func (m *Model[T]) findManyInternal(ctx context.Context, qb *Query[T], relationList ...string) ([]T, error) {
+	var zero T
+	_ = m.runPre(PreFind, &zero)
+
+	// cria cópia com soft delete aplicado
+	where := m.withSoftDelete(qb.where)
+
+	raw, err := m.driver.FindMany(ctx, &m.schema.SchemaCore, where)
+	if err != nil || raw == nil {
+		return nil, err
+	}
+
+	rows, ok := raw.([]map[string]any)
+	if !ok {
+		return nil, nil
+	}
+
+	var results []T
+	for _, row := range rows {
+		value := new(T)
+		if err := mapToStruct(row, value); err != nil {
+			return nil, err
+		}
+		if err := m.loadRelationList(ctx, value, relationList); err != nil {
+			return nil, err
+		}
+		_ = m.runPost(PostFind, value)
+		results = append(results, *value)
+	}
+
+	Emit(EventFind, FindManyPayload[T]{Schema: &m.schema.SchemaCore, Where: where, DocList: results})
+	return results, nil
+}
+
+//endregion
+
+//region Model - Update
+
+func (m *Model[T]) Update(ctx context.Context, condition *Condition, changes Changes) error {
+	if m.schema.updatedAtField != nil {
+		changes[m.schema.updatedAtField.DatabaseColumnName] = time.Now()
+	}
+
+	if err := m.driver.Update(ctx, &m.schema.SchemaCore, condition, changes); err != nil {
+		return err
+	}
+	Emit(EventUpdate, UpdatePayload{Schema: &m.schema.SchemaCore, Condition: condition, Changes: changes})
+	return nil
+}
+
+//endregion
+
+//region Model - Delete
+
+func (m *Model[T]) Delete(ctx context.Context, condition *Condition) error {
+	// soft delete se houver campo configurado
+	if m.schema.deletedAtField != nil {
+		changes := Changes{m.schema.deletedAtField.DatabaseColumnName: time.Now()}
+		if err := m.driver.Update(ctx, &m.schema.SchemaCore, condition, changes); err != nil {
+			return err
+		}
+		Emit(EventUpdate, UpdatePayload{Schema: &m.schema.SchemaCore, Condition: condition, Changes: changes})
+		return nil
+	}
+
+	// fallback: delete real
+	if err := m.driver.Delete(ctx, &m.schema.SchemaCore, condition); err != nil {
+		return err
+	}
+	Emit(EventDelete, DeletePayload{Schema: &m.schema.SchemaCore, Condition: condition})
+	return nil
+}
+
+//endregion
+
+//region Model - Count
+
+func (m *Model[T]) Count(ctx context.Context, qb *Query[T]) (int64, error) {
+	// usa cópia com soft delete aplicado
+	where := m.withSoftDelete(qb.where)
+	return m.driver.Count(ctx, &m.schema.SchemaCore, where.Condition)
+}
+
+//endregion
+
 //region Operator
 
 type Operator string
@@ -664,6 +810,16 @@ func NewQuery[T any](schema *SchemaMeta[T]) *Query[T] {
 		schema: schema,
 		where:  &Where{},
 	}
+}
+
+func (q *Query[T]) WithDeleted() *Query[T] {
+	q.where.WithDeleted = true
+	return q
+}
+
+func (q *Query[T]) OnlyDeleted() *Query[T] {
+	q.where.OnlyDeleted = true
+	return q
 }
 
 // Where type-safe no builder.
@@ -742,6 +898,8 @@ func (q *Query[T]) Offset(offset int) *Query[T] {
 	return q
 }
 
+//endregion
+
 //region Schema - Field
 
 type Field struct {
@@ -753,6 +911,10 @@ type Field struct {
 	IsRequired         bool
 	DefaultValue       string
 	MemoryOffset       uintptr
+
+	IsCreatedAt bool
+	IsUpdatedAt bool
+	IsDeletedAt bool
 }
 
 type FieldOption func(*Field)
@@ -771,6 +933,18 @@ func Required() FieldOption {
 
 func Default(value string) FieldOption {
 	return func(f *Field) { f.DefaultValue = value }
+}
+
+func CreatedAt() FieldOption {
+	return func(f *Field) { f.IsCreatedAt = true }
+}
+
+func UpdatedAt() FieldOption {
+	return func(f *Field) { f.IsUpdatedAt = true }
+}
+
+func DeletedAt() FieldOption {
+	return func(f *Field) { f.IsDeletedAt = true }
 }
 
 //endregion
@@ -820,6 +994,10 @@ type SchemaMeta[T any] struct {
 	PreHookList  map[PreHook][]func(*T) error
 	PostHookList map[PostHook][]func(*T) error
 	RelationList []RelationInternal
+
+	createdAtField *Field
+	updatedAtField *Field
+	deletedAtField *Field
 }
 
 func (s *SchemaMeta[T]) RegisterPreHook(hook PreHook, fn func(*T) error) {
@@ -906,6 +1084,9 @@ func Schema[T any](options ...SchemaOption[T]) *SchemaMeta[T] {
 		fieldsByOffset: make(map[uintptr]*Field),
 	}
 
+	// aplica opções do builder (Table/Database/TagKey/OverrideField) — atenção:
+	// OverrideField só terá efeito após criarmos os fields (abaixo),
+	// então chamaremos as opções novamente depois de popular 'fieldsByOffset'.
 	for _, option := range options {
 		option(builder)
 	}
@@ -931,7 +1112,12 @@ func Schema[T any](options ...SchemaOption[T]) *SchemaMeta[T] {
 		builder.fieldsByOffset[sf.Offset] = field
 	}
 
-	return &SchemaMeta[T]{
+	// re-aplica opções para que OverrideField funcione (agora que os fields existem)
+	for _, option := range options {
+		option(builder)
+	}
+
+	meta := &SchemaMeta[T]{
 		SchemaCore: SchemaCore{
 			Database:       builder.database,
 			Collection:     builder.collection,
@@ -941,6 +1127,21 @@ func Schema[T any](options ...SchemaOption[T]) *SchemaMeta[T] {
 		PreHookList:  make(map[PreHook][]func(*T) error),
 		PostHookList: make(map[PostHook][]func(*T) error),
 	}
+
+	// detectar campos especiais (CreatedAt/UpdatedAt/DeletedAt) uma única vez
+	for _, f := range builder.fields {
+		if f.IsCreatedAt {
+			meta.createdAtField = f
+		}
+		if f.IsUpdatedAt {
+			meta.updatedAtField = f
+		}
+		if f.IsDeletedAt {
+			meta.deletedAtField = f
+		}
+	}
+
+	return meta
 }
 
 //endregion
