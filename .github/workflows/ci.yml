@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test-linux:
+    name: test (linux, latest stable)
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Go env
+        run: |
+          go version
+          go env
+
+      - uses: ./.github/actions/go-ci
+        with:
+          os-tag: ubuntu
+          go-tag: go1.x
+          codecov: "true"
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-macos:
+    name: test (macos, latest stable)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go (stable)
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - uses: ./.github/actions/go-ci
+        with:
+          os-tag: macos
+          go-tag: stable
+          codecov: "true"
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-windows:
+    name: test (windows, latest stable)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go (stable)
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: fmt (auto-fix) + verify (windows)
+        shell: pwsh
+        run: |
+          gofmt -s -w .
+          git diff --exit-code
+          if ($LASTEXITCODE -ne 0) {
+            echo "Unformatted changes written by CI. Please run gofmt locally."
+            exit 1
+          }
+
+      - uses: ./.github/actions/go-ci
+        with:
+          os-tag: windows
+          go-tag: stable
+          codecov: "true"
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}

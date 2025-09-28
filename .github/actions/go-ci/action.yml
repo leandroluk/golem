@@ -1,0 +1,135 @@
+name: go-ci
+description: Common Go CI steps (fmt, vet, build, coverage, artifacts, codecov)
+
+inputs:
+  os-tag:
+    description: OS label for flags/artifact naming (ubuntu|macos|windows)
+    required: true
+  go-tag:
+    description: Go version label for flags/artifact naming
+    required: true
+  codecov:
+    description: Upload to Codecov (true/false)
+    required: false
+    default: "false"
+  codecov_token:
+    description: Codecov token (pass from workflow secrets if needed)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # -------- ensure cover tool in PATH --------
+    - name: Ensure cover tool (bash)
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: |
+        go install golang.org/x/tools/cmd/cover@latest
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Ensure cover tool (pwsh)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: |
+        go install golang.org/x/tools/cmd/cover@latest
+        echo "$env:GOPATH\bin" >> $env:GITHUB_PATH
+
+    # -------- deps --------
+    - name: Download deps
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: go mod download
+
+    - name: Download deps (windows)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: go mod download
+
+    # -------- fmt-check (sem git) --------
+    - name: fmt-check
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: |
+        set -e
+        OUT="$(gofmt -l .)"
+        if [ -n "$OUT" ]; then
+          echo "Files not formatted:"
+          echo "$OUT"
+          exit 1
+        fi
+
+    - name: fmt-check (windows)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: |
+        $out = gofmt -l .
+        if ($out) {
+          echo "Files not formatted:"
+          echo $out
+          exit 1
+        }
+
+    # -------- vet --------
+    - name: vet
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: go vet ./...
+
+    - name: vet (windows)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: go vet ./...
+
+    # -------- build --------
+    - name: build
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: go build ./...
+
+    - name: build (windows)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: go build ./...
+
+    # -------- tests + coverage (com fallback se não houver make) --------
+    - name: test with coverage (bash; try make, else go test)
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: |
+        if command -v make >/dev/null 2>&1 && [ -f Makefile ]; then
+          make test.ci
+        else
+          echo "No make detected; running go test fallback"
+          go test ./... -coverpkg=./joi -coverprofile="coverage.txt" -covermode=atomic
+        fi
+
+    - name: test with coverage (windows; try make, else go test)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: |
+        $hasMake = (Get-Command make -ErrorAction SilentlyContinue) -ne $null
+        if ($hasMake -and (Test-Path Makefile)) {
+          make test.ci
+        } else {
+          echo "No make detected; running go test fallback"
+          go test ./... -coverpkg=./joi -coverprofile="coverage.txt" -covermode=atomic
+        }
+
+    # -------- artifacts --------
+    - name: Upload coverage artifact
+      if: ${{ hashFiles('coverage.txt') != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-${{ inputs.os-tag }}-go${{ inputs.go-tag }}
+        path: coverage.txt
+
+    # -------- codecov --------
+    - name: Upload to Codecov
+      if: ${{ inputs.codecov == 'true' && hashFiles('coverage.txt') != '' }}
+      uses: codecov/codecov-action@v4
+      with:
+        files: coverage.txt
+        flags: ${{ inputs.os-tag }}-go${{ inputs.go-tag }}
+        fail_ci_if_error: true
+        token: ${{ inputs.codecov_token }}

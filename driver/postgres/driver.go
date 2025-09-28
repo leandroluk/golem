@@ -1,306 +1,359 @@
-// Package driver provides database driver implementations for the golem ORM.
-// This file implements the PostgresDriver, which adapts the core.Driver interface
-// to PostgreSQL using pgx/pgxpool.
-package driver
+package postgres
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
+	"reflect"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/leandroluk/golem/core"
 )
 
-// PostgresDriver is the driver implementation for PostgreSQL.
-//
-// It uses pgxpool for connection pooling and implements the core.Driver
-// interface, supporting inserts, queries, updates, deletes, counting,
-// and transaction handling.
-type PostgresDriver struct {
-	pool *pgxpool.Pool
+type Driver struct {
+	dsn     string
+	pool    *pgxpool.Pool
+	dialect Dialect
 }
 
-// Ensure PostgresDriver implements core.Driver at compile time.
-var _ core.Driver = (*PostgresDriver)(nil)
+func NewDriver(dsn string) *Driver {
+	return &Driver{dsn: dsn, dialect: Dialect{}}
+}
 
-// NewPostgresDriver creates a new PostgresDriver given a connection string.
-//
-// Example:
-//
-//	driver, err := driver.NewPostgresDriver(ctx, "postgres://user:pass@localhost:5432/mydb")
-func NewPostgresDriver(ctx context.Context, connString string) (*PostgresDriver, error) {
-	pool, err := pgxpool.New(ctx, connString)
+var _ core.Driver[string] = (*Driver)(nil)
+
+func (d *Driver) Connect(ctx context.Context) error {
+	pool, err := pgxpool.New(ctx, d.dsn)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return &PostgresDriver{pool: pool}, nil
-}
-
-// formatTable returns the properly quoted table reference for the schema.
-//
-// If a database name is provided, it returns "database"."table",
-// otherwise just "table".
-func (driver *PostgresDriver) formatTable(schema *core.SchemaCore) string {
-	if schema.Database != "" {
-		return fmt.Sprintf("%q.%q", schema.Database, schema.Collection)
+	if err := pool.Ping(ctx); err != nil {
+		return err
 	}
-	return fmt.Sprintf("%q", schema.Collection)
-}
-
-// buildCondition translates a core.Condition into a PostgreSQL SQL expression,
-// appending values into argList for parameterized queries.
-func (driver *PostgresDriver) buildCondition(condition *core.Condition, argList *[]any) string {
-	if condition == nil {
-		return "1=1"
-	}
-	if len(condition.Children) > 0 {
-		partList := []string{}
-		for _, child := range condition.Children {
-			partList = append(partList, driver.buildCondition(child, argList))
-		}
-		switch *condition.Operator {
-		case core.OpAnd:
-			return "(" + strings.Join(partList, " AND ") + ")"
-		case core.OpOr:
-			return "(" + strings.Join(partList, " OR ") + ")"
-		case core.OpNot:
-			return "NOT (" + strings.Join(partList, " AND ") + ")"
-		}
-	}
-
-	column := fmt.Sprintf("%q", condition.FieldName)
-	switch *condition.Operator {
-	case core.OpNil:
-		return column + " IS NULL"
-	case core.OpEq:
-		*argList = append(*argList, condition.Value)
-		return fmt.Sprintf("%s = $%d", column, len(*argList))
-	case core.OpGt:
-		*argList = append(*argList, condition.Value)
-		return fmt.Sprintf("%s > $%d", column, len(*argList))
-	case core.OpGte:
-		*argList = append(*argList, condition.Value)
-		return fmt.Sprintf("%s >= $%d", column, len(*argList))
-	case core.OpLt:
-		*argList = append(*argList, condition.Value)
-		return fmt.Sprintf("%s < $%d", column, len(*argList))
-	case core.OpLte:
-		*argList = append(*argList, condition.Value)
-		return fmt.Sprintf("%s <= $%d", column, len(*argList))
-	case core.OpLike:
-		*argList = append(*argList, condition.Value)
-		return fmt.Sprintf("%s ILIKE $%d", column, len(*argList))
-	case core.OpIn:
-		valueList := condition.Value.([]any)
-		placeholderList := []string{}
-		for _, v := range valueList {
-			*argList = append(*argList, v)
-			placeholderList = append(placeholderList, fmt.Sprintf("$%d", len(*argList)))
-		}
-		return fmt.Sprintf("%s IN (%s)", column, strings.Join(placeholderList, ", "))
-	}
-	return "1=1"
-}
-
-// exec executes a SQL statement, using an existing transaction if one
-// is available in the context.
-func (driver *PostgresDriver) exec(ctx context.Context, sqlQuery string, args ...any) error {
-	if tx := core.TransactionFrom(ctx); tx != nil {
-		if pgTx, ok := tx.(*postgresTransaction); ok {
-			_, err := pgTx.transaction.Exec(ctx, sqlQuery, args...)
-			return err
-		}
-	}
-	_, err := driver.pool.Exec(ctx, sqlQuery, args...)
-	return err
-}
-
-// query executes a SQL query returning rows, using an existing transaction
-// if available in the context.
-func (driver *PostgresDriver) query(ctx context.Context, sqlQuery string, args ...any) (pgx.Rows, error) {
-	if tx := core.TransactionFrom(ctx); tx != nil {
-		if pgTx, ok := tx.(*postgresTransaction); ok {
-			return pgTx.transaction.Query(ctx, sqlQuery, args...)
-		}
-	}
-	return driver.pool.Query(ctx, sqlQuery, args...)
-}
-
-// queryRow executes a SQL query returning a single row, using an existing
-// transaction if available in the context.
-func (driver *PostgresDriver) queryRow(ctx context.Context, sqlQuery string, args ...any) pgx.Row {
-	if tx := core.TransactionFrom(ctx); tx != nil {
-		if pgTx, ok := tx.(*postgresTransaction); ok {
-			return pgTx.transaction.QueryRow(ctx, sqlQuery, args...)
-		}
-	}
-	return driver.pool.QueryRow(ctx, sqlQuery, args...)
-}
-
-// find executes a SELECT query and returns the results as a slice of maps,
-// where keys are column names and values are raw values.
-func (driver *PostgresDriver) find(ctx context.Context, schema *core.SchemaCore, query *core.Where, single bool) ([]map[string]any, error) {
-	columnNameList := []string{}
-	for _, field := range schema.Fields {
-		columnNameList = append(columnNameList, fmt.Sprintf("%q", field.DatabaseColumnName))
-	}
-	selectColumns := strings.Join(columnNameList, ", ")
-
-	argList := []any{}
-	whereClause := driver.buildCondition(query.Condition, &argList)
-
-	sqlQuery := fmt.Sprintf("SELECT %s FROM %s WHERE %s", selectColumns, driver.formatTable(schema), whereClause)
-
-	if len(query.Sort) > 0 {
-		orderPartList := []string{}
-		for _, sortItem := range query.Sort {
-			direction := "ASC"
-			if sortItem.Order < 0 {
-				direction = "DESC"
-			}
-			orderPartList = append(orderPartList, fmt.Sprintf("%q %s", sortItem.FieldName, direction))
-		}
-		sqlQuery += " ORDER BY " + strings.Join(orderPartList, ", ")
-	}
-	if single {
-		sqlQuery += " LIMIT 1"
-	} else {
-		if query.Limit > 0 {
-			sqlQuery += fmt.Sprintf(" LIMIT %d", query.Limit)
-		}
-		if query.Offset > 0 {
-			sqlQuery += fmt.Sprintf(" OFFSET %d", query.Offset)
-		}
-	}
-
-	rowList, err := driver.query(ctx, sqlQuery, argList...)
-	if err != nil {
-		return nil, err
-	}
-	defer rowList.Close()
-
-	columnDescriptionList := rowList.FieldDescriptions()
-	var resultList []map[string]any
-
-	for rowList.Next() {
-		valueList, err := rowList.Values()
-		if err != nil {
-			return nil, err
-		}
-		rowMap := make(map[string]any)
-		for i, col := range columnDescriptionList {
-			rowMap[string(col.Name)] = valueList[i]
-		}
-		resultList = append(resultList, rowMap)
-		if single {
-			break
-		}
-	}
-	return resultList, nil
-}
-
-// Connect verifies connectivity to the PostgreSQL server.
-func (driver *PostgresDriver) Connect(ctx context.Context) error {
-	return driver.pool.Ping(ctx)
-}
-
-// Ping checks if the PostgreSQL server is reachable.
-func (driver *PostgresDriver) Ping(ctx context.Context) error {
-	return driver.pool.Ping(ctx)
-}
-
-// Close closes the connection pool and releases resources.
-func (driver *PostgresDriver) Close(ctx context.Context) error {
-	driver.pool.Close()
+	d.pool = pool
 	return nil
 }
 
-// Transaction starts a new PostgreSQL transaction using the connection pool.
-func (driver *PostgresDriver) Transaction(ctx context.Context) (core.Transaction, error) {
-	tx, err := driver.pool.BeginTx(ctx, pgx.TxOptions{})
+func (d *Driver) Close() error {
+	if d.pool != nil {
+		d.pool.Close()
+	}
+	return nil
+}
+
+func (d *Driver) Ping(ctx context.Context) error {
+	if d.pool == nil {
+		return errors.New("pgx pool nil")
+	}
+	return d.pool.Ping(ctx)
+}
+
+func (d *Driver) Exec(ctx context.Context, stmt string, args ...any) (core.Result, error) {
+	ct, err := d.pool.Exec(ctx, stmt, args...)
 	if err != nil {
 		return nil, err
 	}
-	return &postgresTransaction{transaction: tx}, nil
+	return Result{ct: ct}, nil
 }
 
-// Insert inserts one or more documents into the table defined by the schema.
-func (driver *PostgresDriver) Insert(ctx context.Context, schema *core.SchemaCore, documents ...any) error {
-	if len(documents) == 0 {
+func (d *Driver) Query(ctx context.Context, stmt string, args ...any) (core.Rows, error) {
+	rows, err := d.pool.Query(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &Rows{rows: rows}, nil
+}
+
+func (d *Driver) Begin(ctx context.Context) (core.Tx[string], error) {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Tx{tx: tx}, nil
+}
+
+func (d *Driver) Dialect() core.Dialect {
+	return d.dialect
+}
+
+// ------------------ ADAPTERS ------------------
+
+type Result struct {
+	ct pgconn.CommandTag
+}
+
+func (r Result) RowsAffected() (int64, error) {
+	return int64(r.ct.RowsAffected()), nil
+}
+
+type Rows struct {
+	rows pgx.Rows
+}
+
+var _ core.Rows = (*Rows)(nil)
+
+func (r *Rows) Next() bool {
+	return r.rows.Next()
+}
+
+func (r *Rows) Scan(dest ...any) error {
+	return r.rows.Scan(dest...)
+}
+
+func (r *Rows) Close() error {
+	r.rows.Close()
+	return nil
+}
+
+func (r *Rows) Columns() []string {
+	fds := r.rows.FieldDescriptions()
+	out := make([]string, len(fds))
+	for i, fd := range fds {
+		out[i] = string(fd.Name)
+	}
+	return out
+}
+
+type Tx struct {
+	tx pgx.Tx
+}
+
+var _ core.Tx[string] = (*Tx)(nil)
+
+func (t *Tx) Exec(ctx context.Context, stmt string, args ...any) (core.Result, error) {
+	ct, err := t.tx.Exec(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	return Result{ct: ct}, nil
+}
+
+func (t *Tx) Query(ctx context.Context, stmt string, args ...any) (core.Rows, error) {
+	rows, err := t.tx.Query(ctx, stmt, args...)
+	if err != nil {
+		return nil, err
+	}
+	return &Rows{rows: rows}, nil
+}
+
+func (t *Tx) Commit() error {
+	return t.tx.Commit(context.Background())
+}
+
+func (t *Tx) Rollback() error {
+	return t.tx.Rollback(context.Background())
+}
+
+type Dialect struct{}
+
+var _ core.Dialect = (*Dialect)(nil)
+
+// ToValue converte valores Go → valores aceitos pelo database/sql
+func (d Dialect) ToValue(f *core.FieldMeta, v any) any {
+	if undef, ok := f.Meta[core.UndefO]; ok {
+		if reflect.DeepEqual(v, undef) {
+			// se tiver Default configurado → aplica default
+			if def, hasDefault := f.Meta[core.DefaultO]; hasDefault {
+				return def
+			}
+			return nil
+		}
+	}
+
+	if v == nil {
 		return nil
 	}
 
-	columnNameList := []string{}
-	for _, field := range schema.Fields {
-		columnNameList = append(columnNameList, fmt.Sprintf("%q", field.DatabaseColumnName))
-	}
-	columnList := "(" + strings.Join(columnNameList, ", ") + ")"
-
-	for _, doc := range documents {
-		valueList, placeholderList := core.StructValues(schema, doc)
-		sqlQuery := fmt.Sprintf("INSERT INTO %s %s VALUES (%s)",
-			driver.formatTable(schema), columnList, strings.Join(placeholderList, ", "))
-
-		if err := driver.exec(ctx, sqlQuery, valueList...); err != nil {
-			return err
+	// se for nullable pointer nil → nil
+	if _, ok := f.Meta[core.NullableO]; ok {
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Pointer && rv.IsNil() {
+			return nil
 		}
 	}
-	return nil
+
+	switch val := v.(type) {
+	case time.Time:
+		return val.UTC()
+	case *time.Time:
+		if val == nil {
+			return nil
+		}
+		return val.UTC()
+
+	case bool:
+		return val
+	case *bool:
+		if val == nil {
+			return nil
+		}
+		return *val
+
+	case string:
+		return val
+	case *string:
+		if val == nil {
+			return nil
+		}
+		return *val
+
+	case int, int8, int16, int32, int64:
+		return val
+	case *int, *int8, *int16, *int32, *int64:
+		if val == nil {
+			return nil
+		}
+		return reflect.ValueOf(val).Elem().Interface()
+
+	case float32, float64:
+		return val
+	case *float32, *float64:
+		if val == nil {
+			return nil
+		}
+		return reflect.ValueOf(val).Elem().Interface()
+
+	case json.RawMessage:
+		return []byte(val) // pgx aceita []byte
+
+	case []byte:
+		return val
+
+	default:
+		// fallback: tenta JSON
+		b, err := json.Marshal(val)
+		if err == nil {
+			return b
+		}
+		return val
+	}
 }
 
-// FindOne retrieves a single row from the database that matches the query.
-func (driver *PostgresDriver) FindOne(ctx context.Context, schema *core.SchemaCore, query *core.Where) (any, error) {
-	rowList, err := driver.find(ctx, schema, query, true)
-	if err != nil {
-		return nil, err
-	}
-	if len(rowList) == 0 {
+func (d Dialect) FromValue(f *core.FieldMeta, raw any) (any, error) {
+	if raw == nil {
+		// se for nullable → mantém nil
+		if _, ok := f.Meta[core.NullableO]; ok {
+			return nil, nil
+		}
+		// se não for nullable → devolve zero value do tipo Go
+		if f.GoType != nil {
+			return reflect.Zero(f.GoType).Interface(), nil
+		}
 		return nil, nil
 	}
-	return rowList[0], nil
-}
 
-// FindMany retrieves multiple rows from the database that match the query.
-func (driver *PostgresDriver) FindMany(ctx context.Context, schema *core.SchemaCore, query *core.Where) (any, error) {
-	return driver.find(ctx, schema, query, false)
-}
+	switch {
+	// Numéricos
+	case hasToken(f,
+		IntO, Int2O, Int4O, Int8O, SmallIntO, BigIntO,
+		DecimalO, NumericO, RealO, DoublePrecisionO, MoneyO):
+		return raw, nil
 
-// Update modifies rows matching the condition with the provided changes.
-func (driver *PostgresDriver) Update(ctx context.Context, schema *core.SchemaCore, condition *core.Condition, changes core.Changes) error {
-	argList := []any{}
-	whereClause := driver.buildCondition(condition, &argList)
+	// Datas/Horas
+	case hasToken(f,
+		DateO, TimeO, TimeTZO, TimestampO, TimestamptzO, IntervalO):
+		if t, ok := raw.(time.Time); ok {
+			return t, nil
+		}
+		return raw, nil
 
-	setPartList := []string{}
-	for column, value := range changes {
-		argList = append(argList, value)
-		setPartList = append(setPartList, fmt.Sprintf("%q = $%d", column, len(argList)))
+		// Texto
+	case hasToken(f, VarCharO, CharO, TextO, CitextO):
+		var s string
+		switch v := raw.(type) {
+		case []byte:
+			s = string(v)
+		case string:
+			s = v
+		default:
+			return nil, fmt.Errorf("unsupported text type %T", raw)
+		}
+
+		if f.GoType != nil {
+			switch {
+			case f.GoType.Kind() == reflect.Pointer && f.GoType.Elem().Kind() == reflect.String:
+				// campo é *string
+				return &s, nil
+
+			case f.GoType.Kind() == reflect.String && f.GoType.Name() != "string":
+				// campo é um alias (ex.: UserRole)
+				rv := reflect.ValueOf(s).Convert(f.GoType)
+				return rv.Interface(), nil
+
+			case f.GoType.Kind() == reflect.String:
+				// campo é string normal
+				return s, nil
+			}
+		}
+		return s, nil
+
+	// Binário
+	case hasToken(f, ByteaO):
+		return raw, nil
+
+	// JSON
+	case hasToken(f, JSONO, JSONBO):
+		switch v := raw.(type) {
+		case []byte:
+			var j json.RawMessage
+			if err := json.Unmarshal(v, &j); err != nil {
+				return nil, err
+			}
+			return j, nil
+		case string:
+			var j json.RawMessage
+			if err := json.Unmarshal([]byte(v), &j); err != nil {
+				return nil, err
+			}
+			return j, nil
+		default:
+			return raw, nil
+		}
+
+	// UUID e tipos especiais
+	case hasToken(f,
+		UUIDO, EnumO, CIDRO, INETO, MACAddrO, MACAddr8O,
+		TSVectorO, TSQueryO, HstoreO, LtreeO, CubeO,
+		PointO, LineO, LsegO, BoxO, CircleO, PathO, PolygonO,
+		LineStringO, MultiPointO, MultiLineStringO, MultiPolygonO,
+		GeometryO, GeographyO, GeometryCollectionO,
+		Int4RangeO, Int8RangeO, NumRangeO, TSRangeO, TSTZRangeO, DateRangeO,
+		Int4MultiRangeO, Int8MultiRangeO, NumMultiRangeO, TSMultiRangeO,
+		TSTZMultiRangeO, DateMultiRangeO):
+		if b, ok := raw.([]byte); ok {
+			return string(b), nil
+		}
+		return raw, nil
+
+	// Boolean
+	case hasToken(f, BooleanO):
+		switch v := raw.(type) {
+		case bool:
+			return v, nil
+		case []byte:
+			return string(v) == "t", nil
+		case string:
+			return v == "t" || v == "true" || v == "1", nil
+		default:
+			return nil, fmt.Errorf("unsupported bool type %T", raw)
+		}
 	}
 
-	sqlQuery := fmt.Sprintf("UPDATE %s SET %s WHERE %s",
-		driver.formatTable(schema), strings.Join(setPartList, ", "), whereClause)
-
-	return driver.exec(ctx, sqlQuery, argList...)
+	// fallback
+	return raw, nil
 }
 
-// Delete removes rows from the database matching the given condition.
-func (driver *PostgresDriver) Delete(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) error {
-	argList := []any{}
-	whereClause := driver.buildCondition(condition, &argList)
-	sqlQuery := fmt.Sprintf("DELETE FROM %s WHERE %s", driver.formatTable(schema), whereClause)
-	return driver.exec(ctx, sqlQuery, argList...)
-}
-
-// Count returns the number of rows matching the given condition.
-func (driver *PostgresDriver) Count(ctx context.Context, schema *core.SchemaCore, condition *core.Condition) (int64, error) {
-	argList := []any{}
-	whereClause := driver.buildCondition(condition, &argList)
-	sqlQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", driver.formatTable(schema), whereClause)
-
-	var count int64
-	if err := driver.queryRow(ctx, sqlQuery, argList...).Scan(&count); err != nil {
-		return 0, err
+// helper
+func hasToken(f *core.FieldMeta, tokens ...core.FieldToken) bool {
+	for _, t := range tokens {
+		if _, ok := f.Meta[t]; ok {
+			return true
+		}
 	}
-	return count, nil
+	return false
 }
