@@ -14,7 +14,7 @@ import (
 
 //#region utils
 
-func Ptr[T any](v T) *T { return &v }
+func ptr[T any](v T) *T { return &v }
 
 //#endregion
 
@@ -28,26 +28,26 @@ const (
 )
 
 type User struct {
-	ID         int64      `json:"id"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	DeletedAt  *time.Time `json:"deleted_at"`
-	FirstName  string     `json:"first_name"`
-	LastName   string     `json:"last_name"`
-	Email      string     `json:"email"`
-	Password   string     `json:"password"`
-	IsActive   bool       `json:"is_active"`
-	OTP        string     `json:"otp"`
-	PictureURL *string    `json:"picture_url"`
-	Role       UserRole   `json:"role"`
+	ID         int64      `db:"id"`
+	CreatedAt  time.Time  `db:"created_at"`
+	UpdatedAt  time.Time  `db:"updated_at"`
+	DeletedAt  *time.Time `db:"deleted_at"`
+	FirstName  string     `db:"first_name"`
+	LastName   string     `db:"last_name"`
+	Email      string     `db:"email"`
+	Password   string     `db:"password"`
+	IsActive   bool       `db:"is_active"`
+	OTP        string     `db:"otp"`
+	PictureURL *string    `db:"picture_url"`
+	Role       UserRole   `db:"role"`
 }
 
 type Post struct {
-	ID        int64     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Content   string    `json:"content"`
-	UserID    int64     `json:"user_id"`
+	ID        int64     `db:"id"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+	Content   string    `db:"content"`
+	UserID    int64     `db:"user_id"`
 }
 
 // ~=~=~= schemas ~=~=~=
@@ -134,65 +134,75 @@ func main() {
 
 	migrate(ctx, client)
 
-	// cria models
+	// ~=~=~= cria models ~=~=~=
+
 	userModel := builder.NewModel[User](UserSchema, client)
 	postModel := builder.NewModel[Post](PostSchema, client)
 
-	// ========== CREATE ==========
-	ts := time.Now().UnixMilli()
+	// ~=~=~= CREATE ~=~=~=
+
 	john := &User{
 		FirstName:  "John",
 		LastName:   "Doe",
 		Email:      "john@example.com",
 		Password:   "secret",
-		OTP:        fmt.Sprintf("%06d", ts%1_000_000),
-		PictureURL: Ptr("https://placehold.co/100x100"),
+		OTP:        fmt.Sprintf("%06d", time.Now().UnixMilli()%1_000_000),
+		PictureURL: ptr("https://placehold.co/100x100"),
 		Role:       UserRoleAdmin,
 	}
 	userModel.Save(ctx, john)
 
-	j, _ := json.Marshal(john)
-	fmt.Println("Novo usuário:", string(j))
+	jsonJohn, _ := json.Marshal(john)
+	fmt.Println("Novo usuário:", string(jsonJohn))
 
 	postModel.Insert(ctx,
 		&Post{Content: "primeiro post", UserID: john.ID},
 		&Post{Content: "segundo post", UserID: john.ID},
 	)
 
-	// ========== READ ==========
-	user, _ := userModel.FindOne(ctx, func(u *User, q *core.Query) { q.Eq(&u.Email, "john@example.com") })
-	u, _ := json.Marshal(user)
-	fmt.Println("User encontrado por email:", string(u))
+	// ~=~=~= READ ~=~=~=
+
+	user, _ := userModel.FindOne(ctx, func(u *User, q *core.Query) {
+		q.Eq(&u.Email, "john@example.com")
+	})
+	jsonUser, _ := json.Marshal(user)
+	fmt.Println("User encontrado por email:", string(jsonUser))
 
 	posts, _ := postModel.FindMany(ctx, func(p *Post, q *core.Query) {
 		q.Eq(&p.UserID, john.ID)
 		q.OrderBy(&p.CreatedAt, core.Desc)
 	})
-	p, _ := json.Marshal(posts)
-	fmt.Println("Posts do John:", string(p))
+	jsonPosts, _ := json.Marshal(posts)
+	fmt.Println("Posts do John:", string(jsonPosts))
 
-	// ========== UPDATE ==========
+	// ~=~=~= UPDATE ~=~=~=
+
 	postModel.Update(ctx, func(p *Post, u *core.Update, q *core.Query) {
 		u.Set(&p.Content, "conteúdo atualizado")
 		q.Eq(&p.ID, 1)
 	})
 
-	// ========== DELETE ==========
+	// ~=~=~= DELETE ~=~=~=
+
 	postModel.Delete(ctx, func(p *Post, q *core.Query) {
 		q.Like(&p.Content, "%segundo%")
 	})
 
-	// ========== COUNT ==========
-	count, _ := postModel.Count(ctx, func(p *Post, q *core.Query) { q.Eq(&p.UserID, john.ID) })
-	fmt.Println("Posts restantes do John:", count)
+	// ~=~=~= COUNT ~=~=~=
 
-	// ========== RAW QUERIES ==========
-	userRows, _ := client.Query(ctx, `SELECT * FROM "user"`)
-	typedRows, _ := core.AsType[User](userRows)
-	tr, _ := json.Marshal(typedRows)
-	fmt.Println("Raw query AsType ->", string(tr))
+	countPost, _ := postModel.Count(ctx, func(p *Post, q *core.Query) {
+		q.Eq(&p.UserID, john.ID)
+	})
+	fmt.Println("Posts restantes do John:", countPost)
 
-	postRows, _ := client.Query(ctx, `SELECT * FROM "post"`)
-	jr, _ := core.AsJson(postRows)
-	fmt.Println("Raw query AsJson ->", string(jr[0]))
+	// ~=~=~= RAW QUERIES ~=~=~=
+
+	userRawRows, _ := client.Query(ctx, `SELECT * FROM "user"`)
+	userTypedRows, _ := core.AsType[User](userRawRows)
+	userJsonRows, _ := json.Marshal(userTypedRows)
+	fmt.Println("Raw query AsType ->", string(userJsonRows))
+
+	postRawRows, _ := client.Query(ctx, `SELECT * FROM "post"`)
+	postJsonRows, _ := core.AsJson(postRawRows)
+	fmt.Println("Raw query AsJson ->", string(postJsonRows[0]))
 }

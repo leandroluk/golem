@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"reflect"
 	"strconv"
@@ -24,15 +23,19 @@ func NewClient[T any](driver Driver[T]) *Client[T] {
 	return &Client[T]{driver: driver, Dialect: driver.Dialect()}
 }
 
-func (c *Client[T]) Connect(ctx context.Context) error { return c.driver.Connect(ctx) }
-func (c *Client[T]) Close() error                      { return c.driver.Close() }
-func (c *Client[T]) Ping(ctx context.Context) error    { return c.driver.Ping(ctx) }
+func (c *Client[T]) Connect(ctx context.Context) error {
+	return c.driver.Connect(ctx)
+}
+func (c *Client[T]) Close() error {
+	return c.driver.Close()
+}
+func (c *Client[T]) Ping(ctx context.Context) error {
+	return c.driver.Ping(ctx)
+}
 func (c *Client[T]) Schemas(schemas ...*Schema) *Client[T] {
 	c.schemas = append(c.schemas, schemas...)
 	return c
 }
-
-// Transactions
 func (c *Client[T]) Transaction(ctx context.Context, fn func(tx Tx[T]) error) error {
 	tx, err := c.driver.Begin(ctx)
 	if err != nil {
@@ -44,7 +47,6 @@ func (c *Client[T]) Transaction(ctx context.Context, fn func(tx Tx[T]) error) er
 	}
 	return tx.Commit()
 }
-
 func (c *Client[T]) Exec(ctx context.Context, stmt T, args ...any) (Result, error) {
 	return c.driver.Exec(ctx, stmt, args...)
 }
@@ -459,6 +461,7 @@ type Schema struct {
 	Name       string
 	SchemaName string
 	TableName  string
+	TagName    string
 	Fields     []*FieldMeta
 
 	// índices rápidos
@@ -475,6 +478,7 @@ func NewSchema[T any](builder func(*T, *Schema) *Schema) *Schema {
 	rt := reflect.TypeOf((*T)(nil)).Elem()
 	s := &Schema{
 		Name:     rt.Name(),
+		TagName:  "db",
 		_root:    reflect.ValueOf(&instance).Elem(),
 		Hooks:    make(map[string]func(any) error),
 		byName:   make(map[string]*FieldMeta),
@@ -484,9 +488,18 @@ func NewSchema[T any](builder func(*T, *Schema) *Schema) *Schema {
 	return builder(&instance, s)
 }
 
-func (s *Schema) WithSchema(schema string) *Schema { s.SchemaName = schema; return s }
-func (s *Schema) WithTable(table string) *Schema   { s.TableName = table; return s }
-
+func (s *Schema) WithSchema(schema string) *Schema {
+	s.SchemaName = schema
+	return s
+}
+func (s *Schema) WithTable(table string) *Schema {
+	s.TableName = table
+	return s
+}
+func (s *Schema) WithTag(tag string) *Schema {
+	s.TagName = tag
+	return s
+}
 func (s *Schema) FindPrimaryKey() *FieldMeta {
 	for _, f := range s.Fields {
 		if v, ok := f.Meta[PrimaryO]; ok {
@@ -497,12 +510,15 @@ func (s *Schema) FindPrimaryKey() *FieldMeta {
 	}
 	return nil
 }
-
-func (s *Schema) FieldByName(name string) *FieldMeta  { return s.byName[name] }
-func (s *Schema) FieldByColumn(col string) *FieldMeta { return s.byColumn[col] }
-func (s *Schema) FieldByIndex(index []int) *FieldMeta { return s.byIndex[keyIndex(index)] }
-
-// Mapeia endereços dos campos de UMA instância específica -> FieldMeta
+func (s *Schema) FieldByName(name string) *FieldMeta {
+	return s.byName[name]
+}
+func (s *Schema) FieldByColumn(col string) *FieldMeta {
+	return s.byColumn[col]
+}
+func (s *Schema) FieldByIndex(index []int) *FieldMeta {
+	return s.byIndex[KeyIndex(index)]
+}
 func (s *Schema) AddrIndex(root any) map[uintptr]*FieldMeta {
 	rv := reflect.ValueOf(root)
 	if rv.Kind() == reflect.Pointer {
@@ -520,28 +536,8 @@ func (s *Schema) AddrIndex(root any) map[uintptr]*FieldMeta {
 	}
 	return out
 }
-
-// ================== FIELD ADDERS ==================
-
 func (s *Schema) Field(fieldPtr any, opts ...FieldOption) *Schema {
-	return s.addField(fieldPtr, opts...)
-}
-func (s *Schema) PrimaryField(fieldPtr any, opts ...FieldOption) *Schema {
-	return s.addField(fieldPtr, append(opts, f(PrimaryO, true))...)
-}
-func (s *Schema) CreateDateField(fieldPtr any, opts ...FieldOption) *Schema {
-	return s.addField(fieldPtr, append(opts, f(CreatedAtO, true))...)
-}
-func (s *Schema) UpdateDateField(fieldPtr any, opts ...FieldOption) *Schema {
-	return s.addField(fieldPtr, append(opts, f(UpdatedAtO, true))...)
-}
-func (s *Schema) DeleteDateField(fieldPtr any, opts ...FieldOption) *Schema {
-	return s.addField(fieldPtr, append(opts, f(DeletedAtO, true))...)
-}
-func (s *Schema) Hook(name string, fn func(any) error) *Schema { s.Hooks[name] = fn; return s }
-
-func (s *Schema) addField(fieldPtr any, opts ...FieldOption) *Schema {
-	name, column, index := s.resolveField(fieldPtr)
+	name, column, index := s.ResolveField(fieldPtr)
 	meta := make(map[FieldToken]any, len(opts)+1)
 	for _, o := range opts {
 		meta[o.Token] = o.Value
@@ -563,11 +559,14 @@ func (s *Schema) addField(fieldPtr any, opts ...FieldOption) *Schema {
 	if column != "" {
 		s.byColumn[column] = fm
 	}
-	s.byIndex[keyIndex(index)] = fm
+	s.byIndex[KeyIndex(index)] = fm
 	return s
 }
-
-func (s *Schema) resolveField(fieldPtr any) (name string, column string, index []int) {
+func (s *Schema) Hook(name string, fn func(any) error) *Schema {
+	s.Hooks[name] = fn
+	return s
+}
+func (s *Schema) ResolveField(fieldPtr any) (name string, column string, index []int) {
 	pv := reflect.ValueOf(fieldPtr)
 	if pv.Kind() != reflect.Pointer {
 		return "field", "field", nil
@@ -581,11 +580,10 @@ func (s *Schema) resolveField(fieldPtr any) (name string, column string, index [
 		if fv.CanAddr() && fv.Addr().Pointer() == target {
 			sf := rt.Field(i)
 			name = sf.Name
-			tag := sf.Tag.Get("json")
+			tag := sf.Tag.Get(s.TagName)
 			if tag != "" && tag != "-" {
 				tag = strings.Split(tag, ",")[0]
 			} else {
-				// fallback sensato
 				tag = strings.ToLower(name)
 			}
 			return name, tag, sf.Index
@@ -594,7 +592,7 @@ func (s *Schema) resolveField(fieldPtr any) (name string, column string, index [
 	return "", "", nil
 }
 
-func keyIndex(idx []int) string {
+func KeyIndex(idx []int) string {
 	if len(idx) == 0 {
 		return ""
 	}
@@ -619,10 +617,10 @@ type FieldCache struct {
 	Setter func(any) any
 }
 
-var schemaCache sync.Map // map[reflect.Type][]FieldCache
+var fieldCacheMap sync.Map // map[reflect.Type][]FieldCache
 
 func BuildFieldCache(s *Schema, t reflect.Type) []FieldCache {
-	if v, ok := schemaCache.Load(t); ok {
+	if v, ok := fieldCacheMap.Load(t); ok {
 		return v.([]FieldCache)
 	}
 	out := []FieldCache{}
@@ -640,17 +638,6 @@ func BuildFieldCache(s *Schema, t reflect.Type) []FieldCache {
 		}
 		out = append(out, fm)
 	}
-	schemaCache.Store(t, out)
+	fieldCacheMap.Store(t, out)
 	return out
-}
-
-//
-// ================== NULL HELPERS ==================
-//
-
-func SqlVal(v any) any {
-	if v == nil {
-		return sql.NullString{Valid: false}
-	}
-	return v
 }

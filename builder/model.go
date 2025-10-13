@@ -89,7 +89,7 @@ func scanRows[T any](rows core.Rows, schema *core.Schema, dialect core.Dialect) 
 	return out, nil
 }
 
-func isZero(x any) bool {
+func IsZero(x any) bool {
 	v := reflect.ValueOf(x)
 	switch v.Kind() {
 	case reflect.Invalid:
@@ -127,7 +127,7 @@ func (m *Model[T, S]) Save(ctx context.Context, entity *T) error {
 	v := reflect.ValueOf(entity).Elem()
 	fv := v.FieldByName(pk.Name)
 
-	if !fv.IsValid() || isZero(fv.Interface()) {
+	if !fv.IsValid() || IsZero(fv.Interface()) {
 		result := m.Insert(ctx, entity)
 		m.returning = ReturningNone
 		return result

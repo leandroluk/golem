@@ -26,26 +26,26 @@ var (
 )
 
 type User struct {
-	ID         int64      `json:"id"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	DeletedAt  *time.Time `json:"updated_at"`
-	FirstName  string     `json:"first_name"`
-	LastName   string     `json:"last_name"`
-	Email      string     `json:"email"`
-	Password   string     `json:"password"`
-	IsActive   bool       `json:"is_active"`
-	OTP        string     `json:"otp"`
-	PictureURL *string    `json:"picture_url"`
-	Role       UserRole   `json:"role"`
+	ID         int64      `db:"id"`
+	CreatedAt  time.Time  `db:"created_at"`
+	UpdatedAt  time.Time  `db:"updated_at"`
+	DeletedAt  *time.Time `db:"updated_at"`
+	FirstName  string     `db:"first_name"`
+	LastName   string     `db:"last_name"`
+	Email      string     `db:"email"`
+	Password   string     `db:"password"`
+	IsActive   bool       `db:"is_active"`
+	OTP        string     `db:"otp"`
+	PictureURL *string    `db:"picture_url"`
+	Role       UserRole   `db:"role"`
 }
 
 type Post struct {
-	ID        int64     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Content   string    `json:"content"`
-	UserID    int64     `json:"user_id"`
+	ID        int64     `db:"id"`
+	CreatedAt time.Time `db:"created_at"`
+	UpdatedAt time.Time `db:"updated_at"`
+	Content   string    `db:"content"`
+	UserID    int64     `db:"user_id"`
 }
 
 // ~=~=~= schemas ~=~=~=
