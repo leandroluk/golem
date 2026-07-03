@@ -4,7 +4,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	golem "github.com/leandroluk/golem"
+	"github.com/leandroluk/golem"
 )
 
 // dialect is the M1 stub Postgres implementation of golem.Dialect. It exists

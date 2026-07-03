@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	golem "github.com/leandroluk/golem"
+	"github.com/leandroluk/golem"
 )
 
 const defaultTestDSN = "postgres://golem:golem@localhost:55432/golem_test?sslmode=disable"

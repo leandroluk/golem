@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	golem "github.com/leandroluk/golem"
+	"github.com/leandroluk/golem"
 )
 
 // connector is the postgres.Connector implementation returned by New. It

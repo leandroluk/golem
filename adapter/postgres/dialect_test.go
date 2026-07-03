@@ -3,7 +3,7 @@ package postgres
 import (
 	"testing"
 
-	golem "github.com/leandroluk/golem"
+	"github.com/leandroluk/golem"
 )
 
 var _ golem.Dialect = (*dialect)(nil)

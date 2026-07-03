@@ -1,6 +1,6 @@
 package postgres
 
-import golem "github.com/leandroluk/golem"
+import "github.com/leandroluk/golem"
 
 // Options configures a Postgres connection. Either DSN or the discrete
 // fields (Host, Port, User, Password, Database, SSLMode) may be provided.
