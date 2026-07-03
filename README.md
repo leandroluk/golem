@@ -1,6 +1,6 @@
 # golem
 
-<img align="right" width="180px" src="https://raw.githubusercontent.com/leandroluk/golem/refs/heads/master/assets/golem.png">
+<img align="right" width="180px" src="https://raw.githubusercontent.com/leandroluk/golem/refs/heads/master/.assets/golem.png">
 
 [![Build Status](https://github.com/leandroluk/golem/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/leandroluk/golem/actions)  
 [![Coverage Status](https://img.shields.io/codecov/c/github/leandroluk/golem/main.svg)](https://codecov.io/gh/leandroluk/golem)  
