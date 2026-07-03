@@ -26,7 +26,13 @@ tasks:
     cmds:
       - docker compose -f .docker/docker-compose.test.yml up -d --wait
       - defer: docker compose -f .docker/docker-compose.test.yml down
+      # go's "..." wildcard skips dot-prefixed dirs even when given explicitly
+      # (e.g. "./.examples/..." still matches nothing), so each dot-prefixed
+      # package needing coverage must be listed by its exact path — otherwise
+      # .examples/postgres-minimal-blog's integration tests never run (see
+      # STATE.md L-003).
       - go test -tags=integration ./...
+      - go test -tags=integration ./.examples/postgres-minimal-blog
 
   gate-quick:
     desc: Fast gate — build + vet + unit tests

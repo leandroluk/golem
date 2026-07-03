@@ -10,6 +10,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/leandroluk/golem"
@@ -415,8 +416,24 @@ func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *quer
 		return nil, fmt.Errorf("repository: find many: %w", err)
 	}
 
+	// A 1:N join fans out: one SQL row per matched child row for the same
+	// parent. Since only parent columns are ever projected here, dedupe by
+	// the parent's own PK so the caller sees one T per matching parent row,
+	// not one per (parent, matched child) pair.
+	var seen map[string]bool
+	if len(q.Joins()) > 0 && len(r.meta.PrimaryKey) > 0 {
+		seen = make(map[string]bool, len(rows))
+	}
+
 	results := make([]T, 0, len(rows))
 	for _, row := range rows {
+		if seen != nil {
+			key := pkRowKey(row, r.meta.PrimaryKey)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
 		item, err := r.scanRow(row)
 		if err != nil {
 			return nil, err
@@ -424,6 +441,16 @@ func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *quer
 		results = append(results, item)
 	}
 	return results, nil
+}
+
+// pkRowKey builds a composite dedup key from a raw result row's primary key
+// column values.
+func pkRowKey(row map[string]any, pkColumns []string) string {
+	parts := make([]string, len(pkColumns))
+	for i, col := range pkColumns {
+		parts[i] = fmt.Sprintf("%v", row[col])
+	}
+	return strings.Join(parts, "\x00")
 }
 
 // FindOne returns the first row that matches the given criteria. Returns

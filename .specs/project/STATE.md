@@ -196,7 +196,7 @@ None.
 
 **Context:** While validating M10, ran `.examples/postgres-minimal-blog`'s full integration suite directly (explicit path) instead of via `task test-integration`, and `TestBlogExample_FullFlow` failed: a `join.Inner` query returned 2 rows for 1 user (fan-out from 2 matching posts, no dedup) — a pre-existing bug, unrelated to M10.
 **Problem:** Go's `./...` pattern silently skips dot-prefixed directories (`.examples`, `.docker`, `.specs`, etc.) in `go build`/`go test`/`go vet`. `task gate-quick`/`task gate-full`/`task test-integration` all invoke `go test ... ./...`, so `.examples/postgres-minimal-blog`'s tests have *never* run as part of any gate — every milestone from M4 onward was declared "done" partly on the strength of an example test suite that silently never executed.
-**Prevents:** Don't trust `task gate-full`/`test-integration` alone to have covered `.examples/`. Either (a) periodically run the example's tests with an explicit path (`cd .examples/postgres-minimal-blog && go test -tags=integration ./...`), or (b) fix `Taskfile.yml`'s `test-integration` task to explicitly append `./.examples/...` to its `go test` invocation. Flagged as a follow-up task (join fan-out fix + Taskfile fix), not yet done as of this writing — see Todos.
+**Prevents:** Don't trust `task gate-full`/`test-integration` alone to have covered `.examples/` without checking — the `...` wildcard skips dot-prefixed dirs even when spelled out explicitly (`./.examples/...` also matches nothing; confirmed by testing it directly). **Fixed:** `Taskfile.yml`'s `test-integration` now has a second `go test -tags=integration ./.examples/postgres-minimal-blog` step using the exact (non-wildcard) package path, and `repository.FindMany` now dedupes 1:N join fan-out by parent PK (see Todos) — `TestBlogExample_FullFlow` passes for real now.
 
 ### L-002: Filenames in this repo are snake_case; the "unauthorized rename" I fought was actually the user's own convention (2026-07-03, corrected same day)
 
@@ -232,7 +232,7 @@ None.
 - [x] ~~Design the initial `golem.ColumnType` set~~ — DONE
 - [x] ~~M3 continuation: Delete/Restore, Count/Exists~~ — DONE
 - [x] ~~Build `internal/stmt` AST for real~~ — DONE
-- [ ] Fix `join.Inner`/`FindMany` fan-out: a 1:N join duplicates the parent row once per matched child row instead of deduplicating by PK (found via L-003, `TestBlogExample_FullFlow`) — task_459286d0 spawned
-- [ ] Make `.examples/postgres-minimal-blog`'s integration tests actually run under `task test-integration` (currently silently skipped, see L-003) — same task_459286d0
+- [x] ~~Fix `join.Inner`/`FindMany` fan-out: a 1:N join duplicates the parent row once per matched child row instead of deduplicating by PK~~ — DONE (`repository.FindMany` dedupes by `r.meta.PrimaryKey` via `pkRowKey`, gated on `len(q.Joins()) > 0` so no-join queries are unaffected)
+- [x] ~~Make `.examples/postgres-minimal-blog`'s integration tests actually run under `task test-integration`~~ — DONE (Taskfile.yml's `test-integration` now runs `go test -tags=integration ./.examples/postgres-minimal-blog` as a separate explicit-path step, since go's `...` wildcard skips dot-prefixed dirs even when given explicitly)
 
 

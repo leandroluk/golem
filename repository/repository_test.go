@@ -820,6 +820,57 @@ func TestRepository_FindMany_WithInnerJoin(t *testing.T) {
 	}
 }
 
+func TestRepository_FindMany_WithInnerJoin_DedupesFanOutByParentPK(t *testing.T) {
+	// Same parent row (id=1) appears twice — a 1:N join fan-out from 2
+	// matched child rows. FindMany must return exactly 1 T for it, not 2.
+	d := &fakeDialect{
+		selectResult: []map[string]any{
+			{"id": int64(1), "name": "Ada", "email": "ada@example.com"},
+			{"id": int64(1), "name": "Ada", "email": "ada@example.com"},
+			{"id": int64(2), "name": "Bob", "email": "bob@example.com"},
+		},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	got, err := repo.FindMany(context.Background(), func(s *testSubject, q0 *query.Query[testSubject]) {
+		join.Inner(q0, softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
+			q1.On(&sd.ID, &s.ID)
+		})
+	})
+	if err != nil {
+		t.Fatalf("FindMany: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 deduped results, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != 1 || got[1].ID != 2 {
+		t.Errorf("expected IDs [1 2] in original order, got [%d %d]", got[0].ID, got[1].ID)
+	}
+}
+
+func TestRepository_FindMany_WithoutJoin_DoesNotDedupe(t *testing.T) {
+	// No join present: rows pass through as-is, even if two rows happen to
+	// share the same PK value (not a realistic case without a join, but
+	// dedup must be join-gated, not unconditional).
+	d := &fakeDialect{
+		selectResult: []map[string]any{
+			{"id": int64(1), "name": "Ada", "email": "ada@example.com"},
+			{"id": int64(1), "name": "Ada", "email": "ada@example.com"},
+		},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	got, err := repo.FindMany(context.Background())
+	if err != nil {
+		t.Fatalf("FindMany: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 results (no dedup without a join), got %d", len(got))
+	}
+}
+
 type hookedTestSubject struct {
 	ID   int64
 	Name string
