@@ -16,10 +16,12 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/adapter/postgres"
+	"github.com/leandroluk/golem/op"
+	"github.com/leandroluk/golem/query"
 	"github.com/leandroluk/golem/repository"
 )
 
-// defaultDSN matches the Makefile's GOLEM_TEST_DSN default exactly.
+// defaultDSN matches the Taskfile.yml's GOLEM_TEST_DSN default exactly.
 const defaultDSN = "postgres://golem:golem@localhost:55432/golem_test?sslmode=disable"
 
 // resolveDSN returns GOLEM_TEST_DSN from the environment if set, otherwise
@@ -35,9 +37,11 @@ func resolveDSN() string {
 func main() {
 	dsn := resolveDSN()
 
-	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
-		o.DSN = dsn
-	}))
+	dataSource, err := golem.NewDataSource(
+		postgres.New(func(o *postgres.Options) {
+			o.DSN = dsn
+		}),
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -55,8 +59,8 @@ func main() {
 	// (zero) lets repository.Insert omit it from the INSERT entirely, so
 	// Postgres assigns it.
 	user, err := repository.Get(dataSource, UserEntity).Insert(ctx, &User{
-		Name:  "Leandro",
-		Email: "leandroluk@gmail.com",
+		Name:  "John Doe",
+		Email: "john.doe@email.com",
 	})
 	if err != nil {
 		panic(err)
@@ -90,11 +94,13 @@ func main() {
 	}
 	fmt.Printf("Inserted %d post-to-category links: %+v\n", len(postToCategories), postToCategories)
 
-	foundUser, err := repository.Get(dataSource, UserEntity).FindByID(ctx, user.ID)
+	foundUser, err := repository.Get(dataSource, UserEntity).FindOne(ctx, func(u *User, q *query.Query[User]) {
+		q.Where(op.Eq(&u.ID, user.ID))
+	})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Round-trip FindByID(user.ID=%d) => %+v\n", user.ID, foundUser)
+	fmt.Printf("Round-trip FindOne(user.ID=%d) => %+v\n", user.ID, foundUser)
 
 	fmt.Println("Done.")
 }
