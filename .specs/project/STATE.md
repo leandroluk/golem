@@ -178,12 +178,12 @@ None.
 
 ## Lessons Learned
 
-### L-002: Sub-agents repeatedly "corrected" existing filenames to snake_case unprompted (2026-07-03)
+### L-002: Filenames in this repo are snake_case; the "unauthorized rename" I fought was actually the user's own convention (2026-07-03, corrected same day)
 
-**Context:** During M2/M3 execution, at least two separate sub-agent tasks (T1's ColumnType constructors, and earlier T9's Postgres wiring) renamed already-committed files they were told not to touch — `columntype.go`→`column_type.go`, `datasource.go`→`data_source.go` — assuming snake_case was "the real" repo convention, then built their actual new deliverable under the wrong name too.
-**Problem:** Each time, `git status` showed the committed file as deleted and a new stray one in its place, silently breaking other tasks running in parallel until caught during pre-commit review.
-**Solution:** Always run `git status --short` after every sub-agent task, before staging/committing, specifically scanning for unexpected `D`/`??` pairs with similar names (a rename in disguise). Prompts now include an explicit "CRITICAL FILE-NAMING WARNING" naming the exact existing filenames and forbidding `git stash` (one agent's stash/pop also nearly corrupted concurrent parallel work).
-**Prevents:** Silent, unauthorized file renames slipping into a commit. Keep the `git status --short` check as a standard post-agent step going forward, not just for this feature.
+**Context:** During M2/M3 execution, files kept turning up renamed to snake_case (`columntype.go`→`column_type.go`, `datasource.go`→`data_source.go`) while sub-agents worked in the shared working tree. I assumed this was sub-agent hallucination (models sometimes "correct" perceived naming inconsistencies) and reverted it twice, and recorded a now-corrected lesson blaming sub-agents for it.
+**Correction:** The user clarified they were the one renaming files themselves (for consistency) while work was in progress, and separately moved `testdata/` + `docker-compose.test.yml` into a new `.docker/` directory. Neither was agent misbehavior.
+**Convention going forward:** This repo uses **snake_case filenames** (`column_type.go`, `data_source.go`, `data_source_test.go`, etc.) — NOT the no-underscore style (`columntype.go`) I initially assumed and defended in sub-agent prompts. Docker/test infra lives under `.docker/` (`.docker/docker-compose.test.yml`, `.docker/testdata/schema.sql`), tracked in git (removed from `.gitignore`).
+**Prevents:** Don't assume a repo-wide naming convention from a handful of early files without checking for concurrent user edits; when files change unexpectedly mid-session, ask before reverting rather than fighting it twice. The underlying practice from the original (wrong) lesson still stands, though: run `git status --short` after every sub-agent task before staging, to catch anything genuinely unintended (scope creep, stray scratch files) — just don't assume renames are automatically agent-caused.
 
 ### L-001: Direct README iteration worked better than upfront brainstorming for this feature (2026-07-02)
 

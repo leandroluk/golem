@@ -1,12 +1,12 @@
 // Command postgres-minimal-blog is a runnable demo of golem against a real
 // Postgres database, using the User/Post/Category/PostToCategory entities
-// declared in entities.go (schema: testdata/schema.sql at the repo root).
+// declared in entities.go (schema: .docker/testdata/schema.sql at the repo root).
 //
 // Run it against the Dockerized test Postgres:
 //
-//	docker compose -f docker-compose.test.yml up -d --wait
+//	docker compose -f .docker/docker-compose.test.yml up -d --wait
 //	go run ./examples/postgres-minimal-blog
-//	docker compose -f docker-compose.test.yml down
+//	docker compose -f .docker/docker-compose.test.yml down
 package main
 
 import (
@@ -51,7 +51,7 @@ func main() {
 
 	ctx := context.Background()
 
-	// id columns are BIGSERIAL in testdata/schema.sql — leaving ID unset
+	// id columns are BIGSERIAL in .docker/testdata/schema.sql — leaving ID unset
 	// (zero) lets repository.Insert omit it from the INSERT entirely, so
 	// Postgres assigns it.
 	user, err := repository.Get(dataSource, UserEntity).Insert(ctx, &User{

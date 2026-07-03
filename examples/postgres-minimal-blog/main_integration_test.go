@@ -14,7 +14,7 @@ import (
 
 // TestBlogExample_FullFlow exercises the same flow as main(), step by step,
 // against the real Dockerized test Postgres (see Makefile's test-integration
-// target / docker-compose.test.yml), asserting real outcomes at each step.
+// target / .docker/docker-compose.test.yml), asserting real outcomes at each step.
 func TestBlogExample_FullFlow(t *testing.T) {
 	dsn := resolveDSN()
 

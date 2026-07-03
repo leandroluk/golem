@@ -1,5 +1,5 @@
 // Package main declares the entity schema for a minimal blog example
-// (users, post, category, post_to_category) matching testdata/schema.sql
+// (users, post, category, post_to_category) matching .docker/testdata/schema.sql
 // verbatim. A later task adds main() in a separate main.go in this same
 // package/directory to actually run against a Postgres database.
 package main

@@ -32,13 +32,13 @@
 build:              go build ./...
 vet:                go vet ./...
 test:               go test ./... -short                 # unit only, -short skips integration-tagged tests
-test-integration:   docker compose -f docker-compose.test.yml up -d --wait
-                    go test -tags=integration ./... ; docker compose -f docker-compose.test.yml down
+test-integration:   docker compose -f .docker/docker-compose.test.yml up -d --wait
+                    go test -tags=integration ./... ; docker compose -f .docker/docker-compose.test.yml down
 gate-quick:         build vet test
 gate-full:          gate-quick test-integration
 ```
 
-Integration tests live behind the `integration` build tag (`//go:build integration`) so `go test ./... -short` (the `quick` gate) never needs Docker. The DSN the integration tests connect to comes from `GOLEM_TEST_DSN` (env var), defaulting to the `docker-compose.test.yml` service's connection string when unset.
+Integration tests live behind the `integration` build tag (`//go:build integration`) so `go test ./... -short` (the `quick` gate) never needs Docker. The DSN the integration tests connect to comes from `GOLEM_TEST_DSN` (env var), defaulting to the `.docker/docker-compose.test.yml` service's connection string when unset.
 
 ---
 
