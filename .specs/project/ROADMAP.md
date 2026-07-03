@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M10 - Typed Errors
-**Status:** M1-M9 done, M10 planned
+**Current Milestone:** — (M1-M10 done)
+**Status:** M1-M10 done
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -217,14 +217,16 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Callers can branch on error kind without string-matching driver messages.
 **Target:** `errors.Is(err, golem.ErrNotFound)` etc. work for the documented sentinel set.
+**Status:** ✅ DONE
 
 ### Features
 
-**Sentinel errors** - PLANNED
+**Sentinel errors** - DONE
 
-- `golem.ErrNotFound`, `golem.ErrDuplicateKey`, `golem.ErrForeignKeyViolation`
-- Postgres adapter maps SQLSTATE codes (e.g. `23505` → `ErrDuplicateKey`, `23503` → `ErrForeignKeyViolation`) and wraps with `%w` so the native driver error stays reachable via `errors.Unwrap`/`errors.As`
-- Unmapped driver errors pass through unchanged (no forced generic "unknown" sentinel)
+- `golem.ErrNotFound`, `golem.ErrDuplicateKey`, `golem.ErrForeignKeyViolation` (`errors.go`)
+- Postgres adapter (`driver/postgres/dialect.go`'s `mapError`) maps SQLSTATE codes (`23505` → `ErrDuplicateKey`, `23503` → `ErrForeignKeyViolation`) and wraps with `%w` (Go 1.20+ multi-`%w`) so the native `*pgconn.PgError` stays reachable via `errors.As`
+- Unmapped driver errors (including non-Postgres ones) pass through unchanged — no forced generic "unknown" sentinel
+- Covered by `driver/postgres/errors_test.go` (unit, all 4 SQLSTATE/pass-through cases) and `.examples/postgres-minimal-blog`'s `TestBlogExample_TypedErrors` (integration, real constraint violations)
 
 ---
 

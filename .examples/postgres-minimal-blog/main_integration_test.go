@@ -129,6 +129,67 @@ func TestBlogExample_FullFlow(t *testing.T) {
 	}
 }
 
+func TestBlogExample_TypedErrors(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+
+	user, err := repository.Get(dataSource, UserEntity).Insert(ctx, &User{
+		Name:  "Typed Errors User",
+		Email: "typed.errors@email.com",
+	})
+	if err != nil {
+		t.Fatalf("Insert(User) returned error: %v", err)
+	}
+
+	// ErrForeignKeyViolation: Post.OwnerUserID pointing at a non-existent user.
+	_, err = repository.Get(dataSource, PostEntity).Insert(ctx, &Post{
+		OwnerUserID: user.ID + 1_000_000,
+		Title:       "Orphan Post",
+		Content:     "references a user that doesn't exist",
+	})
+	if !errors.Is(err, golem.ErrForeignKeyViolation) {
+		t.Errorf("Insert(Post) with bad OwnerUserID: expected errors.Is(err, golem.ErrForeignKeyViolation), got %v", err)
+	}
+
+	post, err := repository.Get(dataSource, PostEntity).Insert(ctx, &Post{
+		OwnerUserID: user.ID,
+		Title:       "Typed Errors Post",
+		Content:     "used to trigger a duplicate key below",
+	})
+	if err != nil {
+		t.Fatalf("Insert(Post) returned error: %v", err)
+	}
+
+	category, err := repository.Get(dataSource, CategoryEntity).Insert(ctx, &Category{Name: "Typed Errors Category"})
+	if err != nil {
+		t.Fatalf("Insert(Category) returned error: %v", err)
+	}
+
+	ptcRepo := repository.Get(dataSource, PostToCategoryEntity)
+	if _, err := ptcRepo.Insert(ctx, &PostToCategory{PostID: post.ID, CategoryID: category.ID}); err != nil {
+		t.Fatalf("Insert(PostToCategory) returned error: %v", err)
+	}
+
+	// ErrDuplicateKey: same composite PK (post_id, category_id) inserted twice.
+	_, err = ptcRepo.Insert(ctx, &PostToCategory{PostID: post.ID, CategoryID: category.ID})
+	if !errors.Is(err, golem.ErrDuplicateKey) {
+		t.Errorf("Insert(PostToCategory) duplicate PK: expected errors.Is(err, golem.ErrDuplicateKey), got %v", err)
+	}
+}
+
 type TempPost struct {
 	ID        int64
 	Title     string

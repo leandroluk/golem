@@ -479,11 +479,11 @@ func (d *dialect) Insert(ctx context.Context, conn golem.Conn, s *stmt.Insert) (
 
 	rows, err := d.getExecutor(conn).Query(ctx, sql, args...)
 	if err != nil {
-		return nil, fmt.Errorf("postgres: insert: %w", err)
+		return nil, fmt.Errorf("postgres: insert: %w", mapError(err))
 	}
 	row, err := pgx.CollectOneRow(rows, pgx.RowToMap)
 	if err != nil {
-		return nil, fmt.Errorf("postgres: insert: %w", err)
+		return nil, fmt.Errorf("postgres: insert: %w", mapError(err))
 	}
 	return row, nil
 }
@@ -520,11 +520,11 @@ func (d *dialect) Update(ctx context.Context, conn golem.Conn, s *stmt.Update) (
 
 	rows, err := d.getExecutor(conn).Query(ctx, sb.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("postgres: update: %w", err)
+		return nil, fmt.Errorf("postgres: update: %w", mapError(err))
 	}
 	results, err := pgx.CollectRows(rows, pgx.RowToMap)
 	if err != nil {
-		return nil, fmt.Errorf("postgres: update: %w", err)
+		return nil, fmt.Errorf("postgres: update: %w", mapError(err))
 	}
 	return results, nil
 }
@@ -533,7 +533,7 @@ func (d *dialect) Update(ctx context.Context, conn golem.Conn, s *stmt.Update) (
 func (d *dialect) Query(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, error) {
 	rows, err := d.getExecutor(conn).Query(ctx, sql, args...)
 	if err != nil {
-		return nil, err
+		return nil, mapError(err)
 	}
 	return pgx.CollectRows(rows, pgx.RowToMap)
 }
@@ -542,7 +542,7 @@ func (d *dialect) Query(ctx context.Context, conn golem.Conn, sql string, args [
 func (d *dialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []any) (int64, error) {
 	ct, err := d.getExecutor(conn).Exec(ctx, sql, args...)
 	if err != nil {
-		return 0, err
+		return 0, mapError(err)
 	}
 	return ct.RowsAffected(), nil
 }
@@ -552,16 +552,36 @@ func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args
 	executor := d.getExecutor(conn)
 	rows, err := executor.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, mapError(err)
 	}
 	defer rows.Close()
 
 	results, err := pgx.CollectRows(rows, pgx.RowToMap)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, mapError(err)
 	}
 
 	return results, rows.CommandTag().RowsAffected(), nil
+}
+
+// mapError wraps err with the matching golem sentinel (ErrDuplicateKey,
+// ErrForeignKeyViolation) when it's a recognized Postgres SQLSTATE, keeping
+// the original *pgconn.PgError reachable via errors.As/errors.Unwrap.
+// Unmapped errors (including non-Postgres ones) pass through unchanged.
+func mapError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "23505":
+			return fmt.Errorf("%w: %w", golem.ErrDuplicateKey, err)
+		case "23503":
+			return fmt.Errorf("%w: %w", golem.ErrForeignKeyViolation, err)
+		}
+	}
+	return err
 }
 
 // IsConflict returns true if the error represents a database integrity constraint violation.

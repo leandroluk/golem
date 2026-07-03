@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M9 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), M6 (Joins), M7 (Hooks), M8 (Transactions), e M9 (Raw SQL com iteradores de retorno e mapeamento por reflexão nos repositories) estão prontos e verificados com 100% de testes verdes. Próximo passo: M10 (Typed Errors).
+**Current Work:** M1-M10 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), M6 (Joins), M7 (Hooks), M8 (Transactions), M9 (Raw SQL com iteradores de retorno e mapeamento por reflexão nos repositories), e M10 (Typed Errors: `golem.ErrDuplicateKey`/`golem.ErrForeignKeyViolation` mapeados a partir de SQLSTATE no adapter Postgres) estão prontos e verificados com 100% de testes verdes. ROADMAP.md não tem próximo milestone planejado — ver "Future Considerations".
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-023: Duplicate/FK-violation sentinels wrap the driver error, not replace it (2026-07-03)
+
+**Decision:** `driver/postgres/dialect.go`'s `mapError(err error) error` checks `errors.As(err, &pgconn.PgError)`; on SQLSTATE `23505`/`23503` it returns `fmt.Errorf("%w: %w", golem.ErrDuplicateKey /* or ErrForeignKeyViolation */, err)` (Go 1.20+ multi-`%w`) instead of returning a bare sentinel. Applied at every point `Insert`/`Update`/`Query`/`Exec`/`ExecRaw` in the Postgres dialect surface a driver error.
+**Reason:** Callers need both `errors.Is(err, golem.ErrDuplicateKey)` (branch on kind) AND `errors.As(err, &pgErr)` (inspect the real `*pgconn.PgError` — constraint name, detail, etc.) without losing either. A bare sentinel would satisfy the first but break the second.
+**Trade-off:** None — this is strictly additive over the plain driver error other than message text.
+**Impact:** `errors.go` gains `ErrDuplicateKey`/`ErrForeignKeyViolation`. `IsConflict` (used by the hook system, AD-007/M7) is unrelated and unchanged — it stays a broad "any class-23 violation" check for deciding whether to run `OnConflictCreate`/`OnConflictUpdate`/`OnConflictDelete` hooks, independent of the new typed-sentinel wrapping.
 
 ### AD-022: `FindByID` removido — substituído por `FindOne` + `op.Eq` (2026-07-03)
 
@@ -185,6 +192,12 @@ None.
 
 ## Lessons Learned
 
+### L-003: `.examples/` never actually runs under `go test ./...` — a real bug sat undetected (2026-07-03)
+
+**Context:** While validating M10, ran `.examples/postgres-minimal-blog`'s full integration suite directly (explicit path) instead of via `task test-integration`, and `TestBlogExample_FullFlow` failed: a `join.Inner` query returned 2 rows for 1 user (fan-out from 2 matching posts, no dedup) — a pre-existing bug, unrelated to M10.
+**Problem:** Go's `./...` pattern silently skips dot-prefixed directories (`.examples`, `.docker`, `.specs`, etc.) in `go build`/`go test`/`go vet`. `task gate-quick`/`task gate-full`/`task test-integration` all invoke `go test ... ./...`, so `.examples/postgres-minimal-blog`'s tests have *never* run as part of any gate — every milestone from M4 onward was declared "done" partly on the strength of an example test suite that silently never executed.
+**Prevents:** Don't trust `task gate-full`/`test-integration` alone to have covered `.examples/`. Either (a) periodically run the example's tests with an explicit path (`cd .examples/postgres-minimal-blog && go test -tags=integration ./...`), or (b) fix `Taskfile.yml`'s `test-integration` task to explicitly append `./.examples/...` to its `go test` invocation. Flagged as a follow-up task (join fan-out fix + Taskfile fix), not yet done as of this writing — see Todos.
+
 ### L-002: Filenames in this repo are snake_case; the "unauthorized rename" I fought was actually the user's own convention (2026-07-03, corrected same day)
 
 **Context:** During M2/M3 execution, files kept turning up renamed to snake_case (`columntype.go`→`column_type.go`, `datasource.go`→`data_source.go`) while sub-agents worked in the shared working tree. I assumed this was sub-agent hallucination (models sometimes "correct" perceived naming inconsistencies) and reverted it twice, and recorded a now-corrected lesson blaming sub-agents for it.
@@ -219,5 +232,7 @@ None.
 - [x] ~~Design the initial `golem.ColumnType` set~~ — DONE
 - [x] ~~M3 continuation: Delete/Restore, Count/Exists~~ — DONE
 - [x] ~~Build `internal/stmt` AST for real~~ — DONE
+- [ ] Fix `join.Inner`/`FindMany` fan-out: a 1:N join duplicates the parent row once per matched child row instead of deduplicating by PK (found via L-003, `TestBlogExample_FullFlow`) — task_459286d0 spawned
+- [ ] Make `.examples/postgres-minimal-blog`'s integration tests actually run under `task test-integration` (currently silently skipped, see L-003) — same task_459286d0
 
 
