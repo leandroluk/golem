@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/adapter/postgres"
+	"github.com/leandroluk/golem/driver/postgres"
 	"github.com/leandroluk/golem/entity"
+	"github.com/leandroluk/golem/join"
 	"github.com/leandroluk/golem/op"
 	"github.com/leandroluk/golem/query"
 	"github.com/leandroluk/golem/repository"
@@ -110,6 +111,22 @@ func TestBlogExample_FullFlow(t *testing.T) {
 	if !errors.Is(err, golem.ErrNotFound) {
 		t.Errorf("FindOne(nonexistent ID): expected errors.Is(err, golem.ErrNotFound), got %v", err)
 	}
+
+	// Find users that have at least 1 post using join.Inner
+	usersWithPosts, err := repository.Get(dataSource, UserEntity).FindMany(ctx, func(u *User, q0 *query.Query[User]) {
+		join.Inner(q0, PostEntity, func(p *Post, q1 *query.Join[Post]) {
+			q1.On(&p.OwnerUserID, &u.ID)
+		})
+		q0.Where(op.Eq(&u.ID, user.ID))
+	})
+	if err != nil {
+		t.Fatalf("FindMany with join.Inner returned error: %v", err)
+	}
+	if len(usersWithPosts) != 1 {
+		t.Errorf("expected 1 user with posts, got %d", len(usersWithPosts))
+	} else if usersWithPosts[0].ID != user.ID {
+		t.Errorf("expected user.ID %d, got %d", user.ID, usersWithPosts[0].ID)
+	}
 }
 
 type TempPost struct {
@@ -118,7 +135,7 @@ type TempPost struct {
 	DeletedAt *time.Time
 }
 
-var TempPostEntity = entity.New[TempPost](func(t *TempPost, b *entity.Builder) {
+var TempPostEntity = entity.New[TempPost](func(t *TempPost, b *entity.Table) {
 	b.TableName("temp_posts")
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.Title, golem.VARCHAR(50))
@@ -228,4 +245,5 @@ func TestBlogExample_DeleteCountAndExists(t *testing.T) {
 		t.Errorf("Count after restore = %d, want 2", cnt)
 	}
 }
+
 

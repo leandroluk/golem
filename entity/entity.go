@@ -14,9 +14,9 @@ import (
 // or declaration order — this is what lets two fields of the same Go type
 // (e.g. two int64 fields) be told apart correctly.
 func ResolveField(zero any, fieldPtr any) (string, error) {
-	base := reflect.ValueOf(zero).Elem() // zero is *T; .Elem() must be addressable
+	base := reflect.ValueOf(zero).Elem()
 	baseAddr := base.UnsafeAddr()
-	fieldAddr := reflect.ValueOf(fieldPtr).Pointer() // fieldPtr is *FieldType
+	fieldAddr := reflect.ValueOf(fieldPtr).Pointer()
 	offset := fieldAddr - baseAddr
 
 	t := base.Type()
@@ -30,28 +30,40 @@ func ResolveField(zero any, fieldPtr any) (string, error) {
 
 // ColumnMeta describes a single declared column.
 type ColumnMeta struct {
-	FieldName string
-	Name      string
-	Type      golem.ColumnType
+	FieldName   string
+	Name        string
+	Type        golem.ColumnType
+	Nullable    bool
+	Default     any
+	HasDefault  bool
+	DefaultFunc func() (any, error)
 }
 
-// ForeignKeyMeta records that FieldName's column references another
-// entity's primary key. It does not store the target itself (see
-// Builder.ForeignKey's doc comment for why), since Builder is not generic
-// over the target entity's type parameter — this pass's repository CRUD
-// operations don't need to walk FK metadata to a target, only know that a
-// column is a plain column like any other.
+// ForeignKeyMeta records that FieldName's column references another entity's
+// primary key.
 type ForeignKeyMeta struct {
 	FieldName string
 }
 
+// IndexMeta describes a named index over one or more columns.
+type IndexMeta struct {
+	Columns []string // column names (not field names), in declared order
+	Name    string   // "" if not overridden
+	Unique  bool
+}
+
 // EntityMeta holds a T's fully resolved schema metadata.
 type EntityMeta struct {
-	TableName   string
-	SchemaName  string
-	Columns     []ColumnMeta
-	PrimaryKey  []string // COLUMN names, in declared order
-	ForeignKeys []ForeignKeyMeta
+	TableName       string
+	SchemaName      string
+	Columns         []ColumnMeta
+	PrimaryKey      []string // column names, in declared order
+	ForeignKeys     []ForeignKeyMeta
+	Uniques         [][]string // each inner slice is a unique constraint (column names)
+	Indexes         []IndexMeta
+	CreateDateField string // field name of the create-timestamp column, or ""
+	UpdateDateField string // field name of the update-timestamp column, or ""
+	DeleteDateField string // field name of the soft-delete timestamp column, or ""
 }
 
 // Entity holds a T's schema metadata, built once via New and read via
@@ -62,14 +74,13 @@ type Entity[T any] struct {
 }
 
 // New builds an Entity[T] by running fn against a zero-value *T and a
-// Builder that resolves every field-pointer argument by memory offset
+// Table that resolves every field-pointer argument by memory offset
 // against that same zero value.
-func New[T any](fn func(t *T, b *Builder)) *Entity[T] {
+func New[T any](fn func(t *T, b *Table)) *Entity[T] {
 	var zero T
 	e := &Entity[T]{}
-	// default table name = lowercased struct name, overridable via b.TableName(...)
 	e.meta.TableName = strings.ToLower(reflect.TypeOf(zero).Name())
-	b := newBuilder(&zero, e)
+	b := newTable(&zero, e)
 	fn(&zero, b)
 	b.finalize()
 	return e
@@ -79,3 +90,4 @@ func New[T any](fn func(t *T, b *Builder)) *Entity[T] {
 func (e *Entity[T]) Describe() EntityMeta {
 	return e.meta
 }
+

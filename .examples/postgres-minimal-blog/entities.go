@@ -32,7 +32,7 @@ type PostToCategory struct {
 	CategoryID int64
 }
 
-var UserEntity = entity.New[User](func(t *User, b *entity.Builder) {
+var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
 	b.TableName("users")
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.Name, golem.VARCHAR(50))
@@ -40,7 +40,7 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Builder) {
 	b.PrimaryKey(&t.ID)
 })
 
-var PostEntity = entity.New[Post](func(t *Post, b *entity.Builder) {
+var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
 	// table name defaults to "post" (lowercased struct name) — matches schema.sql, no override needed
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.OwnerUserID, golem.BIGINT()).Name("owner_user_id")
@@ -50,14 +50,14 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Builder) {
 	b.ForeignKey(&t.OwnerUserID, UserEntity)
 })
 
-var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Builder) {
+var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Table) {
 	// table name defaults to "category" — matches schema.sql
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.Name, golem.VARCHAR(50))
 	b.PrimaryKey(&t.ID)
 })
 
-var PostToCategoryEntity = entity.New[PostToCategory](func(t *PostToCategory, b *entity.Builder) {
+var PostToCategoryEntity = entity.New[PostToCategory](func(t *PostToCategory, b *entity.Table) {
 	b.TableName("post_to_category")
 	b.Col(&t.PostID, golem.BIGINT()).Name("post_id")
 	b.Col(&t.CategoryID, golem.BIGINT()).Name("category_id")
@@ -65,3 +65,4 @@ var PostToCategoryEntity = entity.New[PostToCategory](func(t *PostToCategory, b 
 	b.ForeignKey(&t.PostID, PostEntity)
 	b.ForeignKey(&t.CategoryID, CategoryEntity)
 })
+

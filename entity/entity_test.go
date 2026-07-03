@@ -3,19 +3,17 @@ package entity
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/leandroluk/golem"
 )
 
-// Widget is a struct whose name is used to assert the default table-name
-// behavior (lowercased struct name) independent of the "user"/"post"-style
-// domain structs used elsewhere in these tests.
 type Widget struct {
 	ID int64
 }
 
 func TestNew_DefaultTableName_LowercasedStructName(t *testing.T) {
-	e := New(func(w *Widget, b *Builder) {
+	e := New(func(w *Widget, b *Table) {
 		b.Col(&w.ID, golem.BIGINT())
 	})
 
@@ -31,7 +29,7 @@ type User struct {
 }
 
 func TestNew_TableName_Override(t *testing.T) {
-	e := New(func(u *User, b *Builder) {
+	e := New(func(u *User, b *Table) {
 		b.TableName("users")
 		b.Col(&u.ID, golem.BIGINT())
 	})
@@ -43,7 +41,7 @@ func TestNew_TableName_Override(t *testing.T) {
 }
 
 func TestNew_SchemaName_Override(t *testing.T) {
-	e := New(func(u *User, b *Builder) {
+	e := New(func(u *User, b *Table) {
 		b.SchemaName("public")
 		b.Col(&u.ID, golem.BIGINT())
 	})
@@ -55,7 +53,7 @@ func TestNew_SchemaName_Override(t *testing.T) {
 }
 
 func TestNew_Col_DefaultColumnName_LowercasedFieldName(t *testing.T) {
-	e := New(func(u *User, b *Builder) {
+	e := New(func(u *User, b *Table) {
 		b.Col(&u.ID, golem.BIGINT())
 	})
 
@@ -72,7 +70,7 @@ func TestNew_Col_DefaultColumnName_LowercasedFieldName(t *testing.T) {
 }
 
 func TestNew_Col_NameOverride(t *testing.T) {
-	e := New(func(u *User, b *Builder) {
+	e := New(func(u *User, b *Table) {
 		b.Col(&u.Name, golem.VARCHAR(50)).Name("full_name")
 	})
 
@@ -88,16 +86,13 @@ func TestNew_Col_NameOverride(t *testing.T) {
 	}
 }
 
-// TwoInts is the struct required by spec.md AC-2: two fields of the *same*
-// Go type (int64), which can only be distinguished by memory offset, not by
-// type or declaration order.
 type TwoInts struct {
 	A int64
 	B int64
 }
 
 func TestNew_Col_DistinguishesSameTypeFields(t *testing.T) {
-	e := New(func(v *TwoInts, b *Builder) {
+	e := New(func(v *TwoInts, b *Table) {
 		b.Col(&v.A, golem.BIGINT())
 		b.Col(&v.B, golem.BIGINT())
 	})
@@ -130,7 +125,7 @@ func TestNew_Col_DistinguishesSameTypeFields(t *testing.T) {
 }
 
 func TestNew_Col_RecordsColumnType(t *testing.T) {
-	e := New(func(u *User, b *Builder) {
+	e := New(func(u *User, b *Table) {
 		b.Col(&u.ID, golem.BIGINT())
 	})
 
@@ -143,8 +138,61 @@ func TestNew_Col_RecordsColumnType(t *testing.T) {
 	}
 }
 
+func TestNew_Col_Nullable(t *testing.T) {
+	e := New(func(u *User, b *Table) {
+		b.Col(&u.Name, golem.TEXT()).Nullable()
+	})
+
+	cols := e.Describe().Columns
+	if len(cols) != 1 {
+		t.Fatalf("len(Columns) = %d, want 1", len(cols))
+	}
+	if !cols[0].Nullable {
+		t.Fatal("Columns[0].Nullable = false, want true")
+	}
+}
+
+func TestNew_Col_Default(t *testing.T) {
+	e := New(func(u *User, b *Table) {
+		b.Col(&u.Name, golem.TEXT()).Default("anon")
+	})
+
+	cols := e.Describe().Columns
+	if len(cols) != 1 {
+		t.Fatalf("len(Columns) = %d, want 1", len(cols))
+	}
+	if !cols[0].HasDefault {
+		t.Fatal("Columns[0].HasDefault = false, want true")
+	}
+	if cols[0].Default != "anon" {
+		t.Fatalf("Columns[0].Default = %v, want %q", cols[0].Default, "anon")
+	}
+}
+
+func TestNew_Col_DefaultFunc(t *testing.T) {
+	fn := func() (any, error) { return "computed", nil }
+	e := New(func(u *User, b *Table) {
+		b.Col(&u.Name, golem.TEXT()).DefaultFunc(fn)
+	})
+
+	cols := e.Describe().Columns
+	if len(cols) != 1 {
+		t.Fatalf("len(Columns) = %d, want 1", len(cols))
+	}
+	if cols[0].DefaultFunc == nil {
+		t.Fatal("Columns[0].DefaultFunc = nil, want non-nil")
+	}
+	val, err := cols[0].DefaultFunc()
+	if err != nil {
+		t.Fatalf("DefaultFunc() returned error: %v", err)
+	}
+	if val != "computed" {
+		t.Fatalf("DefaultFunc()() = %v, want %q", val, "computed")
+	}
+}
+
 func TestNew_PrimaryKey_Single(t *testing.T) {
-	e := New(func(u *User, b *Builder) {
+	e := New(func(u *User, b *Table) {
 		b.Col(&u.ID, golem.BIGINT())
 		b.PrimaryKey(&u.ID)
 	})
@@ -157,7 +205,7 @@ func TestNew_PrimaryKey_Single(t *testing.T) {
 }
 
 func TestNew_PrimaryKey_Composite_PreservesOrder(t *testing.T) {
-	e := New(func(v *TwoInts, b *Builder) {
+	e := New(func(v *TwoInts, b *Table) {
 		b.Col(&v.A, golem.BIGINT())
 		b.Col(&v.B, golem.BIGINT())
 		b.PrimaryKey(&v.A, &v.B)
@@ -170,15 +218,13 @@ func TestNew_PrimaryKey_Composite_PreservesOrder(t *testing.T) {
 	}
 }
 
-// PostEntityUnderTest mimics a "Post" style entity referencing a "User"
-// style entity, per AC-3 (ForeignKey recording).
 type PostEntityUnderTest struct {
 	ID      int64
 	OwnerID int64
 }
 
 func TestNew_ForeignKey_DoesNotPanicAndResolvesField(t *testing.T) {
-	userEntity := New(func(u *User, b *Builder) {
+	userEntity := New(func(u *User, b *Table) {
 		b.Col(&u.ID, golem.BIGINT())
 		b.PrimaryKey(&u.ID)
 	})
@@ -190,7 +236,7 @@ func TestNew_ForeignKey_DoesNotPanicAndResolvesField(t *testing.T) {
 				t.Fatalf("ForeignKey panicked unexpectedly: %v", r)
 			}
 		}()
-		e = New(func(p *PostEntityUnderTest, b *Builder) {
+		e = New(func(p *PostEntityUnderTest, b *Table) {
 			b.Col(&p.ID, golem.BIGINT())
 			b.Col(&p.OwnerID, golem.BIGINT())
 			b.PrimaryKey(&p.ID)
@@ -236,3 +282,204 @@ func TestResolveField_OffsetBased_DistinguishesSameTypeFields(t *testing.T) {
 		t.Fatalf("ResolveField(&v.B) = %q, want %q", nameB, "B")
 	}
 }
+
+// -----------------------------------------------------------------------
+// Unique
+// -----------------------------------------------------------------------
+
+type UniqueSubject struct {
+	Email  string
+	UserID int64
+	OrgID  int64
+}
+
+func TestNew_Unique_Single_RecordsColumnName(t *testing.T) {
+	e := New(func(s *UniqueSubject, b *Table) {
+		b.Col(&s.Email, golem.TEXT())
+		b.Unique(&s.Email)
+	})
+
+	uniques := e.Describe().Uniques
+	if len(uniques) != 1 {
+		t.Fatalf("len(Uniques) = %d, want 1", len(uniques))
+	}
+	if len(uniques[0]) != 1 || uniques[0][0] != "email" {
+		t.Fatalf("Uniques[0] = %v, want [email]", uniques[0])
+	}
+}
+
+func TestNew_Unique_Composite_PreservesOrder(t *testing.T) {
+	e := New(func(s *UniqueSubject, b *Table) {
+		b.Col(&s.UserID, golem.BIGINT())
+		b.Col(&s.OrgID, golem.BIGINT())
+		b.Unique(&s.UserID, &s.OrgID)
+	})
+
+	uniques := e.Describe().Uniques
+	if len(uniques) != 1 {
+		t.Fatalf("len(Uniques) = %d, want 1", len(uniques))
+	}
+	want := []string{"userid", "orgid"}
+	if !reflect.DeepEqual(uniques[0], want) {
+		t.Fatalf("Uniques[0] = %v, want %v", uniques[0], want)
+	}
+}
+
+func TestNew_Unique_MultipleConstraints(t *testing.T) {
+	e := New(func(s *UniqueSubject, b *Table) {
+		b.Col(&s.Email, golem.TEXT())
+		b.Col(&s.UserID, golem.BIGINT())
+		b.Unique(&s.Email)
+		b.Unique(&s.UserID)
+	})
+
+	uniques := e.Describe().Uniques
+	if len(uniques) != 2 {
+		t.Fatalf("len(Uniques) = %d, want 2", len(uniques))
+	}
+}
+
+func TestNew_Unique_NoUniques_IsNil(t *testing.T) {
+	e := New(func(u *User, b *Table) {
+		b.Col(&u.ID, golem.BIGINT())
+	})
+
+	if e.Describe().Uniques != nil {
+		t.Fatalf("Uniques = %v, want nil when no Unique() declared", e.Describe().Uniques)
+	}
+}
+
+// -----------------------------------------------------------------------
+// Index
+// -----------------------------------------------------------------------
+
+func TestNew_Index_DefaultNameAndNotUnique(t *testing.T) {
+	e := New(func(s *UniqueSubject, b *Table) {
+		b.Col(&s.Email, golem.TEXT())
+		b.Index(&s.Email)
+	})
+
+	indexes := e.Describe().Indexes
+	if len(indexes) != 1 {
+		t.Fatalf("len(Indexes) = %d, want 1", len(indexes))
+	}
+	if indexes[0].Name != "" {
+		t.Fatalf("Indexes[0].Name = %q, want empty", indexes[0].Name)
+	}
+	if indexes[0].Unique {
+		t.Fatal("Indexes[0].Unique = true, want false")
+	}
+	if len(indexes[0].Columns) != 1 || indexes[0].Columns[0] != "email" {
+		t.Fatalf("Indexes[0].Columns = %v, want [email]", indexes[0].Columns)
+	}
+}
+
+func TestNew_Index_WithNameAndUnique(t *testing.T) {
+	e := New(func(s *UniqueSubject, b *Table) {
+		b.Col(&s.Email, golem.TEXT())
+		b.Index(&s.Email).Name("idx_email").Unique()
+	})
+
+	indexes := e.Describe().Indexes
+	if len(indexes) != 1 {
+		t.Fatalf("len(Indexes) = %d, want 1", len(indexes))
+	}
+	if indexes[0].Name != "idx_email" {
+		t.Fatalf("Indexes[0].Name = %q, want %q", indexes[0].Name, "idx_email")
+	}
+	if !indexes[0].Unique {
+		t.Fatal("Indexes[0].Unique = false, want true")
+	}
+}
+
+func TestNew_Index_Composite_PreservesOrder(t *testing.T) {
+	e := New(func(s *UniqueSubject, b *Table) {
+		b.Col(&s.UserID, golem.BIGINT())
+		b.Col(&s.OrgID, golem.BIGINT())
+		b.Index(&s.UserID, &s.OrgID)
+	})
+
+	indexes := e.Describe().Indexes
+	if len(indexes) != 1 {
+		t.Fatalf("len(Indexes) = %d, want 1", len(indexes))
+	}
+	want := []string{"userid", "orgid"}
+	if !reflect.DeepEqual(indexes[0].Columns, want) {
+		t.Fatalf("Indexes[0].Columns = %v, want %v", indexes[0].Columns, want)
+	}
+}
+
+func TestNew_Index_NoIndexes_IsNil(t *testing.T) {
+	e := New(func(u *User, b *Table) {
+		b.Col(&u.ID, golem.BIGINT())
+	})
+
+	if e.Describe().Indexes != nil {
+		t.Fatalf("Indexes = %v, want nil when no Index() declared", e.Describe().Indexes)
+	}
+}
+
+// -----------------------------------------------------------------------
+// CreateDate / UpdateDate / DeleteDate
+// -----------------------------------------------------------------------
+
+type TimestampedSubject struct {
+	ID        int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+}
+
+func TestNew_CreateDate_RecordsFieldName(t *testing.T) {
+	e := New(func(s *TimestampedSubject, b *Table) {
+		b.Col(&s.ID, golem.BIGINT())
+		b.Col(&s.CreatedAt, golem.DATETIME())
+		b.CreateDate(&s.CreatedAt)
+	})
+
+	if got := e.Describe().CreateDateField; got != "CreatedAt" {
+		t.Fatalf("CreateDateField = %q, want %q", got, "CreatedAt")
+	}
+}
+
+func TestNew_UpdateDate_RecordsFieldName(t *testing.T) {
+	e := New(func(s *TimestampedSubject, b *Table) {
+		b.Col(&s.ID, golem.BIGINT())
+		b.Col(&s.UpdatedAt, golem.DATETIME())
+		b.UpdateDate(&s.UpdatedAt)
+	})
+
+	if got := e.Describe().UpdateDateField; got != "UpdatedAt" {
+		t.Fatalf("UpdateDateField = %q, want %q", got, "UpdatedAt")
+	}
+}
+
+func TestNew_DeleteDate_RecordsFieldName(t *testing.T) {
+	e := New(func(s *TimestampedSubject, b *Table) {
+		b.Col(&s.ID, golem.BIGINT())
+		b.Col(&s.DeletedAt, golem.DATETIME())
+		b.DeleteDate(&s.DeletedAt)
+	})
+
+	if got := e.Describe().DeleteDateField; got != "DeletedAt" {
+		t.Fatalf("DeleteDateField = %q, want %q", got, "DeletedAt")
+	}
+}
+
+func TestNew_NoTimestamps_FieldsAreEmpty(t *testing.T) {
+	e := New(func(u *User, b *Table) {
+		b.Col(&u.ID, golem.BIGINT())
+	})
+
+	meta := e.Describe()
+	if meta.CreateDateField != "" {
+		t.Fatalf("CreateDateField = %q, want empty", meta.CreateDateField)
+	}
+	if meta.UpdateDateField != "" {
+		t.Fatalf("UpdateDateField = %q, want empty", meta.UpdateDateField)
+	}
+	if meta.DeleteDateField != "" {
+		t.Fatalf("DeleteDateField = %q, want empty", meta.DeleteDateField)
+	}
+}
+
