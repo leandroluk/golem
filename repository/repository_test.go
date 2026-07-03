@@ -167,7 +167,12 @@ func TestRepository_Insert_CallsDialectWithCorrectTableAndColumns(t *testing.T) 
 	if call.table != "testsubject" {
 		t.Errorf("table = %q, want %q", call.table, "testsubject")
 	}
-	wantCols := []string{"id", "name", "email"}
+	// "id" is omitted: it's zero-valued on the input (DB-generated PKs like
+	// BIGSERIAL only apply their default when the column is absent from the
+	// INSERT entirely — sending a literal 0 defeats that and was a real bug
+	// caught against a live Postgres instance, see repository.go's Insert doc
+	// comment).
+	wantCols := []string{"name", "email"}
 	if len(call.columns) != len(wantCols) {
 		t.Fatalf("columns = %v, want %v", call.columns, wantCols)
 	}
@@ -176,16 +181,11 @@ func TestRepository_Insert_CallsDialectWithCorrectTableAndColumns(t *testing.T) 
 			t.Errorf("columns[%d] = %q, want %q", i, call.columns[i], c)
 		}
 	}
-	// values[1] (name) and values[2] (email) should reflect the input struct;
-	// values[0] (id) should be the input's zero value (0) since it was unset.
-	if call.values[0] != int64(0) {
-		t.Errorf("values[0] (id) = %v, want 0", call.values[0])
+	if call.values[0] != "Ada" {
+		t.Errorf("values[0] (name) = %v, want Ada", call.values[0])
 	}
-	if call.values[1] != "Ada" {
-		t.Errorf("values[1] (name) = %v, want Ada", call.values[1])
-	}
-	if call.values[2] != "ada@example.com" {
-		t.Errorf("values[2] (email) = %v, want ada@example.com", call.values[2])
+	if call.values[1] != "ada@example.com" {
+		t.Errorf("values[1] (email) = %v, want ada@example.com", call.values[1])
 	}
 
 	// scanned back from the fake's returned row, including the DB-generated

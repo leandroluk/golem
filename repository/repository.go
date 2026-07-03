@@ -28,7 +28,12 @@ func Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T] {
 }
 
 // Insert inserts one new T, returning it with every column (including any
-// DB-populated PK) filled from the RETURNING row.
+// DB-populated PK) filled from the RETURNING row. A column whose field holds
+// its Go zero value is omitted from the INSERT entirely, so a DB-side
+// default (e.g. a BIGSERIAL primary key, or any other column default) can
+// apply — callers that want to insert a literal zero value for a column
+// can't currently express that (out of scope for this pass: no builder API
+// exists yet to distinguish "unset" from "explicitly zero").
 func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	var zero T
 	v := reflect.ValueOf(i).Elem()
@@ -37,6 +42,9 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	values := make([]driver.Value, 0, len(r.meta.Columns))
 	for _, col := range r.meta.Columns {
 		fieldVal := v.FieldByName(col.FieldName)
+		if fieldVal.IsZero() {
+			continue
+		}
 		columns = append(columns, col.Name)
 		values = append(values, fieldVal.Interface())
 	}
