@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M4 - Query Builder & Read Paths
-**Status:** M1 done, M2 done, M3 partially done (Insert/InsertMany/SaveOne/SaveMany/FindMany/FindOne/UpdateOne/UpdateMany done; Delete/Restore/Count/Exists deferred)
+**Current Milestone:** M7 - Hooks
+**Status:** M1-M6 done, M7 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -81,7 +81,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Entities can be inserted, re-saved, deleted/restored, and fetched by PK against a real table — **including entities with a composite PK** (e.g. `QuestionToCategory` from M2).
 **Target:** `repository.Get(dataSource, UserEntity)` round-trips a row end to end; `repository.Get(dataSource, QuestionToCategoryEntity)` round-trips against a composite PK.
-**Status:** ⚠️ PARTIALLY DONE — `Insert`/`InsertMany`, `FindMany`/`FindOne`, `SaveOne`/`SaveMany`, `UpdateOne`/`UpdateMany` implementados. `FindByID` removido (substituído por `FindOne` + `op.Eq`). `Delete`/`Restore`/`Count`/`Exists` deferred (dependem de `DeleteDate` e M4).
+**Status:** ✅ DONE — see `.specs/features/repository-core-crud/` (spec, design, tasks all Verified)
 
 ### Features
 
@@ -109,18 +109,18 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ### Features
 
-**`query.Query[T]`** - PLANNED
+**`query.Query[T]`** - DONE
 
 - `Select(fieldPtrs ...any)`, `Where(conditions ...op.Condition)` (AND semantics), `OrderBy(...)`, `Limit`, `Offset`
 - `.WithDeleted()` — disables the default soft-delete filter for this query
 
-**`op` package** - PLANNED
+**`op` package** - DONE
 
 - Comparisons: `op.Eq`, `op.Gt`, `op.Gte`, `op.Lt`, `op.Lte`, `op.In`, `op.Like` (exact set TBD, grows on demand)
 - Logical: `op.Or(...)` (AND is implicit/variadic via `Where(...)` itself); `op.Not(condition)` composes over any condition instead of dedicated negated variants — `op.Not(op.In(...))` instead of a separate `NotIn`, `op.Not(op.Eq(...))` instead of `NotEq`, etc. (`NOT (x IN (...))` and `NOT IN` are semantically identical in SQL, so no functional gap)
 - Ordering: `op.Asc`/`op.Desc` for `OrderBy`
 
-**`Repository[T]` wiring** - PLANNED
+**`Repository[T]` wiring** - DONE
 
 - `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)`
 - `FindOne(ctx, criteria ...func(t *T, q *query.Query[T])) (T, error)`
@@ -135,15 +135,15 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ### Features
 
-**`query.Update[T]`** - PLANNED
+**`query.Update[T]`** - DONE
 
 - `Where(...)`, `Set(fieldPtr any, value any)`, `.WithDeleted()`
 
-**`query.Count[T]`** - PLANNED
+**`query.Count[T]`** - DONE
 
 - `Where(...)`, `.WithDeleted()`
 
-**`Repository[T]` wiring** - PLANNED
+**`Repository[T]` wiring** - DONE
 
 - `UpdateOne(ctx, func(t *T, u *query.Update[T])) (T, error)` / `UpdateMany(...) ([]T, error)`
 - `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` / `Exists(...) (bool, error)`
@@ -158,7 +158,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ### Features
 
-**`join` package** - PLANNED
+**`join` package** - DONE
 
 - `join.Inner`/`join.Left`/`join.Right`/`join.Full`, each `(q *query.Query[T], target *entity.Entity[J], func(j *J, q1 *query.Join[J]))`
 - `query.Join[T]`: `On(fieldPtr, fieldPtr)` (column-to-column), `Where(...)` (column-to-value), `.WithDeleted()`

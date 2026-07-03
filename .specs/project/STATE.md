@@ -1,7 +1,7 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M2 (Schema Declaration) 100% concluído: `entity.Table` agora tem `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate`, `entity.Column` tem `Nullable`/`Default`/`DefaultFunc`, `golem.ColumnType` tem todos os construtores (`BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`), novo pacote `index`. M3 avançado: `FindMany`/`FindOne`/`SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany` implementados no repository. `FindByID` removido (AD-022) — substituído por `FindOne` + `op.Eq`. `go test ./...` 100% verde. Next: M4 (Query Builder) para ter `op` completo e desbloquear `Delete`/`Restore`/`Count`/`Exists` do M3.
+**Current Work:** M1-M6 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), e M6 (Joins no query builder e driver) estão prontos e verificados com 100% de testes verdes. Próximo passo: M7 (Hooks).
 
 ---
 
@@ -214,12 +214,10 @@ None.
 
 ## Todos
 
-- [ ] Design the exact `op.*` positive comparison operator set (`Eq`, `Gt`, `Gte`, `Lt`, `Lte`, `In`, `Like`, ... — negation is `op.Not(...)` composed, not a separate function per AD-017) — needed before M4, not before M1
 - [ ] Decide the exact panic message format for duplicate hook slot registration (AD-006) — needed before M7, not before M1
-- [ ] Design the initial `golem.ColumnType` set (which concrete types ship first: `BIGINT`, `VARCHAR`, `UUID`, `JSON`, ...) — needed before M2, not before M1. `golem.Dialect`'s interface shape itself is already decided (AD-015 + AD-016: `Bind`/`Scan`/`CompileSelect`/`CompileDelete`/`Insert`/`Update`)
-- [x] ~~Design the minimal `internal/stmt.{Select,Insert,Update,Delete}` field shapes for M1~~ — not a pre-requisite: M1 is Medium-sized (sizing already done), so exact Go struct fields for `stmt.*` are implementation detail resolved while writing M1's code, not something to spec upfront. The *shape rules* (table ref + composite-capable PK-equality `Where`) are already decided (AD-016) — that's enough to start coding
-- [x] ~~M2 continuation: `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `entity.Column.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions` chain~~ — DONE (2026-07-03): `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate` implementados; `entity.Column.Nullable`/`.Default`/`.DefaultFunc` implementados; `golem.ColumnType` completo. `ForeignKeyOptions` chain ainda deferred (sem uso até M7/hooks)
-- [ ] M3 continuation: `Delete`/`Restore` (depende de `DeleteDate` no soft-delete filter), `Count`/`Exists` (depende do `op` completo do M4) — `SaveOne`/`SaveMany`/`FindMany`/`FindOne`/`UpdateOne`/`UpdateMany` já feitos
-- [ ] Build `internal/stmt` AST for real once M4 (query builder) starts — AD-020's `Dialect.Insert` was a deliberate simple-case shortcut, not a replacement
+- [x] ~~Design the exact `op.*` positive comparison operator set~~ — DONE
+- [x] ~~Design the initial `golem.ColumnType` set~~ — DONE
+- [x] ~~M3 continuation: Delete/Restore, Count/Exists~~ — DONE
+- [x] ~~Build `internal/stmt` AST for real~~ — DONE
 
 
