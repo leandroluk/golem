@@ -48,7 +48,7 @@ func (c *connector) Connect() (golem.Dialect, error) {
 
 	c.pool = pool
 	c.log(golem.LogLevelInfo, "connected", nil)
-	return &dialect{}, nil
+	return &dialect{pool: pool}, nil
 }
 
 // Close releases the pool. pgxpool.Pool.Close() has no error return, so this
