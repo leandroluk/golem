@@ -17,7 +17,7 @@ Per user direction: drop `Repository[T].FindByID` entirely — `FindOne`/`FindMa
 
 **Removed this pass:** `Repository[T].FindByID`, `golem.Dialect.FindByID`. Superseded by `FindOne`.
 
-**Deferred (tracked in STATE.md Todos):** `Delete`/`Restore` (needs `entity.Builder.DeleteDate`, not built yet — separate prerequisite), `Count`/`Exists`, `SaveMany`, `op.Gt/Gte/Lt/Lte/In/Like/Or/Not`, `query.Query[T].Select/OrderBy/Limit/Offset`, `.WithDeleted()` (no soft-delete exists yet).
+**Deferred (tracked in STATE.md Todos):** `Delete`/`Restore` (needs `entity.Table.DeleteDate`, not built yet — separate prerequisite), `Count`/`Exists`, `SaveMany`, `op.Gt/Gte/Lt/Lte/In/Like/Or/Not`, `query.Query[T].Select/OrderBy/Limit/Offset`, `.WithDeleted()` (no soft-delete exists yet).
 
 ## Acceptance Criteria
 
@@ -36,3 +36,5 @@ Per user direction: drop `Repository[T].FindByID` entirely — `FindOne`/`FindMa
 - [ ] `.examples/postgres-minimal-blog/main.go` uses `FindOne` instead of the removed `FindByID`, still round-trips correctly
 - [ ] `go test ./op/... ./query/... ./repository/...` pass (unit, fakes)
 - [ ] Integration test (real Postgres) covers `FindMany`/`FindOne`/`SaveOne`/`UpdateOne`/`UpdateMany`
+
+

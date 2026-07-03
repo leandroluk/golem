@@ -12,7 +12,7 @@ Covers both `.specs/features/schema-declaration/` and `.specs/features/repositor
 ## Execution Plan
 
 ```
-Phase 1 (parallel):  T1 (ColumnType ctors) [P]   T2 (column.Builder) [P]   T7 (schema.sql infra) [P]
+Phase 1 (parallel):  T1 (ColumnType ctors) [P]   T2 (entity.Column) [P]   T7 (schema.sql infra) [P]
 Phase 2 (sequential): T3 (entity package)  -- depends on T1, T2
 Phase 3 (parallel):  T4 (Conn/Dialect/ErrNotFound core growth) [P]   T8 (example entities) [P] -- T4 depends on nothing new, T8 depends on T3+T1
 Phase 4 (sequential): T5 (postgres dialect Insert/FindByID) -- depends on T4
@@ -32,7 +32,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit (construct each, assert internal `kind`/`length` via in-package test)
 **Gate**: quick
 
-### T2: `column.Builder` [P] — ✅ Complete
+### T2: `entity.Column` [P] — ✅ Complete
 
 **What**: New `column` package, `Builder` struct with `.Name(name string) *Builder`.
 **Where**: `column/builder.go`
@@ -44,7 +44,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 
 **What**: Full `entity` package per `schema-declaration/design.md`: `resolveField` (offset-matching), `Entity[T]`, `Builder` (`TableName`/`SchemaName`/`PrimaryKey`/`Col`/`ForeignKey`), `New[T]`, `EntityMeta`/`ColumnMeta`, `Describe()`.
 **Where**: `entity/entity.go`, `entity/builder.go`
-**Depends on**: T1 (`golem.ColumnType`), T2 (`column.Builder`)
+**Depends on**: T1 (`golem.ColumnType`), T2 (`entity.Column`)
 **Tests**: unit — MUST include the "two same-Go-type fields resolved correctly by identity, not type/order" case from spec.md AC-2, plus composite `PrimaryKey`, `ForeignKey` metadata, and table/column name defaulting rules
 **Gate**: quick
 
@@ -59,7 +59,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 ### T5: `postgres.dialect` gains pool + real `Insert`/`FindByID`  — ✅ Complete
 
 **What**: `connector.Connect()` returns `&dialect{pool: pool}` instead of the stateless stub; `dialect.Insert`/`dialect.FindByID` build parameterized SQL (double-quoted identifiers) and execute via `pgx.CollectOneRow(rows, pgx.RowToMap)`.
-**Where**: `adapter/postgres/dialect.go` (modify), `adapter/postgres/connector.go` (modify)
+**Where**: `driver/postgres/dialect.go` (modify), `driver/postgres/connector.go` (modify)
 **Depends on**: T4
 **Tests**: unit for SQL-string-building helpers (pure functions, no DB); real execution is proven end-to-end in T9's integration test, not re-tested here in isolation
 **Gate**: quick
@@ -108,3 +108,5 @@ Phase 4: T5 (needs T4)
 Phase 5: T6 (needs T3, T4)
 Phase 6: T9 (needs T5, T6, T7, T8)
 ```
+
+

@@ -177,3 +177,4 @@ func TestResolveDSN_MalformedDSN(t *testing.T) {
 		t.Fatal("expected a descriptive (non-empty) error message")
 	}
 }
+

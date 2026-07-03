@@ -11,9 +11,9 @@
 | Code Layer                                                                                                            | Test Type   | Parallel-Safe | Notes                                                                                                                                      |
 | --------------------------------------------------------------------------------------------------------------------- | ----------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `golem` root package (`DataSource`, `Conn`, `Dialect`/`Connector` interfaces, `ColumnType` stub, `Logger`/`LogLevel`) | unit        | Yes           | Pure Go, no I/O. Connector/Dialect are faked in-package for `DataSource` lifecycle tests (idempotent `Connect`/`Close`, error propagation) |
-| `adapter/postgres` — `Options` + `resolveDSN` (DSN/discrete-field precedence)                                         | unit        | Yes           | Pure function, table-driven, no network                                                                                                    |
-| `adapter/postgres` — `dialect` (Bind/Scan stub)                                                                       | unit        | Yes           | Pure, no network — just verifies contract shape + "unrecognized type" error path                                                           |
-| `adapter/postgres` — `connector` (real `pgxpool` Connect/Close) + `New` wiring                                        | integration | No            | Requires a live (dockerized) Postgres; shares one container/DSN per test run, so not run in parallel with itself                           |
+| `driver/postgres` — `Options` + `resolveDSN` (DSN/discrete-field precedence)                                         | unit        | Yes           | Pure function, table-driven, no network                                                                                                    |
+| `driver/postgres` — `dialect` (Bind/Scan stub)                                                                       | unit        | Yes           | Pure, no network — just verifies contract shape + "unrecognized type" error path                                                           |
+| `driver/postgres` — `connector` (real `pgxpool` Connect/Close) + `New` wiring                                        | integration | No            | Requires a live (dockerized) Postgres; shares one container/DSN per test run, so not run in parallel with itself                           |
 
 **Rule of thumb for this repo:** anything that opens a real network connection is `integration`; anything else is `unit`.
 
@@ -24,7 +24,7 @@
 | Gate    | Command                                                                      | When to use                                                                            |
 | ------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
 | `quick` | `task gate-quick` → `go build ./... && go vet ./... && go test ./... -short` | Every task except the one that adds real Postgres I/O — fast, no Docker needed         |
-| `full`  | `task gate-full` → `task gate-quick && task test-integration`                | Tasks that touch `adapter/postgres`'s real connector; runs Postgres via Docker Compose |
+| `full`  | `task gate-full` → `task gate-quick && task test-integration`                | Tasks that touch `driver/postgres`'s real connector; runs Postgres via Docker Compose |
 
 **Taskfile.yml tasks:**
 
@@ -50,3 +50,5 @@ Integration tests live behind the `integration` build tag (`//go:build integrati
 | integration | No            | All integration tests in a milestone share one Postgres container/DSN — running them concurrently risks port/schema contention. Run integration-tagged tests sequentially within a single `go test -tags=integration ./...` invocation (Go itself parallelizes sub-tests only if a test opts into `t.Parallel()`, which we don't use here) |
 
 Tasks whose `Tests` field is `integration` MUST NOT be marked `[P]` relative to other integration tasks. Unit-only tasks may be marked `[P]` freely as long as they don't touch the same file.
+
+

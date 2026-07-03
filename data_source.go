@@ -64,3 +64,4 @@ func (ds *DataSource) Close() error {
 	ds.connected = false
 	return err
 }
+

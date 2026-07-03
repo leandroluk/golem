@@ -26,3 +26,4 @@ func New(configure func(*Options)) golem.Option {
 	configure(opts)
 	return golem.WithConnector(&connector{opts: opts})
 }
+

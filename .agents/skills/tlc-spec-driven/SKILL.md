@@ -214,3 +214,4 @@ Be conversational, not robotic. Don't interrupt workflow—add as a natural clos
 ## Code Analysis
 
 Use available tools with graceful degradation. See [code-analysis.md](references/code-analysis.md).
+

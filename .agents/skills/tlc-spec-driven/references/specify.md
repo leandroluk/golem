@@ -153,3 +153,4 @@ How we know the feature is successful:
 - **Edge cases matter** — What breaks? What's empty? What's huge?
 - **Out of Scope prevents creep** — If it's not here, it doesn't get built
 - **Confirm before Discuss** — User must approve spec before moving to discuss phase
+

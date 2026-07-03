@@ -62,3 +62,4 @@ func TestDefaultLogger_MethodsDoNotPanic(t *testing.T) {
 	l.Warn("no args", nil)
 	l.Error("no args", nil)
 }
+

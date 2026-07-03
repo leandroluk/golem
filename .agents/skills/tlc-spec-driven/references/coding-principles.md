@@ -54,3 +54,4 @@ Behavioral bias, not checklist. Read before every implementation.
 
 Ask: "Would senior engineer call this overcomplicated?"
 If yes → simplify before proceeding.
+

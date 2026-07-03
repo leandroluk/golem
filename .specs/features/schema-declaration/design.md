@@ -7,7 +7,7 @@
 
 ## Architecture Overview
 
-`entity.New[T]` builds a `var zero T`, hands `&zero` to the user's callback alongside a `*entity.Builder`. Every `Builder` method (`Col`, `PrimaryKey`, `ForeignKey`) receives a field pointer (`&t.SomeField`) and resolves it to the underlying struct field **by memory offset**, not by type or call order — this is what lets `gox/orm`-style APIs avoid struct tags. The resolved field name plus whatever else the method call carries (a `ColumnType`, "this is the PK", "this references entity X") gets stored in the `Entity[T]`'s internal metadata, later read by `repository.Get` via a small exported `Describe()` accessor (metadata is package-external-readable, construction is builder-only).
+`entity.New[T]` builds a `var zero T`, hands `&zero` to the user's callback alongside a `*entity.Table`. Every `Builder` method (`Col`, `PrimaryKey`, `ForeignKey`) receives a field pointer (`&t.SomeField`) and resolves it to the underlying struct field **by memory offset**, not by type or call order — this is what lets `gox/orm`-style APIs avoid struct tags. The resolved field name plus whatever else the method call carries (a `ColumnType`, "this is the PK", "this references entity X") gets stored in the `Entity[T]`'s internal metadata, later read by `repository.Get` via a small exported `Describe()` accessor (metadata is package-external-readable, construction is builder-only).
 
 ```mermaid
 graph TD
@@ -55,7 +55,7 @@ Correctness depends on `entity.New` passing the SAME `&zero` instance to both th
 
 ## Components
 
-### `entity.Entity[T]` + `entity.Builder` + `entity.New[T]`
+### `entity.Entity[T]` + `entity.Table` + `entity.New[T]`
 
 - **Location**: `entity/entity.go`, `entity/builder.go`
 - **Interfaces**:
@@ -63,13 +63,13 @@ Correctness depends on `entity.New` passing the SAME `&zero` instance to both th
   - `(*Builder) TableName(name string)`
   - `(*Builder) SchemaName(name string)` (stored but unused until an adapter needs it — Postgres in this pass always uses the connection's default schema; storing it now avoids a breaking change later)
   - `(*Builder) PrimaryKey(fieldPtrs ...any)`
-  - `(*Builder) Col(fieldPtr any, t golem.ColumnType) *column.Builder`
+  - `(*Builder) Col(fieldPtr any, t golem.ColumnType) *entity.Column`
   - `(*Builder) ForeignKey(fieldPtr any, target *Entity[J]) ` — two-arg only, no `relation.ForeignKeyOptions` (deferred)
   - `(*Entity[T]) Describe() EntityMeta` — read-side accessor for `repository`
-- **Dependencies**: `golem.ColumnType`, `column.Builder`
+- **Dependencies**: `golem.ColumnType`, `entity.Column`
 - **Reuses**: nothing pre-existing (new package)
 
-### `column.Builder`
+### `entity.Column`
 
 - **Location**: `column/builder.go`
 - **Interfaces**: `(*Builder) Name(name string) *Builder`
@@ -115,3 +115,5 @@ func (e *Entity[T]) Describe() EntityMeta { ... }
 | Column name default | `strings.ToLower(fieldName)`, no auto snake_case splitting | Trivial, unsurprising rule; compound names need an explicit `.Name(...)` anyway (same pattern already established for column renames) |
 | SQL identifier quoting | Always double-quote, using the exact stored name | Removes Postgres case-folding as a variable entirely — the stored string IS the wire identifier, always |
 | `EntityMeta` value type vs. exposing `Entity[T]` internals | Plain value struct returned by `Describe()` | Keeps `entity`/`repository` decoupled; `Entity[T]`'s internal representation can still evolve (Unique/Index/etc. later) without breaking `repository` |
+
+

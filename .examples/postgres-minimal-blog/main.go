@@ -15,7 +15,7 @@ import (
 	"os"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/adapter/postgres"
+	"github.com/leandroluk/golem/driver/postgres"
 	"github.com/leandroluk/golem/op"
 	"github.com/leandroluk/golem/query"
 	"github.com/leandroluk/golem/repository"
@@ -104,3 +104,4 @@ func main() {
 
 	fmt.Println("Done.")
 }
+

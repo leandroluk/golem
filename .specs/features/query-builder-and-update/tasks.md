@@ -46,16 +46,16 @@ Phase 4 (sequential): T7 (example: FindOne instead of FindByID + integration tes
 
 ### T4: `golem.Dialect` — remove `FindByID`, add `Select`/`Update` [P]
 
-**What**: Modify `dialect.go`: remove `FindByID` from the `Dialect` interface, add `Select(ctx, conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error)` and `Update(ctx, conn, table string, setColumns []string, setValues []driver.Value, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error)`. Patch every fake implementing `golem.Dialect` (`dialect_test.go`'s `fakeDialect`, and any other in-package fakes across `conn_test.go`/`connector_test.go`/`data_source_test.go` that reference `Dialect`) to match — remove their `FindByID` stub, add `Select`/`Update` stubs. Patch `adapter/postgres/dialect.go`'s real (non-test) `dialect` type similarly: remove its real `FindByID` (and `buildFindByIDSQL`) — a LATER task (T5) adds the real `Select`/`Update` bodies; for THIS task, minimal placeholder bodies are fine (`return nil, fmt.Errorf("postgres: Select not yet implemented")` etc.) so the module compiles.
-**Where**: `dialect.go`, `dialect_test.go`, and whichever other `_test.go` fakes reference `Dialect` (read them first), `adapter/postgres/dialect.go`
+**What**: Modify `dialect.go`: remove `FindByID` from the `Dialect` interface, add `Select(ctx, conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error)` and `Update(ctx, conn, table string, setColumns []string, setValues []driver.Value, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error)`. Patch every fake implementing `golem.Dialect` (`dialect_test.go`'s `fakeDialect`, and any other in-package fakes across `conn_test.go`/`connector_test.go`/`data_source_test.go` that reference `Dialect`) to match — remove their `FindByID` stub, add `Select`/`Update` stubs. Patch `driver/postgres/dialect.go`'s real (non-test) `dialect` type similarly: remove its real `FindByID` (and `buildFindByIDSQL`) — a LATER task (T5) adds the real `Select`/`Update` bodies; for THIS task, minimal placeholder bodies are fine (`return nil, fmt.Errorf("postgres: Select not yet implemented")` etc.) so the module compiles.
+**Where**: `dialect.go`, `dialect_test.go`, and whichever other `_test.go` fakes reference `Dialect` (read them first), `driver/postgres/dialect.go`
 **Depends on**: None
 **Tests**: unit — whole-repo gate must stay green after this change (existing tests, minus anything that specifically tested `FindByID`, which should be REMOVED, not left broken)
 **Gate**: quick
 
 ### T5: `postgres.dialect` real `Select`/`Update` [P]
 
-**What**: Replace T4's placeholder `Select`/`Update` bodies in `adapter/postgres/dialect.go` with real SQL generation + execution (see design.md's exact SQL shapes), using `d.pool.Query` + `pgx.CollectRows(rows, pgx.RowToMap)` (plural — 0+ rows, not `CollectOneRow`). Extract `buildSelectSQL`/`buildUpdateSQL` as pure, unit-testable helpers (same pattern as the existing `buildInsertSQL`).
-**Where**: `adapter/postgres/dialect.go` (modify)
+**What**: Replace T4's placeholder `Select`/`Update` bodies in `driver/postgres/dialect.go` with real SQL generation + execution (see design.md's exact SQL shapes), using `d.pool.Query` + `pgx.CollectRows(rows, pgx.RowToMap)` (plural — 0+ rows, not `CollectOneRow`). Extract `buildSelectSQL`/`buildUpdateSQL` as pure, unit-testable helpers (same pattern as the existing `buildInsertSQL`).
+**Where**: `driver/postgres/dialect.go` (modify)
 **Depends on**: T4
 **Tests**: unit for the SQL-building helpers (pure, no DB) — real execution proven in T7's integration test
 **Gate**: quick
@@ -75,3 +75,5 @@ Phase 4 (sequential): T7 (example: FindOne instead of FindByID + integration tes
 **Depends on**: T5, T6
 **Tests**: integration
 **Gate**: full (`make test-integration`)
+
+

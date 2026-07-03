@@ -7,3 +7,4 @@ type Connector interface {
 	Connect() (Dialect, error)
 	Close() error
 }
+

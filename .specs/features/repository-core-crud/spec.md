@@ -41,3 +41,5 @@ Same rationale as `schema-declaration/spec.md`: scoped to exactly what the drivi
 - [ ] `examples/postgres-minimal-blog/main.go` runs against a real (dockerized) Postgres: creates a user, two posts (one per... at least one) owned by that user, two categories, and junction rows linking posts to categories; reads at least one entity back via `FindByID` to prove the round-trip
 - [ ] `go test ./repository/...` unit tests pass (fake `Conn`/`Dialect`)
 - [ ] An integration test (behind the `integration` build tag, reusing `docker-compose.test.yml`) runs the same flow against real Postgres
+
+

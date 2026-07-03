@@ -38,3 +38,4 @@ Display context status in footer when >40k:
 
 **Target:** <40k tokens loaded (20% of window)
 **Reserve:** 160k+ tokens for work, reasoning, outputs
+

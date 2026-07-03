@@ -17,7 +17,7 @@
 
 - Language: Go 1.25
 - Module: `github.com/leandroluk/golem` (standalone repo — this project *is* the ORM, not a monorepo subpath; port of a design originally drafted as `gox/orm` inside the `gox` monorepo)
-- First adapter: `github.com/leandroluk/golem/adapter/postgres` (others — MySQL, MSSQL, Oracle — added later behind the same `golem.Dialect` contract, effort varies: MySQL/SQLite closer to ANSI SQL, MSSQL/Oracle diverge more)
+- First driver: `github.com/leandroluk/golem/driver/postgres` (others — MySQL, MSSQL, Oracle — added later behind the same `golem.Dialect` contract, effort varies: MySQL/SQLite closer to ANSI SQL, MSSQL/Oracle diverge more)
 
 **Key dependencies:** `github.com/jackc/pgx/v5` for the Postgres adapter; core package stays zero-dependency (each adapter is the only place a driver dependency is expected).
 
@@ -27,7 +27,7 @@
 
 - `DataSource` + connector setup (`golem.NewDataSource`, `postgres.New`, named data sources) and the `golem.Dialect` contract adapters implement for value bind/scan
 - Dialect-agnostic `golem.ColumnType` set (`golem.BIGINT()`, `golem.VARCHAR(n)`, `golem.UUID()`, `golem.JSON()`, etc.)
-- Entity/schema declaration (`entity.New` + `entity.Builder`: `Col`, `PrimaryKey`, `Unique`, `Index`, `ForeignKey`, `TableName`/`SchemaName`, `CreateDate`/`UpdateDate`/`DeleteDate`, `.Default`/`.DefaultFunc`)
+- Entity/schema declaration (`entity.New` + `entity.Table`: `Col`, `PrimaryKey`, `Unique`, `Index`, `ForeignKey`, `TableName`/`SchemaName`, `CreateDate`/`UpdateDate`/`DeleteDate`, `.Default`/`.DefaultFunc`)
 - Relations expressed as plain entities with `ForeignKey` (including many-to-many via an explicit junction entity — no dedicated relation type)
 - Fluent hooks (`entity.AddHook(Entity).BeforeCreate(...).AfterCreate(...)` etc., all `Before/After/OnConflict × Create/Update/Delete`)
 - `Repository[T]` CRUD: `Insert`/`InsertMany`, `SaveOne`/`SaveMany`, `UpdateOne`/`UpdateMany`, `Delete`/`Restore`, `FindByID`/`FindMany`/`FindOne`, `Count`/`Exists`
@@ -53,3 +53,5 @@
 ## Provenance
 
 This project's design (vision, milestones, all architectural decisions) was originally drafted at `gox/orm/.specs` as a subpath of the `gox` monorepo, then moved to implement standalone in this repo (`golem`) instead. `.specs/project/STATE.md` decisions AD-001 through AD-017 predate this repo but still apply; only import paths changed (`github.com/leandroluk/gox/orm` → `github.com/leandroluk/golem`, `orm.*` symbol references → `golem.*`).
+
+

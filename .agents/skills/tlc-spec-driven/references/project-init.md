@@ -69,3 +69,4 @@ Extract project vision via iterative Q&A (max 3-5 questions per message):
 - Vision clear in 1-2 sentences?
 - Goals have measurable outcomes?
 - Scope boundaries explicit?
+

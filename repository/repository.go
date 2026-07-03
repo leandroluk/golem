@@ -1,8 +1,8 @@
 // Package repository provides Repository[T], a thin CRUD layer bound to one
 // entity's metadata (entity.EntityMeta) and a golem.Conn. It builds no SQL
-// itself — that's the golem.Dialect's job (Insert/FindByID) — repository
-// only shuttles Go struct field values to/from the driver.Value/map[string]any
-// shapes Dialect deals in, via reflect.
+// itself — that's the golem.Dialect's job — repository only shuttles Go
+// struct field values to/from the driver.Value/map[string]any shapes Dialect
+// deals in, via reflect.
 package repository
 
 import (
@@ -10,9 +10,13 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/entity"
+	"github.com/leandroluk/golem/internal/stmt"
+	"github.com/leandroluk/golem/op"
+	"github.com/leandroluk/golem/query"
 )
 
 // Repository[T] is bound to one entity's metadata and a connection.
@@ -27,13 +31,191 @@ func Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T] {
 	return &Repository[T]{conn: conn, meta: e.Describe()}
 }
 
+// fieldToColumn builds a fieldName → columnName map from EntityMeta.
+func (r *Repository[T]) fieldToColumn() map[string]string {
+	m := make(map[string]string, len(r.meta.Columns))
+	for _, col := range r.meta.Columns {
+		m[col.FieldName] = col.Name
+	}
+	return m
+}
+
+// pkColumnSet returns a set of column names that form the primary key.
+func (r *Repository[T]) pkColumnSet() map[string]bool {
+	s := make(map[string]bool, len(r.meta.PrimaryKey))
+	for _, pk := range r.meta.PrimaryKey {
+		s[pk] = true
+	}
+	return s
+}
+
+// resolveFieldPtrAny resolves a field pointer to a field name using offset
+// arithmetic against a struct pointer.
+func resolveFieldPtrAny(base any, fieldPtr any) string {
+	baseVal := reflect.ValueOf(base)
+	if baseVal.Kind() == reflect.Pointer {
+		baseVal = baseVal.Elem()
+	}
+	if baseVal.Kind() != reflect.Struct {
+		return ""
+	}
+	baseAddr := baseVal.Addr().Pointer()
+	t := baseVal.Type()
+	fpAddr := reflect.ValueOf(fieldPtr).Pointer()
+	offset := fpAddr - baseAddr
+	for i := 0; i < t.NumField(); i++ {
+		if t.Field(i).Offset == offset {
+			return t.Field(i).Name
+		}
+	}
+	return ""
+}
+
+// translateCondition recursively maps an op.Condition to a stmt.Predicate AST node.
+func (r *Repository[T]) translateCondition(base any, fieldToColumn map[string]string, tableName string, cond op.Condition) (stmt.Predicate, error) {
+	if cond.Op == "or" {
+		preds := make([]stmt.Predicate, 0, len(cond.SubConditions))
+		for _, sub := range cond.SubConditions {
+			p, err := r.translateCondition(base, fieldToColumn, tableName, sub)
+			if err != nil {
+				return nil, err
+			}
+			if p != nil {
+				preds = append(preds, p)
+			}
+		}
+		if len(preds) == 0 {
+			return nil, nil
+		}
+		return stmt.Logical{Op: "or", Predicates: preds}, nil
+	}
+
+	if cond.Op == "not" {
+		if len(cond.SubConditions) == 0 {
+			return nil, nil
+		}
+		p, err := r.translateCondition(base, fieldToColumn, tableName, cond.SubConditions[0])
+		if err != nil {
+			return nil, err
+		}
+		if p == nil {
+			return nil, nil
+		}
+		return stmt.Not{Predicate: p}, nil
+	}
+
+	fieldName := resolveFieldPtrAny(base, cond.FieldPtr)
+	if fieldName == "" {
+		return nil, fmt.Errorf("repository: field pointer does not belong to entity struct")
+	}
+	colName, ok := fieldToColumn[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("repository: field %q is not mapped to any column", fieldName)
+	}
+
+	if tableName != "" {
+		colName = tableName + "." + colName
+	}
+
+	return stmt.Comparison{
+		Column: colName,
+		Op:     cond.Op,
+		Value:  cond.Value,
+	}, nil
+}
+
+// buildWherePredicate translates []op.Condition into a single combined stmt.Predicate (AND semantics).
+func (r *Repository[T]) buildWherePredicate(base any, fieldToColumn map[string]string, tableName string, conditions []op.Condition) (stmt.Predicate, error) {
+	if len(conditions) == 0 {
+		return nil, nil
+	}
+	preds := make([]stmt.Predicate, 0, len(conditions))
+	for _, c := range conditions {
+		p, err := r.translateCondition(base, fieldToColumn, tableName, c)
+		if err != nil {
+			return nil, err
+		}
+		if p != nil {
+			preds = append(preds, p)
+		}
+	}
+	if len(preds) == 0 {
+		return nil, nil
+	}
+	if len(preds) == 1 {
+		return preds[0], nil
+	}
+	return stmt.Logical{Op: "and", Predicates: preds}, nil
+}
+
+// applySoftDeleteFilter wraps a predicate with a soft-delete column check (IS NULL).
+func (r *Repository[T]) applySoftDeleteFilter(tableName string, deleteDateField string, qWithDeleted bool, where stmt.Predicate) stmt.Predicate {
+	if deleteDateField == "" || qWithDeleted {
+		return where
+	}
+	f2c := r.fieldToColumn()
+	colName, ok := f2c[deleteDateField]
+	if !ok {
+		return where
+	}
+
+	if tableName != "" {
+		colName = tableName + "." + colName
+	}
+
+	sdFilter := stmt.Comparison{
+		Column: colName,
+		Op:     "is_null",
+	}
+
+	if where == nil {
+		return sdFilter
+	}
+
+	if logical, ok := where.(stmt.Logical); ok && logical.Op == "and" {
+		logical.Predicates = append([]stmt.Predicate{sdFilter}, logical.Predicates...)
+		return logical
+	}
+
+	return stmt.Logical{
+		Op:         "and",
+		Predicates: []stmt.Predicate{sdFilter, where},
+	}
+}
+
+
+// scanRow builds a new T and writes each declared column's value from row
+// (keyed by column name) onto the corresponding struct field.
+func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
+	var result T
+	v := reflect.ValueOf(&result).Elem()
+
+	for _, col := range r.meta.Columns {
+		raw, ok := row[col.Name]
+		if !ok {
+			continue
+		}
+		field := v.FieldByName(col.FieldName)
+		if !field.IsValid() || !field.CanSet() {
+			continue
+		}
+		rawVal := reflect.ValueOf(raw)
+		if !rawVal.IsValid() {
+			continue
+		}
+		if rawVal.Type() == field.Type() {
+			field.Set(rawVal)
+		} else if rawVal.Type().ConvertibleTo(field.Type()) {
+			field.Set(rawVal.Convert(field.Type()))
+		} else {
+			return result, fmt.Errorf("repository: column %q (Go value %v, type %s) is not convertible to field %s (%s)", col.Name, raw, rawVal.Type(), col.FieldName, field.Type())
+		}
+	}
+	return result, nil
+}
+
 // Insert inserts one new T, returning it with every column (including any
-// DB-populated PK) filled from the RETURNING row. A column whose field holds
-// its Go zero value is omitted from the INSERT entirely, so a DB-side
-// default (e.g. a BIGSERIAL primary key, or any other column default) can
-// apply — callers that want to insert a literal zero value for a column
-// can't currently express that (out of scope for this pass: no builder API
-// exists yet to distinguish "unset" from "explicitly zero").
+// DB-populated PK) filled from the RETURNING row.
 func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	var zero T
 	v := reflect.ValueOf(i).Elem()
@@ -49,11 +231,16 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 		values = append(values, fieldVal.Interface())
 	}
 
-	row, err := r.conn.Dialect().Insert(ctx, r.conn, r.meta.TableName, columns, values)
+	insPlan := &stmt.Insert{
+		Table:   r.meta.TableName,
+		Columns: columns,
+		Values:  values,
+	}
+
+	row, err := r.conn.Dialect().Insert(ctx, r.conn, insPlan)
 	if err != nil {
 		return zero, fmt.Errorf("repository: insert: %w", err)
 	}
-
 	return r.scanRow(row)
 }
 
@@ -70,53 +257,537 @@ func (r *Repository[T]) InsertMany(ctx context.Context, items ...*T) ([]T, error
 	return results, nil
 }
 
-// FindByID fetches one T by its single-column primary key. Returns
-// golem.ErrNotFound when no row matches. Returns a plain descriptive error
-// (not ErrNotFound) if the entity has a composite primary key — that case is
-// out of scope for this pass.
-func (r *Repository[T]) FindByID(ctx context.Context, id any) (T, error) {
+// FindMany returns all rows that match the given criteria (AND semantics).
+// Without criteria it returns all rows in the table.
+func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *query.Query[T])) ([]T, error) {
 	var zero T
-	if len(r.meta.PrimaryKey) != 1 {
-		return zero, fmt.Errorf("repository: FindByID requires a single-column primary key, %s has %d", r.meta.TableName, len(r.meta.PrimaryKey))
+	q := query.New[T]()
+	for _, fn := range criteria {
+		fn(&zero, q)
 	}
 
-	row, found, err := r.conn.Dialect().FindByID(ctx, r.conn, r.meta.TableName, r.meta.PrimaryKey[0], id)
+	wherePred, err := r.buildWherePredicate(&zero, r.fieldToColumn(), r.meta.TableName, q.Conditions())
 	if err != nil {
-		return zero, fmt.Errorf("repository: find by id: %w", err)
+		return nil, err
 	}
-	if !found {
+	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, q.IsWithDeleted(), wherePred)
+
+	var cols []string
+	if len(q.SelectFields()) > 0 {
+		f2c := r.fieldToColumn()
+		cols = make([]string, 0, len(q.SelectFields()))
+		for _, fp := range q.SelectFields() {
+			fieldName := resolveFieldPtrAny(&zero, fp)
+			if col, ok := f2c[fieldName]; ok {
+				cols = append(cols, r.meta.TableName+"."+col)
+			}
+		}
+	} else if len(q.Joins()) > 0 {
+		// Project all parent columns explicitly to avoid clashes
+		cols = make([]string, len(r.meta.Columns))
+		for i, col := range r.meta.Columns {
+			cols[i] = r.meta.TableName + "." + col.Name
+		}
+	}
+
+	var orderBy []stmt.OrderElement
+	if len(q.OrderByFields()) > 0 {
+		f2c := r.fieldToColumn()
+		orderBy = make([]stmt.OrderElement, 0, len(q.OrderByFields()))
+		for _, ord := range q.OrderByFields() {
+			fieldName := resolveFieldPtrAny(&zero, ord.FieldPtr)
+			if col, ok := f2c[fieldName]; ok {
+				orderBy = append(orderBy, stmt.OrderElement{Column: r.meta.TableName + "." + col, Desc: ord.Desc})
+			}
+		}
+	}
+
+	var stmtJoins []stmt.Join
+	if len(q.Joins()) > 0 {
+		stmtJoins = make([]stmt.Join, 0, len(q.Joins()))
+		for _, jd := range q.Joins() {
+			ons := make([]stmt.OnCondition, 0, len(jd.OnFieldPairs))
+			for _, pair := range jd.OnFieldPairs {
+				var leftCol, rightCol string
+
+				leftNameParent := resolveFieldPtrAny(&zero, pair.LeftField)
+				if leftNameParent != "" {
+					leftCol = r.meta.TableName + "." + r.fieldToColumn()[leftNameParent]
+				} else {
+					leftNameJoined := resolveFieldPtrAny(jd.Zero, pair.LeftField)
+					if leftNameJoined != "" {
+						leftCol = jd.TableName + "." + jd.FieldToColumn[leftNameJoined]
+					} else {
+						return nil, fmt.Errorf("repository: join ON clause left field pointer not found in parent or joined entity")
+					}
+				}
+
+				rightNameParent := resolveFieldPtrAny(&zero, pair.RightField)
+				if rightNameParent != "" {
+					rightCol = r.meta.TableName + "." + r.fieldToColumn()[rightNameParent]
+				} else {
+					rightNameJoined := resolveFieldPtrAny(jd.Zero, pair.RightField)
+					if rightNameJoined != "" {
+						rightCol = jd.TableName + "." + jd.FieldToColumn[rightNameJoined]
+					} else {
+						return nil, fmt.Errorf("repository: join ON clause right field pointer not found in parent or joined entity")
+					}
+				}
+
+				ons = append(ons, stmt.OnCondition{LeftCol: leftCol, RightCol: rightCol})
+			}
+
+			var joinWhere stmt.Predicate
+			if len(jd.Conditions) > 0 {
+				joinWhere, err = r.buildWherePredicate(jd.Zero, jd.FieldToColumn, jd.TableName, jd.Conditions)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			if jd.DeleteDateField != "" && !jd.WithDeleted {
+				colName := jd.FieldToColumn[jd.DeleteDateField]
+				sdFilter := stmt.Comparison{
+					Column: jd.TableName + "." + colName,
+					Op:     "is_null",
+				}
+				if joinWhere == nil {
+					joinWhere = sdFilter
+				} else {
+					if logical, ok := joinWhere.(stmt.Logical); ok && logical.Op == "and" {
+						logical.Predicates = append([]stmt.Predicate{sdFilter}, logical.Predicates...)
+						joinWhere = logical
+					} else {
+						joinWhere = stmt.Logical{
+							Op:         "and",
+							Predicates: []stmt.Predicate{sdFilter, joinWhere},
+						}
+					}
+				}
+			}
+
+			stmtJoins = append(stmtJoins, stmt.Join{
+				Type:  jd.Type,
+				Table: jd.TableName,
+				On:    ons,
+				Where: joinWhere,
+			})
+		}
+	}
+
+	selPlan := &stmt.Select{
+		Table:   r.meta.TableName,
+		Columns: cols,
+		Where:   wherePred,
+		OrderBy: orderBy,
+		Limit:   q.GetLimit(),
+		Offset:  q.GetOffset(),
+		Joins:   stmtJoins,
+	}
+
+	sql, args, err := r.conn.Dialect().CompileSelect(selPlan)
+	if err != nil {
+		return nil, fmt.Errorf("repository: compile select: %w", err)
+	}
+
+	rows, err := r.conn.Dialect().Query(ctx, r.conn, sql, args)
+	if err != nil {
+		return nil, fmt.Errorf("repository: find many: %w", err)
+	}
+
+	results := make([]T, 0, len(rows))
+	for _, row := range rows {
+		item, err := r.scanRow(row)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, nil
+}
+
+// FindOne returns the first row that matches the given criteria. Returns
+// golem.ErrNotFound when no rows match.
+func (r *Repository[T]) FindOne(ctx context.Context, criteria ...func(*T, *query.Query[T])) (T, error) {
+	var zero T
+	results, err := r.FindMany(ctx, criteria...)
+	if err != nil {
+		return zero, err
+	}
+	if len(results) == 0 {
 		return zero, golem.ErrNotFound
 	}
-
-	return r.scanRow(row)
+	return results[0], nil
 }
 
-// scanRow builds a new T and, for each declared column, writes the matching
-// entry from row (keyed by column NAME) onto the field named by FieldName.
-func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
-	var result T
-	v := reflect.ValueOf(&result).Elem()
+// SaveOne re-persists an existing T: issues UPDATE WHERE <pk columns> SET
+// <all non-PK columns>, including zero values (unlike Insert).
+func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
+	var zero T
+	v := reflect.ValueOf(i).Elem()
+	pkSet := r.pkColumnSet()
+
+	setClauses := make([]stmt.UpdateClause, 0, len(r.meta.Columns))
+	var pkPreds []stmt.Predicate
 
 	for _, col := range r.meta.Columns {
-		raw, ok := row[col.Name]
-		if !ok {
-			continue // column not present in the returned row — leave field zero
-		}
-		field := v.FieldByName(col.FieldName)
-		if !field.IsValid() || !field.CanSet() {
-			continue
-		}
-		rawVal := reflect.ValueOf(raw)
-		if !rawVal.IsValid() {
-			continue // raw was nil
-		}
-		if rawVal.Type() == field.Type() {
-			field.Set(rawVal)
-		} else if rawVal.Type().ConvertibleTo(field.Type()) {
-			field.Set(rawVal.Convert(field.Type()))
+		fieldVal := v.FieldByName(col.FieldName)
+		if pkSet[col.Name] {
+			pkPreds = append(pkPreds, stmt.Comparison{
+				Column: col.Name,
+				Op:     "eq",
+				Value:  fieldVal.Interface(),
+			})
 		} else {
-			return result, fmt.Errorf("repository: column %q (Go value %v, type %s) is not convertible to field %s (%s)", col.Name, raw, rawVal.Type(), col.FieldName, field.Type())
+			setClauses = append(setClauses, stmt.UpdateClause{
+				Column: col.Name,
+				Value:  fieldVal.Interface(),
+			})
 		}
 	}
-	return result, nil
+
+	if len(pkPreds) == 0 {
+		return zero, fmt.Errorf("repository: cannot save entity without primary key")
+	}
+
+	var wherePred stmt.Predicate
+	if len(pkPreds) == 1 {
+		wherePred = pkPreds[0]
+	} else {
+		wherePred = stmt.Logical{Op: "and", Predicates: pkPreds}
+	}
+
+	updPlan := &stmt.Update{
+		Table: r.meta.TableName,
+		Sets:  setClauses,
+		Where: wherePred,
+	}
+
+	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
+	if err != nil {
+		return zero, fmt.Errorf("repository: save one: %w", err)
+	}
+	if len(rows) == 0 {
+		return zero, golem.ErrNotFound
+	}
+	return r.scanRow(rows[0])
 }
+
+// SaveMany re-persists multiple instances via sequential SaveOne calls.
+func (r *Repository[T]) SaveMany(ctx context.Context, items ...*T) ([]T, error) {
+	results := make([]T, 0, len(items))
+	for _, item := range items {
+		result, err := r.SaveOne(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+// UpdateOne applies WHERE + SET criteria and returns the single updated row.
+// Returns golem.ErrNotFound when no rows are affected.
+func (r *Repository[T]) UpdateOne(ctx context.Context, criteria func(*T, *query.Update[T])) (T, error) {
+	var zero T
+	u := query.NewUpdate[T]()
+	criteria(&zero, u)
+
+	wherePred, err := r.buildWherePredicate(&zero, r.fieldToColumn(), r.meta.TableName, u.Conditions())
+	if err != nil {
+		return zero, err
+	}
+	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, u.IsWithDeleted(), wherePred)
+
+	f2c := r.fieldToColumn()
+	setClauses := make([]stmt.UpdateClause, 0, len(u.Sets()))
+	for _, s := range u.Sets() {
+		fieldName := resolveFieldPtrAny(&zero, s.FieldPtr)
+		if colName, ok := f2c[fieldName]; ok {
+			setClauses = append(setClauses, stmt.UpdateClause{
+				Column: colName,
+				Value:  s.Value,
+			})
+		}
+	}
+
+	updPlan := &stmt.Update{
+		Table: r.meta.TableName,
+		Sets:  setClauses,
+		Where: wherePred,
+	}
+
+	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
+	if err != nil {
+		return zero, fmt.Errorf("repository: update one: %w", err)
+	}
+	if len(rows) == 0 {
+		return zero, golem.ErrNotFound
+	}
+	return r.scanRow(rows[0])
+}
+
+// UpdateMany applies WHERE + SET criteria and returns all affected rows.
+// Zero rows affected is not an error.
+func (r *Repository[T]) UpdateMany(ctx context.Context, criteria func(*T, *query.Update[T])) ([]T, error) {
+	var zero T
+	u := query.NewUpdate[T]()
+	criteria(&zero, u)
+
+	wherePred, err := r.buildWherePredicate(&zero, r.fieldToColumn(), r.meta.TableName, u.Conditions())
+	if err != nil {
+		return nil, err
+	}
+	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, u.IsWithDeleted(), wherePred)
+
+	f2c := r.fieldToColumn()
+	setClauses := make([]stmt.UpdateClause, 0, len(u.Sets()))
+	for _, s := range u.Sets() {
+		fieldName := resolveFieldPtrAny(&zero, s.FieldPtr)
+		if colName, ok := f2c[fieldName]; ok {
+			setClauses = append(setClauses, stmt.UpdateClause{
+				Column: colName,
+				Value:  s.Value,
+			})
+		}
+	}
+
+	updPlan := &stmt.Update{
+		Table: r.meta.TableName,
+		Sets:  setClauses,
+		Where: wherePred,
+	}
+
+	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
+	if err != nil {
+		return nil, fmt.Errorf("repository: update many: %w", err)
+	}
+
+	results := make([]T, 0, len(rows))
+	for _, row := range rows {
+		item, err := r.scanRow(row)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, nil
+}
+
+// Delete deletes the given items. If the entity has soft-delete enabled,
+// it performs a soft-delete (UPDATE setting the delete column to the current time);
+// otherwise it runs a hard DELETE.
+func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
+	if len(items) == 0 {
+		return nil
+	}
+	pkSet := r.pkColumnSet()
+	f2c := r.fieldToColumn()
+
+	for _, item := range items {
+		v := reflect.ValueOf(item).Elem()
+		var pkPreds []stmt.Predicate
+		for _, col := range r.meta.Columns {
+			if pkSet[col.Name] {
+				fieldVal := v.FieldByName(col.FieldName)
+				pkPreds = append(pkPreds, stmt.Comparison{
+					Column: col.Name,
+					Op:     "eq",
+					Value:  fieldVal.Interface(),
+				})
+			}
+		}
+		if len(pkPreds) == 0 {
+			return fmt.Errorf("repository: cannot delete entity without primary key")
+		}
+		var wherePred stmt.Predicate
+		if len(pkPreds) == 1 {
+			wherePred = pkPreds[0]
+		} else {
+			wherePred = stmt.Logical{Op: "and", Predicates: pkPreds}
+		}
+
+		if r.meta.DeleteDateField != "" {
+			colName, ok := f2c[r.meta.DeleteDateField]
+			if !ok {
+				return fmt.Errorf("repository: delete date field %q is not mapped to any column", r.meta.DeleteDateField)
+			}
+			updPlan := &stmt.Update{
+				Table: r.meta.TableName,
+				Sets: []stmt.UpdateClause{
+					{Column: colName, Value: time.Now()},
+				},
+				Where: wherePred,
+			}
+			_, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
+			if err != nil {
+				return fmt.Errorf("repository: delete: %w", err)
+			}
+		} else {
+			delPlan := &stmt.Delete{
+				Table: r.meta.TableName,
+				Where: wherePred,
+			}
+			sql, args, err := r.conn.Dialect().CompileDelete(delPlan)
+			if err != nil {
+				return fmt.Errorf("repository: compile delete: %w", err)
+			}
+			_, err = r.conn.Dialect().Exec(ctx, r.conn, sql, args)
+			if err != nil {
+				return fmt.Errorf("repository: delete: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+// Restore soft-restores (sets soft-delete column back to NULL) the given items.
+// Returns an error if soft-delete is not configured.
+func (r *Repository[T]) Restore(ctx context.Context, items ...*T) error {
+	if r.meta.DeleteDateField == "" {
+		return fmt.Errorf("repository: cannot restore entity %q without a soft-delete field", r.meta.TableName)
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	pkSet := r.pkColumnSet()
+	f2c := r.fieldToColumn()
+	colName, ok := f2c[r.meta.DeleteDateField]
+	if !ok {
+		return fmt.Errorf("repository: delete date field %q is not mapped to any column", r.meta.DeleteDateField)
+	}
+
+	for _, item := range items {
+		v := reflect.ValueOf(item).Elem()
+		var pkPreds []stmt.Predicate
+		for _, col := range r.meta.Columns {
+			if pkSet[col.Name] {
+				fieldVal := v.FieldByName(col.FieldName)
+				pkPreds = append(pkPreds, stmt.Comparison{
+					Column: col.Name,
+					Op:     "eq",
+					Value:  fieldVal.Interface(),
+				})
+			}
+		}
+		if len(pkPreds) == 0 {
+			return fmt.Errorf("repository: cannot restore entity without primary key")
+		}
+		var wherePred stmt.Predicate
+		if len(pkPreds) == 1 {
+			wherePred = pkPreds[0]
+		} else {
+			wherePred = stmt.Logical{Op: "and", Predicates: pkPreds}
+		}
+
+		updPlan := &stmt.Update{
+			Table: r.meta.TableName,
+			Sets: []stmt.UpdateClause{
+				{Column: colName, Value: nil},
+			},
+			Where: wherePred,
+		}
+		_, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
+		if err != nil {
+			return fmt.Errorf("repository: restore: %w", err)
+		}
+	}
+	return nil
+}
+
+// Count returns the number of entities matching the criteria.
+func (r *Repository[T]) Count(ctx context.Context, criteria ...func(*T, *query.Count[T])) (int64, error) {
+	var zero T
+	c := query.NewCount[T]()
+	for _, fn := range criteria {
+		fn(&zero, c)
+	}
+
+	wherePred, err := r.buildWherePredicate(&zero, r.fieldToColumn(), r.meta.TableName, c.Conditions())
+	if err != nil {
+		return 0, err
+	}
+	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, c.IsWithDeleted(), wherePred)
+
+	selPlan := &stmt.Select{
+		Table: r.meta.TableName,
+		Where: wherePred,
+		Count: true,
+	}
+
+	sql, args, err := r.conn.Dialect().CompileSelect(selPlan)
+	if err != nil {
+		return 0, fmt.Errorf("repository: compile count: %w", err)
+	}
+
+	rows, err := r.conn.Dialect().Query(ctx, r.conn, sql, args)
+	if err != nil {
+		return 0, fmt.Errorf("repository: count query: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return 0, nil
+	}
+
+	for _, v := range rows[0] {
+		switch val := v.(type) {
+		case int64:
+			return val, nil
+		case int32:
+			return int64(val), nil
+		case int:
+			return int64(val), nil
+		}
+	}
+	return 0, fmt.Errorf("repository: count: failed to parse result from row: %v", rows[0])
+}
+
+// Exists checks if any entity matches the criteria.
+func (r *Repository[T]) Exists(ctx context.Context, criteria ...func(*T, *query.Count[T])) (bool, error) {
+	var zero T
+	c := query.NewCount[T]()
+	for _, fn := range criteria {
+		fn(&zero, c)
+	}
+
+	wherePred, err := r.buildWherePredicate(&zero, r.fieldToColumn(), r.meta.TableName, c.Conditions())
+	if err != nil {
+		return false, err
+	}
+	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, c.IsWithDeleted(), wherePred)
+
+	limit := 1
+	selPlan := &stmt.Select{
+		Table: r.meta.TableName,
+		Where: wherePred,
+		Limit: &limit,
+		Count: true,
+	}
+
+	sql, args, err := r.conn.Dialect().CompileSelect(selPlan)
+	if err != nil {
+		return false, fmt.Errorf("repository: compile exists: %w", err)
+	}
+
+	rows, err := r.conn.Dialect().Query(ctx, r.conn, sql, args)
+	if err != nil {
+		return false, fmt.Errorf("repository: exists query: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return false, nil
+	}
+
+	for _, v := range rows[0] {
+		switch val := v.(type) {
+		case int64:
+			return val > 0, nil
+		case int32:
+			return val > 0, nil
+		case int:
+			return val > 0, nil
+		}
+	}
+	return false, nil
+}
+

@@ -14,7 +14,7 @@ import (
 const defaultTestDSN = "postgres://golem:golem@localhost:55432/golem_test?sslmode=disable"
 
 // testDSN returns the DSN to use for integration tests, honoring
-// GOLEM_TEST_DSN when set (matching the Makefile's test-integration target),
+// GOLEM_TEST_DSN when set (matching the Taskfile.yml's test-integration target),
 // falling back to the same default used there otherwise.
 func testDSN() string {
 	if dsn := os.Getenv("GOLEM_TEST_DSN"); dsn != "" {
@@ -167,3 +167,4 @@ func TestConnector_LoggingDisabled_SpyReceivesNoEntries(t *testing.T) {
 		t.Fatalf("expected spy logger to receive 0 entries when Logging is disabled, got %d", got)
 	}
 }
+

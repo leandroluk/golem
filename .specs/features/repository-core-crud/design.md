@@ -73,7 +73,7 @@ M10 will add `ErrDuplicateKey`/`ErrForeignKeyViolation` and SQLSTATE-based mappi
 
 ### Postgres `dialect` gains state + the two new methods (modifies M1's `dialect.go` stub and `connector.go`)
 
-- **Location**: `adapter/postgres/dialect.go` (modify), `adapter/postgres/connector.go` (modify: `Connect()` now returns `&dialect{pool: pool}` instead of the stateless `&dialect{}`)
+- **Location**: `driver/postgres/dialect.go` (modify), `driver/postgres/connector.go` (modify: `Connect()` now returns `&dialect{pool: pool}` instead of the stateless `&dialect{}`)
 - `Insert`: builds `INSERT INTO "table" ("col1","col2") VALUES ($1,$2) RETURNING *`, runs via `d.pool.Query(ctx, sql, values...)`, scans with `pgx.CollectOneRow(rows, pgx.RowToMap)`.
 - `FindByID`: builds `SELECT * FROM "table" WHERE "pkColumn" = $1`, runs via `d.pool.Query`, scans with `pgx.CollectOneRow`; on `pgx.ErrNoRows`, returns `(nil, false, nil)`.
 - `Bind`/`Scan` (existing M1 stub methods) stay as descriptive-error stubs — this pass's `Insert`/`FindByID` don't route individual values through `Bind`/`Scan` (they pass Go values straight to `pgx`, which already knows how to marshal `int64`/`string`/etc. natively; `Bind`/`Scan`'s real job — UUID/JSONB/exotic types — starts once `golem.ColumnType` grows those in a later M2 continuation). Noted as a scoped simplification, not a silent gap: `Bind`/`Scan` remain in the interface and still get exercised by their own M1 unit tests.
@@ -114,7 +114,7 @@ M10 will add `ErrDuplicateKey`/`ErrForeignKeyViolation` and SQLSTATE-based mappi
 
 - **New file**: `testdata/schema.sql` (repo root) — `CREATE TABLE` statements for all M2/M3 integration tests AND the example to share.
 - **`docker-compose.test.yml` modification**: add a volume mount `./testdata/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro` to the existing `postgres` service.
-- All column names in `schema.sql` are plain lowercase/snake_case (`owner_user_id`, etc.) — matching exactly what `entity.Builder`'s naming rules (schema-declaration/design.md) will generate, since SQL generation always double-quotes the stored name string verbatim.
+- All column names in `schema.sql` are plain lowercase/snake_case (`owner_user_id`, etc.) — matching exactly what `entity.Table`'s naming rules (schema-declaration/design.md) will generate, since SQL generation always double-quotes the stored name string verbatim.
 
 ---
 
@@ -128,3 +128,5 @@ M10 will add `ErrDuplicateKey`/`ErrForeignKeyViolation` and SQLSTATE-based mappi
 | Values passed to `pgx` without going through `Dialect.Bind` | Direct native Go values | `Bind`'s real job (UUID/JSONB/exotic types) isn't exercised by `BIGINT`/`VARCHAR`/`TEXT` — pgx already marshals these natively; wiring `Bind` through now would just call a stub that always errors |
 | `InsertMany` = N×`Insert` | No batched multi-row `INSERT` | Spec's own Out of Scope — optimize only when there's a real multi-row perf need |
 | Schema bootstrap via Docker `initdb.d`, not golem code | `testdata/schema.sql` | Matches AD-012 (migrations are always external to `golem`) — the example needs tables to exist, but golem itself must never be the thing that creates them |
+
+

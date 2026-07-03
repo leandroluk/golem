@@ -417,3 +417,4 @@ Every task MUST include:
 - Can task be verified without human judgment?
 - Is success criteria binary (pass/fail)?
 - Can verification be automated?
+

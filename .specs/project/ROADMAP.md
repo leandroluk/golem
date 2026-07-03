@@ -51,27 +51,27 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M2 - Schema Declaration
 
 **Goal:** Entities can be declared and their metadata (columns, keys, indexes) inspected — no persistence yet.
-**Target:** `entity.New[User](func(t *User, b *entity.Builder) {...})` builds valid metadata for all documented `entity.Builder` methods.
-**Status:** ✅ DONE — `entity.Builder` completo: `Col` (com `Nullable`/`Default`/`DefaultFunc`), `PrimaryKey`, `ForeignKey`, `TableName`/`SchemaName`, `Unique`, `Index` (com `*index.Builder`), `CreateDate`/`UpdateDate`/`DeleteDate`. `golem.ColumnType` completo: `BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`. Pacote `index` criado. `column.Builder` completo.
+**Target:** `entity.New[User](func(t *User, b *entity.Table) {...})` builds valid metadata for all documented `entity.Table` methods.
+**Status:** ✅ DONE — `entity.Table` completo: `Col` (com `Nullable`/`Default`/`DefaultFunc`), `PrimaryKey`, `ForeignKey`, `TableName`/`SchemaName`, `Unique`, `Index` (com `*entity.Index`), `CreateDate`/`UpdateDate`/`DeleteDate`. `golem.ColumnType` completo: `BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`. Pacote `index` criado. `entity.Column` completo.
 
 ### Features
 
-**`entity.Builder` (table scope)** - PARTIALLY DONE
+**`entity.Table` (table scope)** - PARTIALLY DONE
 
 - `TableName`, `SchemaName` (defaults: struct name, current connection schema) — DONE
 - `PrimaryKey(fieldPtrs ...any)` (composite-capable) — DONE
 - `Unique(fieldPtrs ...any)` (composite-capable, separate from `Col`) — DEFERRED (AD-021)
-- `Index(fieldPtrs ...any) *index.Builder` (`.Name`, `.Unique`) — DEFERRED (AD-021)
+- `Index(fieldPtrs ...any) *entity.Index` (`.Name`, `.Unique`) — DEFERRED (AD-021)
 
 **`golem.ColumnType` set** - PARTIALLY DONE
 
 - `golem.BIGINT()`, `golem.VARCHAR(length)`, `golem.TEXT()` — DONE
 - `golem.INT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()` — DEFERRED, not needed by the driving example yet
 
-**`entity.Builder` (column scope) + `column.Builder`** - PARTIALLY DONE
+**`entity.Table` (column scope) + `entity.Column`** - PARTIALLY DONE
 
-- `Col(fieldPtr any, type golem.ColumnType) *column.Builder` — DONE
-- `column.Builder`: `.Name` — DONE; `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))` — DEFERRED (AD-021)
+- `Col(fieldPtr any, type golem.ColumnType) *entity.Column` — DONE
+- `entity.Column`: `.Name` — DONE; `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))` — DEFERRED (AD-021)
 - `CreateDate`/`UpdateDate`/`DeleteDate` — DEFERRED (AD-021, no soft-delete filtering yet either)
 - `ForeignKey(fieldPtr any, target *entity.Entity[T])` two-arg form — DONE; `opts ...*relation.ForeignKeyOptions` full chain (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`) — DEFERRED (AD-021)
 
@@ -235,3 +235,5 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 - Pessimistic locking (`SELECT ... FOR UPDATE`)
 - Additional adapters beyond Postgres — MySQL/SQLite are moderate effort (closer to ANSI SQL); MSSQL/Oracle are higher effort (syntax diverges more, see AD-015 in STATE.md). Oracle specifically needs an identifier-length decision (historically 30 bytes pre-12.2, 128 from 12.2+) — validate/truncate at entity-registration time vs. let the driver error surface as-is, TBD when that adapter is actually built
 - Configurable transaction isolation level on `dataSource.Transaction` (v1 ships with driver/DB default only, see M8)
+
+

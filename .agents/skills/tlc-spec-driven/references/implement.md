@@ -282,3 +282,4 @@ Mark task complete in tasks.md. Update requirement traceability in spec.md if re
 - **Commit per task** — Clean git history enables bisect and rollback
 - **Never "while I'm here"** — Scope creep during implementation is the #1 quality killer
 - **Learn from mistakes** — If something goes wrong, add a Lesson Learned to STATE.md
+

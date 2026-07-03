@@ -127,3 +127,4 @@ When user suggests scope creep: "That sounds like a separate feature. I'll note 
 - **User = visionary, Agent = builder** — Ask about how they imagine it, not about technical implementation
 - **Don't ask about:** Technical architecture, performance, implementation details — that's Design's job
 - **Confirm before Design** — User approves context.md before moving to design phase
+

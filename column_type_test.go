@@ -18,3 +18,4 @@ func TestColumnType_ZeroValueHasEmptyKind(t *testing.T) {
 		t.Fatalf("expected zero-value ColumnType.kind == \"\", got %q", z.kind)
 	}
 }
+

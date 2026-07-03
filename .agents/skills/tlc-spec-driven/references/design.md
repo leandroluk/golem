@@ -164,3 +164,4 @@ interface AnotherModel {
 - **Small components** — If component does 3+ things, split it
 - **Check CONCERNS.md** — If it exists, flag fragile areas the design must address
 - **Confirm before Tasks** — User approves design before breaking into tasks
+

@@ -74,3 +74,4 @@ jobs:
           go-tag: stable
           codecov: "true"
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
+

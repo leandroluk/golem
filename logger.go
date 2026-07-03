@@ -66,3 +66,4 @@ func (defaultLogger) Error(msg string, args map[string]any) {
 func DefaultLogger() Logger {
 	return defaultLogger{}
 }
+

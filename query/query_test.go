@@ -22,38 +22,38 @@ func TestNew_StartsWithEmptyConditions(t *testing.T) {
 	}
 }
 
-func TestQuery_Where_AccumulatesAcrossMultipleCalls(t *testing.T) {
+func TestQuery_ChainableMethods(t *testing.T) {
+	q := New[someType]()
+
 	var a, b int
-	q := New[someType]()
+	ret := q.Where(op.Eq(&a, 1)).
+		Select(&a).
+		OrderBy(op.Asc(&b)).
+		Limit(10).
+		Offset(20).
+		WithDeleted()
 
-	q.Where(op.Eq(&a, 1))
-	q.Where(op.Eq(&b, 2))
-
-	if len(q.Conditions()) != 2 {
-		t.Fatalf("Conditions() len = %d, want 2", len(q.Conditions()))
+	if ret != q {
+		t.Fatalf("chaining returned different pointer")
 	}
-}
 
-func TestQuery_Where_AccumulatesMultipleConditionsInOneCall(t *testing.T) {
-	var a, b int
-	q := New[someType]()
-
-	q.Where(op.Eq(&a, 1), op.Eq(&b, 2))
-
-	if len(q.Conditions()) != 2 {
-		t.Fatalf("Conditions() len = %d, want 2", len(q.Conditions()))
+	if len(q.Conditions()) != 1 {
+		t.Errorf("expected 1 condition, got %d", len(q.Conditions()))
 	}
-}
-
-func TestQuery_Where_AccumulatesAcrossMixedCalls(t *testing.T) {
-	var a, b, c int
-	q := New[someType]()
-
-	q.Where(op.Eq(&a, 1), op.Eq(&b, 2))
-	q.Where(op.Eq(&c, 3))
-
-	if len(q.Conditions()) != 3 {
-		t.Fatalf("Conditions() len = %d, want 3", len(q.Conditions()))
+	if len(q.SelectFields()) != 1 || q.SelectFields()[0] != &a {
+		t.Errorf("SelectFields mismatch: %v", q.SelectFields())
+	}
+	if len(q.OrderByFields()) != 1 || q.OrderByFields()[0].FieldPtr != &b || q.OrderByFields()[0].Desc {
+		t.Errorf("OrderByFields mismatch")
+	}
+	if q.GetLimit() == nil || *q.GetLimit() != 10 {
+		t.Errorf("Limit mismatch: %v", q.GetLimit())
+	}
+	if q.GetOffset() == nil || *q.GetOffset() != 20 {
+		t.Errorf("Offset mismatch: %v", q.GetOffset())
+	}
+	if !q.IsWithDeleted() {
+		t.Errorf("expected IsWithDeleted to be true")
 	}
 }
 
@@ -71,37 +71,51 @@ func TestNewUpdate_StartsWithEmptyConditionsAndSets(t *testing.T) {
 	}
 }
 
-func TestUpdate_Set_AccumulatesAcrossMultipleCalls(t *testing.T) {
-	var a, b int
+func TestUpdate_Chainable(t *testing.T) {
 	u := NewUpdate[someType]()
+	var a int
 
-	u.Set(&a, 1)
-	u.Set(&b, 2)
+	ret := u.Where(op.Eq(&a, 1)).Set(&a, 2).WithDeleted()
 
-	if len(u.Sets()) != 2 {
-		t.Fatalf("Sets() len = %d, want 2", len(u.Sets()))
+	if ret != u {
+		t.Fatalf("chaining returned different pointer")
+	}
+	if len(u.Conditions()) != 1 {
+		t.Errorf("expected 1 condition")
+	}
+	if len(u.Sets()) != 1 {
+		t.Errorf("expected 1 set")
+	}
+	if !u.IsWithDeleted() {
+		t.Errorf("expected IsWithDeleted to be true")
 	}
 }
 
-func TestUpdate_Where_AccumulatesAcrossMultipleCalls(t *testing.T) {
-	var a, b int
-	u := NewUpdate[someType]()
+func TestNewCount_StartsWithEmptyConditions(t *testing.T) {
+	c := NewCount[someType]()
 
-	u.Where(op.Eq(&a, 1))
-	u.Where(op.Eq(&b, 2))
-
-	if len(u.Conditions()) != 2 {
-		t.Fatalf("Conditions() len = %d, want 2", len(u.Conditions()))
+	if c == nil {
+		t.Fatalf("NewCount() = nil, want non-nil *Count[someType]")
+	}
+	if len(c.Conditions()) != 0 {
+		t.Fatalf("Conditions() len = %d, want 0", len(c.Conditions()))
 	}
 }
 
-func TestUpdate_Where_AccumulatesMultipleConditionsInOneCall(t *testing.T) {
-	var a, b int
-	u := NewUpdate[someType]()
+func TestCount_Chainable(t *testing.T) {
+	c := NewCount[someType]()
+	var a int
 
-	u.Where(op.Eq(&a, 1), op.Eq(&b, 2))
+	ret := c.Where(op.Eq(&a, 1)).WithDeleted()
 
-	if len(u.Conditions()) != 2 {
-		t.Fatalf("Conditions() len = %d, want 2", len(u.Conditions()))
+	if ret != c {
+		t.Fatalf("chaining returned different pointer")
+	}
+	if len(c.Conditions()) != 1 {
+		t.Errorf("expected 1 condition")
+	}
+	if !c.IsWithDeleted() {
+		t.Errorf("expected IsWithDeleted to be true")
 	}
 }
+

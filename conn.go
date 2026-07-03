@@ -9,3 +9,4 @@ type Conn interface {
 	// given only a Conn value.
 	Dialect() Dialect
 }
+

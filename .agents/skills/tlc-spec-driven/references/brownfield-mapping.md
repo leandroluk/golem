@@ -453,3 +453,4 @@ See [concerns.md](concerns.md) for the full template, guidelines, and examples.
 **Combined:** ~19,000 tokens (10% of context window)
 **Acceptable for:** Brownfield projects requiring codebase understanding
 **Loading strategy:** Load relevant docs on-demand based on task
+

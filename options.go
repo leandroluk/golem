@@ -24,3 +24,4 @@ func DataSourceName(name string) Option {
 func WithConnector(c Connector) Option {
 	return func(cfg *dataSourceConfig) { cfg.connector = c }
 }
+

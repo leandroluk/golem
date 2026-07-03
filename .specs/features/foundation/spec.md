@@ -18,7 +18,7 @@ future milestones (repository, transactions) will depend on.
 
 | Feature | Reason |
 | --- | --- |
-| Entities, `entity.Builder`, the actual `golem.ColumnType` set (`BIGINT`, `VARCHAR`, ...) | M2 — M1 only needs the `golem.Dialect` interface to exist and be implemented, not the types that use it |
+| Entities, `entity.Table`, the actual `golem.ColumnType` set (`BIGINT`, `VARCHAR`, ...) | M2 — M1 only needs the `golem.Dialect` interface to exist and be implemented, not the types that use it |
 | `Repository[T]`, query building, hooks, transactions | M3-M8 |
 | Query-level logging (logging individual SQL statements) | No queries exist yet in M1; revisit once M3 (repository) introduces the first real SQL execution |
 | `golem.Tx` implementing `golem.Conn` | M8 — M1 only needs `golem.Conn` to exist as an interface and `*DataSource` to satisfy it |
@@ -161,3 +161,5 @@ future milestones (repository, transactions) will depend on.
 - [ ] `go build ./...` passes with `*golem.DataSource` satisfying `golem.Conn`
 - [ ] A custom `golem.Logger` can fully replace the default logger with no code changes outside `postgres.Options`
 - [ ] `go build ./...` passes with the Postgres adapter satisfying `golem.Dialect`, ready for M2 to define `golem.ColumnType` against it without touching M1 code
+
+

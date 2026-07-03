@@ -39,7 +39,7 @@ package main
 
 import (
   "github.com/leandroluk/golem"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 func main() {
@@ -66,7 +66,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 ## Implementation Status
 
 - [x] M1 - Foundation (`DataSource`, `golem.Conn`, `golem.Dialect`, Postgres adapter)
-- [x] M2 - Schema Declaration (`entity.Builder`, `golem.ColumnType`) — partial, scoped to `examples/postgres-minimal-blog`'s needs (see `.specs/project/STATE.md` AD-021)
+- [x] M2 - Schema Declaration (`entity.Table`, `golem.ColumnType`) — partial, scoped to `examples/postgres-minimal-blog`'s needs (see `.specs/project/STATE.md` AD-021)
 - [x] M3 - Repository Core CRUD — partial, same scoping (Insert/InsertMany/FindByID only)
 - [ ] M4 - Query Builder & Read Paths
 - [ ] M5 - Update/Count Builders
@@ -89,7 +89,7 @@ compiler — no reflection-by-tag magic, no codegen step.
 
 Multi-dialect ready from day one: entities and column types (`golem.ColumnType`) are dialect-agnostic,
 so adding Postgres/MySQL/MSSQL/Oracle later doesn't require rewriting entity declarations. Postgres is
-the first adapter (`github.com/leandroluk/golem/adapter/postgres`, via `jackc/pgx/v5`).
+the First driver (`github.com/leandroluk/golem/driver/postgres`, via `jackc/pgx/v5`).
 
 Migrations/schema synchronization are explicitly out of scope — entities describe runtime mapping, not
 a DDL source of truth. Use an external tool (Liquibase, Flyway, goose, etc.).
@@ -108,7 +108,7 @@ package ex
 
 import (
   "github.com/leandroluk/golem"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 func main() {
@@ -165,7 +165,7 @@ func main() {
 > Isso mantém a entity 100% portável entre dialetos — só o `DataSource`/adapter escolhido em runtime
 > decide o dialeto de verdade, a declaração da entity nunca muda.
 
-`entity.Builder` (recebido dentro do callback de `entity.New`) expõe:
+`entity.Table` (recebido dentro do callback de `entity.New`) expõe:
 
 escopo:
   tabela:
@@ -173,15 +173,15 @@ escopo:
     - `SchemaName(name string)`: schema da tabela; padrão = schema selecionado atualmente na conexão
     - `PrimaryKey(fieldPtrs ...any)`: chave primária; aceita 1+ campos (composta)
     - `Unique(fieldPtrs ...any)`: constraint `UNIQUE`; aceita 1+ campos (composta) — igual `PrimaryKey`/`ForeignKey`, fica fora do `Col` porque unicidade pode envolver mais de uma coluna
-    - `Index(fieldPtrs ...any) *index.Builder`: índice secundário sobre 1+ campos
+    - `Index(fieldPtrs ...any) *entity.Index`: índice secundário sobre 1+ campos
   coluna:
-    - `Col(fieldPtr any, type golem.ColumnType) *column.Builder`: mapeia um campo da struct pra uma coluna com tipo explícito
+    - `Col(fieldPtr any, type golem.ColumnType) *entity.Column`: mapeia um campo da struct pra uma coluna com tipo explícito
     - `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)`: chave estrangeira apontando pra PK de outra entity
-    - `CreateDate(fieldPtr any) *column.Builder`: marca o campo como "criado em"; preenchido sozinho com o timestamp do insert
-    - `UpdateDate(fieldPtr any) *column.Builder`: marca o campo como "atualizado em"; preenchido sozinho com o timestamp de cada update
-    - `DeleteDate(fieldPtr any) *column.Builder`: marca o campo como "soft delete em" (presença de valor = registro deletado); `Delete`/`Restore` do `Repository[T]` e todo critério com `Where` passam a filtrar deletados por padrão — ver `.WithDeleted()` na seção Query Builder
+    - `CreateDate(fieldPtr any) *entity.Column`: marca o campo como "criado em"; preenchido sozinho com o timestamp do insert
+    - `UpdateDate(fieldPtr any) *entity.Column`: marca o campo como "atualizado em"; preenchido sozinho com o timestamp de cada update
+    - `DeleteDate(fieldPtr any) *entity.Column`: marca o campo como "soft delete em" (presença de valor = registro deletado); `Delete`/`Restore` do `Repository[T]` e todo critério com `Where` passam a filtrar deletados por padrão — ver `.WithDeleted()` na seção Query Builder
 
-`*column.Builder` (retorno de `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) encadeia:
+`*entity.Column` (retorno de `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) encadeia:
 
 - `.Name(name string)`: nome da coluna; padrão = nome do campo na struct
 - `.Nullable()`: permite `NULL`
@@ -192,7 +192,7 @@ escopo:
   `UpdateDate` já preenchem o timestamp da operação sozinhos — sem precisar de um `.AutoNow()` à parte,
   já que não faz sentido marcar um campo como "data de criação" e não querer isso)
 
-`*index.Builder` (retorno de `Index`) encadeia:
+`*entity.Index` (retorno de `Index`) encadeia:
 
 - `.Name(name string)`: nome do índice; padrão = gerado (`idx_<tabela>_<colunas>`)
 - `.Unique()`: índice único
@@ -207,7 +207,7 @@ import (
   relation "github.com/leandroluk/golem/relation"
   entity "github.com/leandroluk/golem/entity"
   repository "github.com/leandroluk/golem/repository"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 type User struct {
@@ -241,7 +241,7 @@ type Message struct {
   PostID       int64
 }
 
-var UserEntity = entity.New[User](func(t *User, b *entity.Builder) {
+var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
   // nome da tabela; se omitido, usa o nome da struct (ex: "User")
   b.TableName("users")
   // schema da tabela; se omitido, usa o schema selecionado atualmente na conexão
@@ -270,7 +270,7 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Builder) {
 })
 
 
-var PostEntity = entity.New[Post](func(t *Post, b *entity.Builder) {
+var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.CreatedAt, golem.TIMESTAMPTZ())
   b.Col(&t.UpdatedAt, golem.TIMESTAMPTZ())
@@ -343,7 +343,7 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Builder) {
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
 })
 
-var MessageEntity = entity.New[Message](func(t *Message, b *entity.Builder) {
+var MessageEntity = entity.New[Message](func(t *Message, b *entity.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.CreatedAt, golem.TIMESTAMPTZ())
   b.Col(&t.UpdatedAt, golem.TIMESTAMPTZ())
@@ -431,7 +431,7 @@ import (
   "github.com/leandroluk/golem"
   entity "github.com/leandroluk/golem/entity"
   repository "github.com/leandroluk/golem/repository"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 type Category struct {
@@ -451,14 +451,14 @@ type QuestionToCategory struct {
   CategoryID int64
 }
 
-var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Builder) {
+var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.Name, golem.VARCHAR(50))
 
   b.PrimaryKey(&t.ID)
 })
 
-var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Builder) {
+var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.Title, golem.VARCHAR(50))
   b.Col(&t.Text, golem.TEXT())
@@ -468,7 +468,7 @@ var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Builder) {
 
 // como QuestionToCategory referencia QuestionEntity/CategoryEntity mas nenhuma delas referencia
 // QuestionToCategory de volta, não existe ciclo de inicialização — dá pra passar as entities direto
-var QuestionToCategoryEntity = entity.New[QuestionToCategory](func(t *QuestionToCategory, b *entity.Builder) {
+var QuestionToCategoryEntity = entity.New[QuestionToCategory](func(t *QuestionToCategory, b *entity.Table) {
   b.Col(&t.QuestionID, golem.BIGINT())
   b.Col(&t.CategoryID, golem.BIGINT())
 
@@ -551,7 +551,7 @@ import (
 
   "github.com/leandroluk/golem"
   repository "github.com/leandroluk/golem/repository"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 func main() {
@@ -573,7 +573,7 @@ func main() {
   users := repository.Get(dataSource, UserEntity)
 
   // Insert: sempre 1 entity nova, retorna com a PK preenchida
-  user, err := users.Insert(ctx, &User{Name: "Leandro", Email: "leandroluk@gmail.com", Age: 30})
+  user, err := users.Insert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
   if err != nil {
     panic(err)
   }
@@ -676,7 +676,7 @@ import (
   "github.com/leandroluk/golem"
   op "github.com/leandroluk/golem/op"
   query "github.com/leandroluk/golem/query"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
   repository "github.com/leandroluk/golem/repository"
 )
 
@@ -699,7 +699,7 @@ func main() {
   userRepo := repository.Get(dataSource, UserEntity)
 
   // Insert: sempre 1 entity nova, retorna com a PK preenchida
-  user, err := userRepo.Insert(ctx, &User{Name: "Leandro", Email: "leandroluk@gmail.com", Age: 30})
+  user, err := userRepo.Insert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
   if err != nil {
     panic(err)
   }
@@ -721,8 +721,8 @@ func main() {
   // UpdateOne: sem instância nenhuma — só Where+Set, atualiza direto no banco
   updated, err := userRepo.UpdateOne(ctx, func(t *User, u *query.Update[User]) {
     u.Where(op.Eq(&t.ID, user.ID))
-    u.Set(&t.Name, "Leandro")
-    u.Set(&t.Email, "leandroluk@gmail.com")
+    u.Set(&t.Name, "John Doe")
+    u.Set(&t.Email, "john.doe@email.com")
     u.Set(&t.Age, 30)
   })
   if err != nil {
@@ -750,8 +750,8 @@ func main() {
     q.Select(&t.Name, &t.Email, &t.Age)
     q.Where(
       // aqui tendo outras condições como op.Or, op.In, op.Like, etc — op.Not(op.In(...)) compõe negação, sem NotIn dedicado
-      op.Eq(&t.Name, "Leandro"),
-      op.Eq(&t.Email, "leandroluk@gmail.com"),
+      op.Eq(&t.Name, "John Doe"),
+      op.Eq(&t.Email, "john.doe@email.com"),
       op.Eq(&t.Age, 30),
     )
     q.OrderBy(op.Desc(&t.ID))
@@ -768,8 +768,8 @@ func main() {
     // se não for passado o q.Select sempre traz todas as colunas
     q.Where(
       // aqui tendo outras condições como op.Or, op.In, op.Like, etc — op.Not(op.In(...)) compõe negação, sem NotIn dedicado
-      op.Eq(&t.Name, "Leandro"),
-      op.Eq(&t.Email, "leandroluk@gmail.com"),
+      op.Eq(&t.Name, "John Doe"),
+      op.Eq(&t.Email, "john.doe@email.com"),
       op.Eq(&t.Age, 30),
     )
     // a ordem das declarações não importam, a query é construída quando a função se encerra
@@ -835,7 +835,7 @@ import (
   join "github.com/leandroluk/golem/join"
   query "github.com/leandroluk/golem/query"
   repository "github.com/leandroluk/golem/repository"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 func main() {
@@ -858,7 +858,7 @@ func main() {
       q1.On(&p.OwnerUserID, &u.ID)
       q1.Where(op.Eq(&p.Published, true))
     })
-    q0.Where(op.Eq(&u.Name, "Leandro"))
+    q0.Where(op.Eq(&u.Name, "John Doe"))
   })
   if err != nil {
     panic(err)
@@ -898,7 +898,7 @@ import (
 
   "github.com/leandroluk/golem"
   repository "github.com/leandroluk/golem/repository"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 func main() {
@@ -1015,7 +1015,7 @@ package ex
 
 import (
   "github.com/leandroluk/golem"
-  postgres "github.com/leandroluk/golem/adapter/postgres"
+  postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 type Logger struct {}
@@ -1058,3 +1058,5 @@ Thanks to all the people who contribute! [[Contribute](CONTRIBUTING.md)]
 
 ## License
 MIT License – see [LICENSE](LICENSE) file for details.
+
+

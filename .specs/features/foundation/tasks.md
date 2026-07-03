@@ -209,7 +209,7 @@ T6, T7, T8, T2 ──→ T9
 ### T7: `postgres.Options` + `resolveDSN` [P] — ✅ Complete
 
 **What**: `Options` struct (`DSN`, `Host`, `Port`, `User`, `Password`, `Database`, `SSLMode`, `Logging`, `Logger`) and `resolveDSN(o *Options) (string, error)` implementing the documented DSN/discrete-field precedence.
-**Where**: `adapter/postgres/postgres.go` (Options struct), `adapter/postgres/dsn.go` (resolveDSN)
+**Where**: `driver/postgres/postgres.go` (Options struct), `driver/postgres/dsn.go` (resolveDSN)
 **Depends on**: T2
 **Reuses**: `golem.Logger` (T2)
 **Requirement**: FOUND-06, FOUND-07, FOUND-08, FOUND-09 (adapter-level: neither DSN nor fields set → error), edge case (malformed DSN)
@@ -237,7 +237,7 @@ T6, T7, T8, T2 ──→ T9
 ### T8: `postgres.dialect` stub (implements `golem.Dialect`) [P] — ✅ Complete
 
 **What**: Minimal `dialect` type whose `Bind`/`Scan` return a descriptive "unrecognized column type" error for any input (no real `ColumnType` set exists until M2).
-**Where**: `adapter/postgres/dialect.go`
+**Where**: `driver/postgres/dialect.go`
 **Depends on**: T3, T5
 **Reuses**: `golem.Dialect`, `golem.ColumnType` (T3, T5)
 **Requirement**: FOUND-17, FOUND-19
@@ -262,7 +262,7 @@ T6, T7, T8, T2 ──→ T9
 ### T9: `postgres.connector` + `postgres.New` (real Postgres wiring) — ✅ Complete
 
 **What**: `connector` type implementing `golem.Connector` via `pgxpool` (resolves DSN via T7, opens the pool, runs a `SELECT 1` liveness check, wraps connect errors descriptively, logs lifecycle events through `Options.Logger`/default when `Options.Logging`); `New(configure func(*Options)) golem.Option` wiring it all through `golem.WithConnector`.
-**Where**: `adapter/postgres/connector.go`, `adapter/postgres/postgres.go` (`New` func)
+**Where**: `driver/postgres/connector.go`, `driver/postgres/postgres.go` (`New` func)
 **Depends on**: T6, T7, T8, T2
 **Reuses**: `golem.WithConnector`/`golem.DataSource` (T6), `resolveDSN`/`Options` (T7), `dialect` (T8), `golem.Logger` (T2)
 
@@ -364,9 +364,9 @@ T9 is deliberately NOT `[P]` — it's `integration`-tested (Parallel-Safe: No pe
 | T4: Conn                        | `golem` root package                | unit            | unit        | ✅ OK   |
 | T5: Dialect/Connector           | `golem` root package                | unit            | unit        | ✅ OK   |
 | T6: DataSource                  | `golem` root package                | unit            | unit        | ✅ OK   |
-| T7: postgres Options/resolveDSN | `adapter/postgres` (DSN resolution) | unit            | unit        | ✅ OK   |
-| T8: postgres dialect stub       | `adapter/postgres` (dialect stub)   | unit            | unit        | ✅ OK   |
-| T9: postgres connector/New      | `adapter/postgres` (real connector) | integration     | integration | ✅ OK   |
+| T7: postgres Options/resolveDSN | `driver/postgres` (DSN resolution) | unit            | unit        | ✅ OK   |
+| T8: postgres dialect stub       | `driver/postgres` (dialect stub)   | unit            | unit        | ✅ OK   |
+| T9: postgres connector/New      | `driver/postgres` (real connector) | integration     | integration | ✅ OK   |
 
 No task defers its required tests to "another task" — every task's `Done when` includes its own gate check.
 
@@ -375,3 +375,5 @@ No task defers its required tests to "another task" — every task's `Done when`
 ## Tools for Execution
 
 Every task above uses **NONE** for MCP and Skill — this is standard Go stdlib code (structs, interfaces, `net/url`, `pgxpool`, `testing`). No project MCP/skill adds value here (no framework-specific codegen, no external API to query). `context7` MCP will be used ad hoc only if `pgx/v5`/`pgxpool` API details need verification during T9 (already a documented dependency, not a new one).
+
+

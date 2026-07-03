@@ -9,7 +9,7 @@
 
 `op.Eq(fieldPtr, value)` produces an opaque `op.Condition` holding the raw field pointer + value — it does NOT resolve a column name itself (it has no access to entity metadata). Resolution happens later, inside `repository`, using the same offset-based field-pointer resolution `entity` already has (promoted to an exported `entity.ResolveField` so `query`/`repository` can reuse it instead of duplicating the reflection trick).
 
-`query.Query[T]`/`query.Update[T]` are built internally by `repository` (never directly by end users — matches the README's own pattern: users only ever receive one via a criteria callback). Each holds the same zero-value `*T` its owning `Repository[T]` already has, so it can resolve `Where`/`Set`'s field pointers the moment `FindMany`/`FindOne`/`UpdateOne`/`UpdateMany` builds SQL — no deferred-finalize dance needed here (unlike `entity.Builder`), because `Where`/`Set` conditions are consumed immediately after the criteria callback returns, not chained further.
+`query.Query[T]`/`query.Update[T]` are built internally by `repository` (never directly by end users — matches the README's own pattern: users only ever receive one via a criteria callback). Each holds the same zero-value `*T` its owning `Repository[T]` already has, so it can resolve `Where`/`Set`'s field pointers the moment `FindMany`/`FindOne`/`UpdateOne`/`UpdateMany` builds SQL — no deferred-finalize dance needed here (unlike `entity.Table`), because `Where`/`Set` conditions are consumed immediately after the criteria callback returns, not chained further.
 
 ```mermaid
 graph TD
@@ -94,7 +94,7 @@ func (u *Update[T]) Conditions() []op.Condition       { return u.conditions }
 func (u *Update[T]) Sets() []SetClause                { return u.sets }
 ```
 
-Note: `Query`/`Update` don't need the `zero *T` themselves — the field-pointer values captured inside `op.Condition`/`SetClause` are already resolved against whatever zero-value instance `repository` passed into the criteria callback (same pattern as `entity.Builder`: the callback's `t *T` parameter IS the zero value, so `&t.ID` inside the user's callback is already an address into it). `repository` just needs to keep using that SAME zero-value pointer both to invoke the callback and to later resolve every captured `FieldPtr` via `entity.ResolveField`.
+Note: `Query`/`Update` don't need the `zero *T` themselves — the field-pointer values captured inside `op.Condition`/`SetClause` are already resolved against whatever zero-value instance `repository` passed into the criteria callback (same pattern as `entity.Table`: the callback's `t *T` parameter IS the zero value, so `&t.ID` inside the user's callback is already an address into it). `repository` just needs to keep using that SAME zero-value pointer both to invoke the callback and to later resolve every captured `FieldPtr` via `entity.ResolveField`.
 
 ### `golem.Dialect` — remove `FindByID`, add `Select`/`Update`
 
@@ -129,8 +129,10 @@ Update(ctx context.Context, conn Conn, table string, setColumns []string, setVal
 | Decision | Choice | Rationale |
 | --- | --- | --- |
 | `op.Condition`/`query.Query`/`query.Update` don't resolve field pointers themselves | Resolution happens once, inside `repository`, via `entity.ResolveField` | Avoids duplicating the offset-reflection trick in 3 packages; `op`/`query` stay simple data carriers |
-| `entity.ResolveField` exported (was `resolveField`) | Promote, don't duplicate | DRY — same mechanism `entity.Builder` already uses |
+| `entity.ResolveField` exported (was `resolveField`) | Promote, don't duplicate | DRY — same mechanism `entity.Table` already uses |
 | `FindByID` removed entirely (not deprecated/kept alongside) | Clean removal from `Dialect`, `repository`, and the example | Explicit user direction — `FindOne(Where(op.Eq(pk, id)))` fully replaces it, keeping it around would be redundant surface (project's own stated constraint: justify every method against what already exists) |
 | `SaveOne` works for composite PK | No restriction (unlike the old single-column-only `FindByID`) | `SaveOne`'s WHERE is always built from `meta.PrimaryKey` (however many columns), not user-supplied — no ambiguity to restrict against |
 | `Select`/`Update` Dialect methods take flat `(columns, values)` pairs, ANDed | No predicate tree / AST | Same YAGNI reasoning as AD-020 — only `op.Eq` exists, so "AND of equalities" is the entire expressiveness needed; revisit when `Or`/`Gt`/etc. land |
 | Zero rows on `UpdateOne`/`SaveOne` | `golem.ErrNotFound` | Consistent with `FindOne`'s "nothing matched" signal — same sentinel, same meaning, no new error type needed |
+
+

@@ -1,7 +1,7 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M2 (Schema Declaration) 100% concluído: `entity.Builder` agora tem `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate`, `column.Builder` tem `Nullable`/`Default`/`DefaultFunc`, `golem.ColumnType` tem todos os construtores (`BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`), novo pacote `index`. M3 avançado: `FindMany`/`FindOne`/`SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany` implementados no repository. `FindByID` removido (AD-022) — substituído por `FindOne` + `op.Eq`. `go test ./...` 100% verde. Next: M4 (Query Builder) para ter `op` completo e desbloquear `Delete`/`Restore`/`Count`/`Exists` do M3.
+**Current Work:** M2 (Schema Declaration) 100% concluído: `entity.Table` agora tem `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate`, `entity.Column` tem `Nullable`/`Default`/`DefaultFunc`, `golem.ColumnType` tem todos os construtores (`BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`), novo pacote `index`. M3 avançado: `FindMany`/`FindOne`/`SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany` implementados no repository. `FindByID` removido (AD-022) — substituído por `FindOne` + `op.Eq`. `go test ./...` 100% verde. Next: M4 (Query Builder) para ter `op` completo e desbloquear `Delete`/`Restore`/`Count`/`Exists` do M3.
 
 ---
 
@@ -18,7 +18,7 @@
 
 **Decision:** Implementing M2 (Schema Declaration) and M3 (Repository Core CRUD) now, but only the subset `examples/postgres-minimal-blog` (User 1→N Post, Post N↔N Category via PostToCategory) actually exercises: `entity.New`/`Builder` (`TableName`/`SchemaName`/`PrimaryKey`/`Col`/`ForeignKey` two-arg form), `golem.BIGINT()`/`VARCHAR`/`TEXT`, `Repository[T].Insert`/`InsertMany`/`FindByID` (single-column PK only).
 **Reason:** User explicitly triggered M2/M3 implementation as a consequence of wanting this example built, not as a request to finish 100% of ROADMAP.md's M2/M3 feature lists in one pass.
-**Trade-off:** `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `column.Builder.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions`, `SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany`/`Delete`/`Restore`/`Count`/`Exists`/`FindMany`/`FindOne`, and composite-PK `FindByID` are all deferred — see Todos below.
+**Trade-off:** `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `entity.Column.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions`, `SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany`/`Delete`/`Restore`/`Count`/`Exists`/`FindMany`/`FindOne`, and composite-PK `FindByID` are all deferred — see Todos below.
 **Impact:** `.specs/features/schema-declaration/spec.md` and `.specs/features/repository-core-crud/spec.md` both document this scoping explicitly as a SPEC_DEVIATION from ROADMAP.md. ROADMAP.md's M2/M3 sections should be treated as "partially done" until a later continuation picks up the deferred items.
 
 ### AD-020: No `internal/stmt` AST yet — direct SQL building in `Dialect.Insert`/`FindByID` (2026-07-03)
@@ -40,11 +40,11 @@
 **Decision:** `docker-compose.test.yml`'s Postgres service binds to host port `55432` (container-internal port stays `5432`), not the default `5432`.
 **Reason:** Discovered during M1/T9 that the dev machine already runs an unrelated Postgres instance on host port 5432 (`postgres://postgres:postgres@localhost:5432/postgres`). Binding the test container to the same host port would either fail outright or, worse, silently interact with an unrelated database.
 **Trade-off:** `GOLEM_TEST_DSN`'s default (in `Taskfile.yml.yml`) and any local override must use `:55432`, not `:5432` — a minor deviation from the "just use the standard port" default, but avoids ever touching a database the test suite doesn't own.
-**Impact:** `Taskfile.yml.yml`'s `GOLEM_TEST_DSN` default and `adapter/postgres/connector_integration_test.go`'s fallback DSN both use `:55432`. Anyone running `task test-integration` on a machine where 5432 is free is unaffected either way.
+**Impact:** `Taskfile.yml.yml`'s `GOLEM_TEST_DSN` default and `driver/postgres/connector_integration_test.go`'s fallback DSN both use `:55432`. Anyone running `task test-integration` on a machine where 5432 is free is unaffected either way.
 
 ### AD-000: Implement standalone in `golem`, not inside `gox/orm` (2026-07-03)
 
-**Decision:** The design drafted at `gox/orm/.specs` (as a subpath of the `gox` monorepo) is implemented in the standalone `golem` repo instead. Root package import path becomes `github.com/leandroluk/golem` (the module root *is* the core ORM package — no `orm` subpackage). All `orm.*` symbol references in the design (`orm.NewDataSource`, `orm.Dialect`, `orm.Conn`, `orm.ColumnType`, ...) become `golem.*`. Subpackages keep their original names (`entity`, `query`, `op`, `join`, `repository`, `relation`, `adapter/postgres`), just rooted under `github.com/leandroluk/golem/...` instead of `github.com/leandroluk/gox/orm/...`.
+**Decision:** The design drafted at `gox/orm/.specs` (as a subpath of the `gox` monorepo) is implemented in the standalone `golem` repo instead. Root package import path becomes `github.com/leandroluk/golem` (the module root *is* the core ORM package — no `orm` subpackage). All `orm.*` symbol references in the design (`orm.NewDataSource`, `orm.Dialect`, `orm.Conn`, `orm.ColumnType`, ...) become `golem.*`. Subpackages keep their original names (`entity`, `query`, `op`, `join`, `repository`, `relation`, `driver/postgres`), just rooted under `github.com/leandroluk/golem/...` instead of `github.com/leandroluk/gox/orm/...`.
 **Reason:** User decided to build this as its own dedicated repo rather than as a `gox` monorepo member; `golem` already existed as an empty repo (README/LICENSE/CI scaffolding, `go.mod` with `pgx/v5` already vendored) intended for exactly this.
 **Trade-off:** None functionally — this is a pure rename/relocation. All AD-001 through AD-017 below (carried over from `gox/orm/.specs/project/STATE.md`) still apply as-is; only import paths and the `orm.` → `golem.` prefix changed.
 **Impact:** Every code example in README.md and every acceptance criterion in `.specs/features/*/spec.md` uses `golem.` instead of `orm.`. The Postgres driver dependency (`github.com/jackc/pgx/v5`) is already present in `go.mod`.
@@ -54,7 +54,7 @@
 **Decision:** Many-to-many relationships are modeled as a plain entity (the junction table) with two `ForeignKey`s — no dedicated relation type or `@JoinTable`-style API.
 **Reason:** A junction table is exactly what the database does under the hood; hiding it behind a parallel API (like TypeORM's `@JoinTable`/`@JoinColumn`) just adds a second way to describe the same thing.
 **Trade-off:** No automatic navigational collection (`question.Categories []Category` populated for free). Loading that becomes a query-level concern later (see Future Considerations in ROADMAP.md — `Preload`/`With`).
-**Impact:** `entity.Builder` never needs a `ManyToMany` method. `ForeignKey` covers every relation shape (one-to-one, one-to-many/many-to-one, and many-to-many via the junction entity).
+**Impact:** `entity.Table` never needs a `ManyToMany` method. `ForeignKey` covers every relation shape (one-to-one, one-to-many/many-to-one, and many-to-many via the junction entity).
 
 ### AD-002: Cyclic entity references resolved via thunk, not two-phase declaration (2026-07-02)
 
@@ -100,10 +100,10 @@
 
 ### AD-008: `Unique`/`Index` live on `Builder` (table scope), not chained on `Col` (2026-07-02)
 
-**Decision:** `b.Unique(&t.Email)` and `b.Index(&t.OwnerUserID)` are `entity.Builder` methods (like `PrimaryKey`), not `.Unique()`/`.Index()` chained off `Col(...)`.
+**Decision:** `b.Unique(&t.Email)` and `b.Index(&t.OwnerUserID)` are `entity.Table` methods (like `PrimaryKey`), not `.Unique()`/`.Index()` chained off `Col(...)`.
 **Reason:** Both can be composite (span more than one column), so they can't be scoped to a single `Col` call.
 **Trade-off:** None.
-**Impact:** `column.Builder` (the `Col` chain) only has single-column concerns: `.Name`, `.Nullable`, `.Default`, `.DefaultFunc`.
+**Impact:** `entity.Column` (the `Col` chain) only has single-column concerns: `.Name`, `.Nullable`, `.Default`, `.DefaultFunc`.
 
 ### AD-009: `CreateDate`/`UpdateDate` always auto-fill — no `.AutoNow()` toggle (2026-07-02)
 
@@ -117,7 +117,7 @@
 **Decision:** No separate generic `conector`/`connector` types package — `postgres.BIGINT()`, `postgres.VARCHAR(50)`, etc. live directly on the adapter.
 **Reason:** Early drafts referenced an undefined `conector.*` package inconsistently; consolidating on the adapter package removed the dangling import and the "which package has the types" ambiguity.
 **Trade-off:** Column type constructors aren't portable across dialects without a rewrite if a second adapter (MySQL, etc.) is added later — accepted, revisit only if/when a second adapter is actually built.
-**Impact:** Every entity example imports `postgres "github.com/leandroluk/golem/adapter/postgres"` for both connection options AND column types.
+**Impact:** Every entity example imports `postgres "github.com/leandroluk/golem/driver/postgres"` for both connection options AND column types.
 **Why superseded:** user decided upfront (before M2 shipped any code) to support multiple dialects (MySQL, MSSQL, Oracle) properly instead of waiting for "if/when a second adapter is actually built" — see AD-015.
 
 ### AD-011: `query.Count[T]`, `query.Join[T]`, `query.Update[T]` are distinct from `query.Query[T]` (2026-07-02)
@@ -153,7 +153,7 @@
 **Decision:** Column type constructors (`golem.BIGINT()`, `golem.VARCHAR(50)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()`, etc.) live in the core `golem` package, not on the adapter. Each adapter (`postgres`, and future `mysql`/`mssql`/`oracle`) implements a `golem.Dialect` interface (`Bind(t ColumnType, value any) (driver.Value, error)`, `Scan(t ColumnType, raw any, dest any) error`) that knows how to marshal/unmarshal each semantic type for that specific driver.
 **Reason:** User wants real multi-database support (MySQL, MSSQL, Oracle) to be architecturally possible from the start, not deferred until "a second adapter is actually built" (AD-010's original stance). Since `golem` never generates DDL (migrations are out of scope, AD-012), the column type was never really about schema — it's about telling the adapter how to bind/scan values for types `database/sql` can't infer alone (UUID, JSON/JSONB, arrays, ENUMs, etc.), and that lookup can be keyed by a dialect-agnostic semantic type just as well as a dialect-specific one.
 **Trade-off:** Adding a new adapter is still real work (SQL generation differs a lot per dialect — placeholders, pagination, upsert, `RETURNING` vs `OUTPUT` vs `RETURNING INTO`), but the type system itself and every entity declaration are portable across adapters without changes. MySQL/SQLite are "moderate effort" adapters (closer to ANSI SQL); MSSQL/Oracle are "high effort" (syntax diverges more).
-**Impact:** Every `Col(fieldPtr, type)` call in `entity.Builder` now takes `golem.ColumnType` instead of an adapter-specific type. All README examples updated (`postgres.BIGINT()` → `golem.BIGINT()`, etc. — the `postgres` import is still needed for `postgres.New`/`postgres.Options`, just not for column types anymore). A rejected alternative was a separate `golem/type` package — impossible, `type` is a Go reserved keyword and can't be a package name.
+**Impact:** Every `Col(fieldPtr, type)` call in `entity.Table` now takes `golem.ColumnType` instead of an adapter-specific type. All README examples updated (`postgres.BIGINT()` → `golem.BIGINT()`, etc. — the `postgres` import is still needed for `postgres.New`/`postgres.Options`, just not for column types anymore). A rejected alternative was a separate `golem/type` package — impossible, `type` is a Go reserved keyword and can't be a package name.
 
 **Considered follow-up (not yet decided):** exact initial `golem.ColumnType` set beyond what README examples use (`BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`) — grows on demand (YAGNI), needed before M2 implementation starts.
 
@@ -218,6 +218,8 @@ None.
 - [ ] Decide the exact panic message format for duplicate hook slot registration (AD-006) — needed before M7, not before M1
 - [ ] Design the initial `golem.ColumnType` set (which concrete types ship first: `BIGINT`, `VARCHAR`, `UUID`, `JSON`, ...) — needed before M2, not before M1. `golem.Dialect`'s interface shape itself is already decided (AD-015 + AD-016: `Bind`/`Scan`/`CompileSelect`/`CompileDelete`/`Insert`/`Update`)
 - [x] ~~Design the minimal `internal/stmt.{Select,Insert,Update,Delete}` field shapes for M1~~ — not a pre-requisite: M1 is Medium-sized (sizing already done), so exact Go struct fields for `stmt.*` are implementation detail resolved while writing M1's code, not something to spec upfront. The *shape rules* (table ref + composite-capable PK-equality `Where`) are already decided (AD-016) — that's enough to start coding
-- [x] ~~M2 continuation: `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `column.Builder.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions` chain~~ — DONE (2026-07-03): `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate` implementados; `column.Builder.Nullable`/`.Default`/`.DefaultFunc` implementados; `golem.ColumnType` completo. `ForeignKeyOptions` chain ainda deferred (sem uso até M7/hooks)
+- [x] ~~M2 continuation: `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `entity.Column.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions` chain~~ — DONE (2026-07-03): `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate` implementados; `entity.Column.Nullable`/`.Default`/`.DefaultFunc` implementados; `golem.ColumnType` completo. `ForeignKeyOptions` chain ainda deferred (sem uso até M7/hooks)
 - [ ] M3 continuation: `Delete`/`Restore` (depende de `DeleteDate` no soft-delete filter), `Count`/`Exists` (depende do `op` completo do M4) — `SaveOne`/`SaveMany`/`FindMany`/`FindOne`/`UpdateOne`/`UpdateMany` já feitos
 - [ ] Build `internal/stmt` AST for real once M4 (query builder) starts — AD-020's `Dialect.Insert` was a deliberate simple-case shortcut, not a replacement
+
+

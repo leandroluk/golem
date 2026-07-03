@@ -254,3 +254,4 @@ Update spec.md requirement statuses:
 - **Infer severity** — Never ask the user "how bad is this?"
 - **Max 3 diagnostic iterations** — Prevents infinite investigation loops
 - **Update traceability** — Every verified requirement updates spec.md status
+

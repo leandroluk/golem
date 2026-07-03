@@ -47,7 +47,7 @@ graph TD
 
 | Component | Location | How to Use |
 | --- | --- | --- |
-| `pgx/v5` | already in `go.mod` (`github.com/jackc/pgx/v5`) | Use `pgxpool` (add `github.com/jackc/pgx/v5/pgxpool` — same module, no new dependency root) for the connection pool inside `adapter/postgres` |
+| `pgx/v5` | already in `go.mod` (`github.com/jackc/pgx/v5`) | Use `pgxpool` (add `github.com/jackc/pgx/v5/pgxpool` — same module, no new dependency root) for the connection pool inside `driver/postgres` |
 
 Nothing else pre-exists in this repo (golem's own code was previously wiped per user context) — this is the first code written.
 
@@ -55,7 +55,7 @@ Nothing else pre-exists in this repo (golem's own code was previously wiped per 
 
 | System | Integration Method |
 | --- | --- |
-| Postgres | `adapter/postgres` connector opens a `pgxpool.Pool` from a DSN string; `SELECT 1` used as the independent-test smoke check |
+| Postgres | `driver/postgres` connector opens a `pgxpool.Pool` from a DSN string; `SELECT 1` used as the independent-test smoke check |
 
 ---
 
@@ -117,39 +117,39 @@ Nothing else pre-exists in this repo (golem's own code was previously wiped per 
 - **Dependencies**: none
 - **Reuses**: none
 
-### `adapter/postgres` — `Options` + `New`
+### `driver/postgres` — `Options` + `New`
 
 - **Purpose**: User-facing configuration entrypoint; builds a `golem.Option` wrapping a `Connector`.
-- **Location**: `adapter/postgres/postgres.go`
+- **Location**: `driver/postgres/postgres.go`
 - **Interfaces**:
   - `type Options struct { DSN string; Host string; Port int; User string; Password string; Database string; SSLMode string; Logging bool; Logger golem.Logger }`
   - `func New(configure func(*Options)) golem.Option`
 - **Dependencies**: `golem.WithConnector`, `golem.Logger`
 - **Reuses**: `golem.Option`/`golem.WithConnector` seam
 
-### `adapter/postgres` — DSN precedence resolution
+### `driver/postgres` — DSN precedence resolution
 
 - **Purpose**: Combine `DSN` + discrete fields into one final connection string, discrete fields winning per-field.
-- **Location**: `adapter/postgres/dsn.go`
+- **Location**: `driver/postgres/dsn.go`
 - **Interfaces**:
   - `func resolveDSN(o *Options) (string, error)` — parses `o.DSN` with `net/url` (Postgres DSNs are valid URLs), overrides `User`/`Host`/`Port`/path (db name)/`sslmode` query param only for fields that are non-zero in `o`; if `o.DSN == ""` and no discrete field set, returns an error; if `o.DSN == ""` but discrete fields are set, builds the DSN from scratch
 - **Dependencies**: `net/url`
 - **Reuses**: none
 
-### `adapter/postgres` — `connector` (implements `golem.Connector`)
+### `driver/postgres` — `connector` (implements `golem.Connector`)
 
 - **Purpose**: Own the `pgxpool.Pool` lifecycle; the thing `DataSource.Connect()`/`Close()` actually delegate to.
-- **Location**: `adapter/postgres/connector.go`
+- **Location**: `driver/postgres/connector.go`
 - **Interfaces**:
   - `(*connector) Connect() (golem.Dialect, error)` — resolves DSN, opens `pgxpool.New`, runs `SELECT 1` as a liveness check, wraps unreachable-host/bad-auth errors descriptively (never panics), logs via `Options.Logger`/default logger when `Options.Logging`
   - `(*connector) Close() error` — closes the pool; safe no-op if pool is nil
 - **Dependencies**: `github.com/jackc/pgx/v5/pgxpool`
 - **Reuses**: `resolveDSN`
 
-### `adapter/postgres` — `dialect` (implements `golem.Dialect`)
+### `driver/postgres` — `dialect` (implements `golem.Dialect`)
 
 - **Purpose**: M1 stub implementation — exists and compiles against the contract; `Bind`/`Scan` return a descriptive "unrecognized ColumnType" error for anything (no real `ColumnType` values exist to bind/scan until M2).
-- **Location**: `adapter/postgres/dialect.go`
+- **Location**: `driver/postgres/dialect.go`
 - **Interfaces**:
   - `(*dialect) Bind(t golem.ColumnType, value any) (driver.Value, error)`
   - `(*dialect) Scan(t golem.ColumnType, raw any, dest any) error`
@@ -225,3 +225,5 @@ type ColumnType struct {
 - Sealed `Conn` avoids speculative surface while still existing for M3/M8/M9 to build against.
 - `Connector`/`Dialect` split mirrors AD-016's later `Dialect` growth: `Connector` is lifecycle-only, `Dialect` is value/statement-only — clean separation before `Dialect` grows `CompileSelect`/`Insert`/etc. in M3+.
 - No new dependency introduced beyond what `go.mod` already has (`pgx/v5`).
+
+

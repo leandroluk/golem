@@ -191,3 +191,4 @@ func TestDataSource_Close_Idempotent(t *testing.T) {
 func TestDataSource_SatisfiesConn(t *testing.T) {
 	var _ Conn = (*DataSource)(nil)
 }
+

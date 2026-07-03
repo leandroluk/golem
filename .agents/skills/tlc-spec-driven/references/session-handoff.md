@@ -69,3 +69,4 @@
 - "Completed: [summary]"
 - "Next: [immediate action]"
 - "Continue with [specific step]?"
+

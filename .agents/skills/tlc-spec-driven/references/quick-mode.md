@@ -130,3 +130,4 @@ Quick tasks live separately from planned features:
 - **When in doubt, go full** — Better to over-plan than to ship broken code
 - **Quick tasks compound** — If you're doing 5+ quick tasks for the same area, it's a feature that needs planning
 - **Verify before marking done** — The whole point is quality, even for small tasks
+

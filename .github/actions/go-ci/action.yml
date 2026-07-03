@@ -133,3 +133,4 @@ runs:
         flags: ${{ inputs.os-tag }}-go${{ inputs.go-tag }}
         fail_ci_if_error: true
         token: ${{ inputs.codecov_token }}
+

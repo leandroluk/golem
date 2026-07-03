@@ -26,3 +26,4 @@ func TestFakeConnector_Close(t *testing.T) {
 		t.Fatalf("Close returned error: %v", err)
 	}
 }
+

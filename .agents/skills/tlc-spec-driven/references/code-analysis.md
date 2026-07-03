@@ -96,3 +96,4 @@ If ast-grep unavailable, display once per session:
 - Analyzing import/dependency patterns
 - Refactoring impact analysis
 - Code navigation in unfamiliar codebases
+

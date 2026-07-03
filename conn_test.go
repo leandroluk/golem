@@ -16,3 +16,4 @@ var _ Conn = (*fakeConn)(nil)
 func TestFakeConnImplementsConn(t *testing.T) {
 	_ = fakeConn{}
 }
+

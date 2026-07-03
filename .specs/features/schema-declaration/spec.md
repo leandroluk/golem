@@ -6,20 +6,20 @@
 
 ## Goals
 
-- [x] `entity.New[T](func(t *T, b *entity.Builder) {...})` builds a `*entity.Entity[T]` from field-pointer declarations (no struct tags)
-- [x] `entity.Builder.Col(fieldPtr any, t golem.ColumnType) *column.Builder` maps a struct field to a column
-- [x] `entity.Builder.PrimaryKey(fieldPtrs ...any)` declares a PK, single or composite
-- [x] `entity.Builder.ForeignKey(fieldPtr any, target *entity.Entity[J])` declares a FK (two-arg form only)
-- [x] `entity.Builder.TableName(name string)` / `SchemaName(name string)` override defaults
-- [x] `entity.Builder.Unique(fieldPtrs ...any)` declares a unique constraint (single or composite)
-- [x] `entity.Builder.Index(fieldPtrs ...any) *index.Builder` declares an index (with optional `.Name()`/`.Unique()`)
-- [x] `entity.Builder.CreateDate(fieldPtr any)` marks the create-timestamp field
-- [x] `entity.Builder.UpdateDate(fieldPtr any)` marks the update-timestamp field
-- [x] `entity.Builder.DeleteDate(fieldPtr any)` marks the soft-delete timestamp field
-- [x] `column.Builder.Name(name string)` overrides the column name
-- [x] `column.Builder.Nullable()` marks the column as nullable
-- [x] `column.Builder.Default(value any)` sets a literal default value
-- [x] `column.Builder.DefaultFunc(fn func() (any, error))` sets a computed default
+- [x] `entity.New[T](func(t *T, b *entity.Table) {...})` builds a `*entity.Entity[T]` from field-pointer declarations (no struct tags)
+- [x] `entity.Table.Col(fieldPtr any, t golem.ColumnType) *entity.Column` maps a struct field to a column
+- [x] `entity.Table.PrimaryKey(fieldPtrs ...any)` declares a PK, single or composite
+- [x] `entity.Table.ForeignKey(fieldPtr any, target *entity.Entity[J])` declares a FK (two-arg form only)
+- [x] `entity.Table.TableName(name string)` / `SchemaName(name string)` override defaults
+- [x] `entity.Table.Unique(fieldPtrs ...any)` declares a unique constraint (single or composite)
+- [x] `entity.Table.Index(fieldPtrs ...any) *entity.Index` declares an index (with optional `.Name()`/`.Unique()`)
+- [x] `entity.Table.CreateDate(fieldPtr any)` marks the create-timestamp field
+- [x] `entity.Table.UpdateDate(fieldPtr any)` marks the update-timestamp field
+- [x] `entity.Table.DeleteDate(fieldPtr any)` marks the soft-delete timestamp field
+- [x] `entity.Column.Name(name string)` overrides the column name
+- [x] `entity.Column.Nullable()` marks the column as nullable
+- [x] `entity.Column.Default(value any)` sets a literal default value
+- [x] `entity.Column.DefaultFunc(fn func() (any, error))` sets a computed default
 - [x] `golem.BIGINT()`, `golem.INT()`, `golem.VARCHAR(n)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()` — full ColumnType constructor set
 
 ## Acceptance Criteria
@@ -40,3 +40,5 @@
 
 - [x] `go test ./column/... ./entity/... ./index/... ./...` passes — all packages green
 - [x] Build clean: `go build ./...` — no errors
+
+

@@ -128,3 +128,4 @@ Track user-facing behavioral state in STATE.md:
 | User acknowledges/dismisses | Keep date (don't repeat) |
 
 This prevents repetitive suggestions while maintaining natural, helpful behavior.
+

@@ -130,3 +130,4 @@ func buildDSN(o *Options) string {
 
 	return u.String()
 }
+
