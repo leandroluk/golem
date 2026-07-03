@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M8 - Transactions
-**Status:** M1-M7 done, M8 planned
+**Current Milestone:** M9 - Raw SQL
+**Status:** M1-M8 done, M9 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -183,11 +183,11 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M8 - Transactions
 
 **Goal:** `dataSource.Transaction` provides a real `golem.Tx` that both `repository.Get` and hooks can use interchangeably with `*DataSource`.
-**Target:** The transactional many-to-many insert example in README commits/rolls back correctly.
+**Status:** ✅ DONE — see `.specs/features/transactions/` (spec, design, tasks all Verified)
 
 ### Features
 
-**`golem.Tx`** - PLANNED
+**`golem.Tx`** - DONE
 
 - `dataSource.Transaction(ctx, func(tx golem.Tx) error) error` — commits on nil, rolls back on error
 - `golem.Tx` implements `golem.Conn` (so `repository.Get(tx, Entity)` works identically to `repository.Get(dataSource, Entity)`)
