@@ -13,9 +13,8 @@ import (
 
 // dialect is the Postgres implementation of golem.Dialect. Bind/Scan have no
 // real ColumnType set to bind/scan yet (that's a future milestone) so those
-// calls return a descriptive error instead of panicking. Insert is real,
-// backed by the pool established by connector.Connect. Select/Update are
-// placeholders pending a later milestone's SQL-generation work.
+// calls return a descriptive error instead of panicking. Insert, Select, and
+// Update are real, backed by the pool established by connector.Connect.
 type dialect struct {
 	pool *pgxpool.Pool
 }
@@ -77,14 +76,93 @@ func (d *dialect) Insert(ctx context.Context, conn golem.Conn, table string, col
 	return row, nil
 }
 
-// Select is not yet implemented; a later milestone adds the real
-// SQL-generation body.
-func (d *dialect) Select(ctx context.Context, conn golem.Conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
-	return nil, fmt.Errorf("postgres: Select not yet implemented")
+// buildSelectSQL builds `SELECT * FROM "table"` and, when whereColumns is
+// non-empty, appends `WHERE "c1"=$1 AND "c2"=$2 ...` with double-quoted
+// identifiers and $N placeholders in column order.
+func buildSelectSQL(table string, whereColumns []string) string {
+	sql := fmt.Sprintf(`SELECT * FROM %s`, quoteIdent(table))
+	if len(whereColumns) == 0 {
+		return sql
+	}
+	whereClauses := make([]string, len(whereColumns))
+	for i, c := range whereColumns {
+		whereClauses[i] = fmt.Sprintf("%s=$%d", quoteIdent(c), i+1)
+	}
+	return sql + ` WHERE ` + strings.Join(whereClauses, " AND ")
 }
 
-// Update is not yet implemented; a later milestone adds the real
-// SQL-generation body.
+// buildUpdateSQL builds `UPDATE "table" SET "s1"=$1,"s2"=$2 WHERE "w1"=$3
+// AND "w2"=$4 ... RETURNING *` with double-quoted identifiers. SET
+// placeholders are numbered first, in setColumns order; WHERE placeholders
+// (when whereColumns is non-empty) continue the sequence from there.
+func buildUpdateSQL(table string, setColumns []string, whereColumns []string) string {
+	setClauses := make([]string, len(setColumns))
+	for i, c := range setColumns {
+		setClauses[i] = fmt.Sprintf("%s=$%d", quoteIdent(c), i+1)
+	}
+	sql := fmt.Sprintf(`UPDATE %s SET %s`, quoteIdent(table), strings.Join(setClauses, ","))
+	if len(whereColumns) > 0 {
+		whereClauses := make([]string, len(whereColumns))
+		for i, c := range whereColumns {
+			whereClauses[i] = fmt.Sprintf("%s=$%d", quoteIdent(c), len(setColumns)+i+1)
+		}
+		sql += ` WHERE ` + strings.Join(whereClauses, " AND ")
+	}
+	return sql + ` RETURNING *`
+}
+
+// Select executes a SELECT * (optionally filtered by a WHERE clause) against
+// d's own pool. Zero matching rows is a normal outcome: it returns an empty
+// slice and a nil error, not an error.
+//
+// TODO(M8): route through conn once golem.Tx exists; this pass's Postgres
+// dialect always uses its own d.pool directly, so conn is accepted (to
+// satisfy golem.Dialect) but otherwise unused.
+func (d *dialect) Select(ctx context.Context, conn golem.Conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
+	sql := buildSelectSQL(table, whereColumns)
+
+	args := make([]any, len(whereValues))
+	for i, v := range whereValues {
+		args[i] = v
+	}
+
+	rows, err := d.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: select: %w", err)
+	}
+	results, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: select: %w", err)
+	}
+	return results, nil
+}
+
+// Update executes an UPDATE ... RETURNING * against d's own pool. Zero
+// updated rows is a normal outcome: it returns an empty slice and a nil
+// error. Deciding whether zero rows constitutes a "not found" error is left
+// to the caller (repository), not this Dialect method.
+//
+// TODO(M8): route through conn once golem.Tx exists; this pass's Postgres
+// dialect always uses its own d.pool directly, so conn is accepted (to
+// satisfy golem.Dialect) but otherwise unused.
 func (d *dialect) Update(ctx context.Context, conn golem.Conn, table string, setColumns []string, setValues []driver.Value, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
-	return nil, fmt.Errorf("postgres: Update not yet implemented")
+	sql := buildUpdateSQL(table, setColumns, whereColumns)
+
+	args := make([]any, 0, len(setValues)+len(whereValues))
+	for _, v := range setValues {
+		args = append(args, v)
+	}
+	for _, v := range whereValues {
+		args = append(args, v)
+	}
+
+	rows, err := d.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: update: %w", err)
+	}
+	results, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: update: %w", err)
+	}
+	return results, nil
 }
