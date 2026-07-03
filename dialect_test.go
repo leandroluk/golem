@@ -15,8 +15,12 @@ func (fakeDialect) Insert(ctx context.Context, conn Conn, table string, columns 
 	return nil, nil
 }
 
-func (fakeDialect) FindByID(ctx context.Context, conn Conn, table string, pkColumn string, id driver.Value) (map[string]any, bool, error) {
-	return nil, false, nil
+func (fakeDialect) Select(ctx context.Context, conn Conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
+	return nil, nil
+}
+
+func (fakeDialect) Update(ctx context.Context, conn Conn, table string, setColumns []string, setValues []driver.Value, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
+	return nil, nil
 }
 
 var _ Dialect = (*fakeDialect)(nil)

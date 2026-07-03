@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql/driver"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -14,8 +13,9 @@ import (
 
 // dialect is the Postgres implementation of golem.Dialect. Bind/Scan have no
 // real ColumnType set to bind/scan yet (that's a future milestone) so those
-// calls return a descriptive error instead of panicking. Insert/FindByID are
-// real, backed by the pool established by connector.Connect.
+// calls return a descriptive error instead of panicking. Insert is real,
+// backed by the pool established by connector.Connect. Select/Update are
+// placeholders pending a later milestone's SQL-generation work.
 type dialect struct {
 	pool *pgxpool.Pool
 }
@@ -53,12 +53,6 @@ func buildInsertSQL(table string, columns []string) string {
 		quoteIdent(table), strings.Join(quotedCols, ","), strings.Join(placeholders, ","))
 }
 
-// buildFindByIDSQL builds `SELECT * FROM "table" WHERE "pkColumn" = $1` with
-// double-quoted identifiers.
-func buildFindByIDSQL(table string, pkColumn string) string {
-	return fmt.Sprintf(`SELECT * FROM %s WHERE %s = $1`, quoteIdent(table), quoteIdent(pkColumn))
-}
-
 // Insert executes an INSERT ... RETURNING * against d's own pool.
 //
 // TODO(M8): route through conn once golem.Tx exists; this pass's Postgres
@@ -83,21 +77,14 @@ func (d *dialect) Insert(ctx context.Context, conn golem.Conn, table string, col
 	return row, nil
 }
 
-// FindByID fetches one row by a single-column primary key from d's own pool.
-// A no-rows result is a normal outcome (found=false, err=nil), not an error.
-func (d *dialect) FindByID(ctx context.Context, conn golem.Conn, table string, pkColumn string, id driver.Value) (map[string]any, bool, error) {
-	sql := buildFindByIDSQL(table, pkColumn)
+// Select is not yet implemented; a later milestone adds the real
+// SQL-generation body.
+func (d *dialect) Select(ctx context.Context, conn golem.Conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
+	return nil, fmt.Errorf("postgres: Select not yet implemented")
+}
 
-	rows, err := d.pool.Query(ctx, sql, id)
-	if err != nil {
-		return nil, false, fmt.Errorf("postgres: find by id: %w", err)
-	}
-	row, err := pgx.CollectOneRow(rows, pgx.RowToMap)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, false, nil
-		}
-		return nil, false, fmt.Errorf("postgres: find by id: %w", err)
-	}
-	return row, true, nil
+// Update is not yet implemented; a later milestone adds the real
+// SQL-generation body.
+func (d *dialect) Update(ctx context.Context, conn golem.Conn, table string, setColumns []string, setValues []driver.Value, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error) {
+	return nil, fmt.Errorf("postgres: Update not yet implemented")
 }

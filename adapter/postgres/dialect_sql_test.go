@@ -19,12 +19,3 @@ func TestBuildInsertSQL_SingleColumn(t *testing.T) {
 		t.Fatalf("buildInsertSQL() = %q, want %q", got, want)
 	}
 }
-
-func TestBuildFindByIDSQL_QuotesIdentifiers(t *testing.T) {
-	got := buildFindByIDSQL("users", "id")
-	want := `SELECT * FROM "users" WHERE "id" = $1`
-
-	if got != want {
-		t.Fatalf("buildFindByIDSQL() = %q, want %q", got, want)
-	}
-}

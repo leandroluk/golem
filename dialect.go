@@ -19,7 +19,11 @@ type Dialect interface {
 	// implementation may use its own stored connection/pool instead).
 	Insert(ctx context.Context, conn Conn, table string, columns []string, values []driver.Value) (map[string]any, error)
 
-	// FindByID fetches one row by a single-column primary key. found is
-	// false (with a nil error) when no row matches.
-	FindByID(ctx context.Context, conn Conn, table string, pkColumn string, id driver.Value) (map[string]any, bool, error)
+	// Select returns every row matching the AND-ed column=value pairs.
+	// Empty whereColumns/whereValues means no filter (all rows).
+	Select(ctx context.Context, conn Conn, table string, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error)
+
+	// Update runs UPDATE ... SET ... WHERE ... RETURNING *, returning
+	// every updated row (0+).
+	Update(ctx context.Context, conn Conn, table string, setColumns []string, setValues []driver.Value, whereColumns []string, whereValues []driver.Value) ([]map[string]any, error)
 }
