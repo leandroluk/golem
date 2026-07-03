@@ -547,6 +547,23 @@ func (d *dialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []
 	return ct.RowsAffected(), nil
 }
 
+// ExecRaw executes a raw SQL statement, returning the list of returned rows (if any) and rows affected count.
+func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, int64, error) {
+	executor := d.getExecutor(conn)
+	rows, err := executor.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	results, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return results, rows.CommandTag().RowsAffected(), nil
+}
+
 // IsConflict returns true if the error represents a database integrity constraint violation.
 func (d *dialect) IsConflict(err error) bool {
 	if err == nil {

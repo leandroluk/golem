@@ -37,6 +37,9 @@ type Dialect interface {
 	// IsConflict returns true if the error represents a database integrity constraint violation.
 	IsConflict(err error) bool
 
+	// ExecRaw executes a raw SQL statement, returning the list of returned rows (if any) and rows affected count.
+	ExecRaw(ctx context.Context, conn Conn, sql string, args []any) ([]map[string]any, int64, error)
+
 	// Begin starts a new transaction on the database.
 	Begin(ctx context.Context, conn Conn) (TxConn, error)
 }

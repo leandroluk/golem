@@ -854,3 +854,24 @@ func (r *Repository[T]) Exists(ctx context.Context, criteria ...func(*T, *query.
 	return false, nil
 }
 
+// Exec executes a raw SQL query and maps the returned rows to a slice of T.
+func (r *Repository[T]) Exec(ctx context.Context, sql string, args ...any) ([]T, error) {
+	res, err := r.conn.Exec(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	var results []T
+	for res.Next() {
+		row, err := res.Scan()
+		if err != nil {
+			return nil, err
+		}
+		item, err := r.scanRow(row)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, nil
+}
+

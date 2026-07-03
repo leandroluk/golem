@@ -97,3 +97,16 @@ func (ds *DataSource) Transaction(ctx context.Context, fn func(tx Tx) error) err
 	return tx.Commit(ctx)
 }
 
+// Exec executes a raw SQL statement on the data source.
+func (ds *DataSource) Exec(ctx context.Context, sql string, args ...any) (Result, error) {
+	dialect := ds.Dialect()
+	if dialect == nil {
+		return nil, fmt.Errorf("golem: cannot execute query on disconnected data source")
+	}
+	rows, affected, err := dialect.ExecRaw(ctx, ds, sql, args)
+	if err != nil {
+		return nil, err
+	}
+	return &rawResult{rows: rows, rowsAffected: affected, currentIndex: -1}, nil
+}
+

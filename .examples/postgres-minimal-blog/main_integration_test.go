@@ -339,5 +339,69 @@ func TestBlogExample_Transactions(t *testing.T) {
 	})
 }
 
+func TestBlogExample_RawExec(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+
+	// 1. exec update RETURNING *
+	userRepo := repository.Get(dataSource, UserEntity)
+	u, err := userRepo.Insert(ctx, &User{
+		Name:  "Raw Exec User",
+		Email: "raw.exec@email.com",
+	})
+	if err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	result, err := dataSource.Exec(ctx, "UPDATE users SET name = $1 WHERE id = $2 RETURNING *", "Raw Exec User Updated", u.ID)
+	if err != nil {
+		t.Fatalf("DataSource.Exec: %v", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("RowsAffected: %v", err)
+	}
+	if affected != 1 {
+		t.Errorf("expected 1 row affected, got %d", affected)
+	}
+
+	var scannedNames []string
+	for result.Next() {
+		row, err := result.Scan()
+		if err != nil {
+			t.Fatalf("Scan: %v", err)
+		}
+		scannedNames = append(scannedNames, row["name"].(string))
+	}
+
+	if len(scannedNames) != 1 || scannedNames[0] != "Raw Exec User Updated" {
+		t.Errorf("unexpected scanned rows: %v", scannedNames)
+	}
+
+	// 2. Repository.Exec SELECT
+	users, err := userRepo.Exec(ctx, "SELECT * FROM users WHERE email = $1", "raw.exec@email.com")
+	if err != nil {
+		t.Fatalf("Repository.Exec: %v", err)
+	}
+
+	if len(users) != 1 || users[0].Name != "Raw Exec User Updated" {
+		t.Errorf("unexpected mapped users: %+v", users)
+	}
+}
+
 
 

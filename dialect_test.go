@@ -41,6 +41,10 @@ func (fakeDialect) IsConflict(err error) bool {
 	return false
 }
 
+func (fakeDialect) ExecRaw(ctx context.Context, conn Conn, sql string, args []any) ([]map[string]any, int64, error) {
+	return nil, 0, nil
+}
+
 type fakeTx struct{}
 
 func (fakeTx) Commit(ctx context.Context) error {

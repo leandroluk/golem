@@ -146,6 +146,11 @@ func (d *fakeDialect) IsConflict(err error) bool {
 	return strings.Contains(err.Error(), "conflict")
 }
 
+func (d *fakeDialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, int64, error) {
+	d.execCalls = append(d.execCalls, execCall{sql: sql, args: args})
+	return d.selectResult, int64(len(d.selectResult)), nil
+}
+
 type fakeTx struct {
 	committed  bool
 	rolledBack bool
@@ -984,6 +989,70 @@ func TestDataSource_Transaction_RollbackOnPanic(t *testing.T) {
 		panic("panic_msg")
 	})
 }
+
+func TestDataSource_Exec_RawExecution(t *testing.T) {
+	d := &fakeDialect{}
+	d.selectResult = []map[string]any{
+		{"id": int64(1), "name": "Alice"},
+		{"id": int64(2), "name": "Bob"},
+	}
+	connector := &anyDialectConnector{dialect: d}
+	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	if err != nil {
+		t.Fatalf("NewDataSource: %v", err)
+	}
+	_ = ds.Connect()
+
+	res, err := ds.Exec(context.Background(), "SELECT * FROM users WHERE active = $1", true)
+	if err != nil {
+		t.Fatalf("Exec failed: %v", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		t.Fatalf("RowsAffected failed: %v", err)
+	}
+	if affected != 2 {
+		t.Errorf("RowsAffected = %d, want 2", affected)
+	}
+
+	var names []string
+	for res.Next() {
+		row, err := res.Scan()
+		if err != nil {
+			t.Fatalf("Scan failed: %v", err)
+		}
+		names = append(names, row["name"].(string))
+	}
+
+	if len(names) != 2 || names[0] != "Alice" || names[1] != "Bob" {
+		t.Errorf("unexpected rows scanned: %v", names)
+	}
+}
+
+func TestRepository_Exec_RawExecution(t *testing.T) {
+	d := &fakeDialect{}
+	d.selectResult = []map[string]any{
+		{"id": int64(10), "name": "Subject A"},
+	}
+	connector := &anyDialectConnector{dialect: d}
+	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	if err != nil {
+		t.Fatalf("NewDataSource: %v", err)
+	}
+	_ = ds.Connect()
+
+	repo := Get(ds, testSubjectEntity)
+	users, err := repo.Exec(context.Background(), "SELECT * FROM testsubject WHERE id = $1", 10)
+	if err != nil {
+		t.Fatalf("Exec failed: %v", err)
+	}
+
+	if len(users) != 1 || users[0].ID != 10 || users[0].Name != "Subject A" {
+		t.Errorf("unexpected mapped users: %+v", users)
+	}
+}
+
 
 
 
