@@ -1,0 +1,236 @@
+# Roadmap
+
+**Current Milestone:** M1 - Foundation
+**Status:** Planning
+
+Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
+testable on its own, in dependency order (later milestones assume earlier ones work).
+
+---
+
+## M1 - Foundation
+
+**Goal:** A `DataSource` can be created, connected, and closed against Postgres. No entities yet.
+**Target:** `golem.NewDataSource(...)` + `postgres.New(...)` compiles and connects to a real Postgres instance.
+
+### Features
+
+**`golem.Conn` + `DataSource`** - PLANNED
+
+- `golem.NewDataSource(options...)`, `golem.DataSourceName(name)`
+- `DataSource.Connect()` / `.Close()`
+- `golem.Conn` interface (implemented later by both `*DataSource` and `golem.Tx`)
+- `golem.Logger` interface + default console logger
+
+**`internal/plan` (minimal skeleton)** - PLANNED
+
+- Internal AST package (not public API): `plan.Select`, `plan.Insert`, `plan.Update`, `plan.Delete`
+- M1 scope only: table ref + PK-equality `Where` — **PK-equality means AND of 1+ column=value checks, not just 1 column**, since composite PKs already exist in the design (e.g. `QuestionToCategory` from M2, PK = `QuestionID`+`CategoryID`); `FindByID`/`SaveOne`/`Delete`/`Restore` in M3 must work against composite PKs from day one, not as a later upgrade. Full arbitrary predicate tree (OR, comparisons beyond equality), `Set`, and `Join` are added incrementally in M4/M5/M6 — see AD-016 in STATE.md
+
+**`golem.Dialect` contract** - PLANNED
+
+- Value-level: `Bind(t golem.ColumnType, value any) (driver.Value, error)`, `Scan(t golem.ColumnType, raw any, dest any) error`
+- Statement-level, asymmetric by kind (not 4 symmetric methods — see AD-016):
+  - `CompileSelect(p *plan.Select) (sql string, args []any, err error)` — pure compile, 1 round-trip
+  - `CompileDelete(p *plan.Delete) (sql string, args []any, err error)` — pure compile, 1 round-trip, no row data
+  - `Insert(ctx context.Context, conn golem.Conn, p *plan.Insert) ([]map[string]any, error)` — execute, adapter picks round-trip strategy (matters for dialects without `RETURNING`, e.g. MySQL)
+  - `Update(ctx context.Context, conn golem.Conn, p *plan.Update) ([]map[string]any, error)` — same reasoning as `Insert`
+- Every adapter (starting with `postgres`) implements it; `DataSource` holds the active `Dialect` for the connection it manages
+- Enables `golem.ColumnType` (M2) to stay adapter-agnostic from day one
+
+**Postgres adapter** - PLANNED
+
+- `postgres.New(func(*postgres.Options))`: DSN or discrete fields (host/port/user/password/db/sslmode), DSN+fields precedence rule (fields win)
+- `o.Logging` / `o.Logger` wiring
+- Implements `golem.Dialect`: Postgres-specific bind/scan (UUID, JSON/JSONB, arrays, timestamptz, etc.) plus `Insert`/`Update` via native `RETURNING` (1 round-trip, since Postgres has it)
+- Driver: `github.com/jackc/pgx/v5` (already vendored in `go.mod`)
+
+---
+
+## M2 - Schema Declaration
+
+**Goal:** Entities can be declared and their metadata (columns, keys, indexes) inspected — no persistence yet.
+**Target:** `entity.New[User](func(t *User, b *entity.Builder) {...})` builds valid metadata for all documented `entity.Builder` methods.
+
+### Features
+
+**`entity.Builder` (table scope)** - PLANNED
+
+- `TableName`, `SchemaName` (defaults: struct name, current connection schema)
+- `PrimaryKey(fieldPtrs ...any)` (composite-capable)
+- `Unique(fieldPtrs ...any)` (composite-capable, separate from `Col`)
+- `Index(fieldPtrs ...any) *index.Builder` (`.Name`, `.Unique`)
+
+**`golem.ColumnType` set** - PLANNED
+
+- `golem.BIGINT()`, `golem.INT()`, `golem.VARCHAR(length)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()` — dialect-agnostic, grows on demand (see AD-015 in STATE.md)
+- Depends on M1's `golem.Dialect` contract existing so the Postgres adapter can bind/scan each of these
+
+**`entity.Builder` (column scope) + `column.Builder`** - PLANNED
+
+- `Col(fieldPtr any, type golem.ColumnType) *column.Builder`
+- `column.Builder`: `.Name`, `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))`
+- `CreateDate`/`UpdateDate` (auto-filled, no `.AutoNow()` toggle) / `DeleteDate` (soft-delete marker)
+- `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)` + full `relation.ForeignKeyOptions` chain (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`)
+
+---
+
+## M3 - Repository Core CRUD
+
+**Goal:** Entities can be inserted, re-saved, deleted/restored, and fetched by PK against a real table — **including entities with a composite PK** (e.g. `QuestionToCategory` from M2).
+**Target:** `repository.Get(dataSource, UserEntity)` round-trips a row end to end; `repository.Get(dataSource, QuestionToCategoryEntity)` round-trips against a composite PK.
+**Depends on:** M1's `plan.Insert`/`plan.Update`/`plan.Delete`/`plan.Select` (PK-equality shape, composite-capable) and `Dialect.Insert`/`Dialect.Update`/`Dialect.CompileDelete`/`Dialect.CompileSelect` (AD-016) — this is where those methods get their first real caller.
+
+### Features
+
+**`repository.Get[T]`** - PLANNED
+
+- `repository.Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T]`, `T` inferred from `e`
+
+**Write paths** - PLANNED
+
+- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — builds a `plan.Insert`, calls `Dialect.Insert`, scans the returned `[]map[string]any` back into `T` via `Dialect.Scan` per column
+- `SaveOne(ctx, *T) (T, error)` / `SaveMany(ctx, ...*T) ([]T, error)` — builds a `plan.Update` keyed by PK, calls `Dialect.Update`
+- `Delete(ctx, ...*T) error` — soft delete (sets `DeleteDate`) when declared, hard delete otherwise; builds `plan.Update`(soft) or `plan.Delete`(hard), compiled/executed accordingly
+- `Restore(ctx, ...*T) error` — no-op when entity has no `DeleteDate`; otherwise a `plan.Update` clearing `DeleteDate`
+
+**Read paths (PK only)** - PLANNED
+
+- `FindByID(ctx, id any) (T, error)` — builds a `plan.Select` (PK-equality `Where`), calls `Dialect.CompileSelect`, executes via `golem.Conn`, scans via `Dialect.Scan`; respects soft-delete filtering by default
+
+---
+
+## M4 - Query Builder & Read Paths
+
+**Goal:** Arbitrary filtered reads work: `FindMany`/`FindOne` with `Where`/`Select`/`OrderBy`/`Limit`/`Offset`.
+**Target:** The `FindOne`/`FindMany` examples in `README.md` run against a real table.
+**Depends on:** extends `plan.Select` (M1/M3) from PK-equality-only to a full AND/OR/NOT predicate tree (AD-016).
+
+### Features
+
+**`query.Query[T]`** - PLANNED
+
+- `Select(fieldPtrs ...any)`, `Where(conditions ...op.Condition)` (AND semantics), `OrderBy(...)`, `Limit`, `Offset`
+- `.WithDeleted()` — disables the default soft-delete filter for this query
+
+**`op` package** - PLANNED
+
+- Comparisons: `op.Eq`, `op.Gt`, `op.Gte`, `op.Lt`, `op.Lte`, `op.In`, `op.Like` (exact set TBD, grows on demand)
+- Logical: `op.Or(...)` (AND is implicit/variadic via `Where(...)` itself); `op.Not(condition)` composes over any condition instead of dedicated negated variants — `op.Not(op.In(...))` instead of a separate `NotIn`, `op.Not(op.Eq(...))` instead of `NotEq`, etc. (`NOT (x IN (...))` and `NOT IN` are semantically identical in SQL, so no functional gap)
+- Ordering: `op.Asc`/`op.Desc` for `OrderBy`
+
+**`Repository[T]` wiring** - PLANNED
+
+- `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)`
+- `FindOne(ctx, criteria ...func(t *T, q *query.Query[T])) (T, error)`
+
+---
+
+## M5 - Update/Count Builders
+
+**Goal:** Criteria-based updates and counts work without needing an in-memory instance.
+**Target:** `UpdateOne`/`UpdateMany`/`Count`/`Exists` examples in README run against a real table.
+**Depends on:** extends `plan.Update` (M1/M3) with a `Set` clause + full predicate `Where`; `plan.Select` reused (with a `COUNT(*)` projection mode) for `Count`/`Exists`.
+
+### Features
+
+**`query.Update[T]`** - PLANNED
+
+- `Where(...)`, `Set(fieldPtr any, value any)`, `.WithDeleted()`
+
+**`query.Count[T]`** - PLANNED
+
+- `Where(...)`, `.WithDeleted()`
+
+**`Repository[T]` wiring** - PLANNED
+
+- `UpdateOne(ctx, func(t *T, u *query.Update[T])) (T, error)` / `UpdateMany(...) ([]T, error)`
+- `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` / `Exists(...) (bool, error)`
+
+---
+
+## M6 - Joins
+
+**Goal:** Queries can join across entities for filtering, including the many-to-many-via-junction-entity pattern.
+**Target:** The `join.Inner` example in README (users with a published post) runs against real tables.
+**Depends on:** adds a `Join` list to `plan.Select` (kind, target table, `On` predicate, joined-side `Where` predicate).
+
+### Features
+
+**`join` package** - PLANNED
+
+- `join.Inner`/`join.Left`/`join.Right`/`join.Full`, each `(q *query.Query[T], target *entity.Entity[J], func(j *J, q1 *query.Join[J]))`
+- `query.Join[T]`: `On(fieldPtr, fieldPtr)` (column-to-column), `Where(...)` (column-to-value), `.WithDeleted()`
+
+---
+
+## M7 - Hooks
+
+**Goal:** Lifecycle hooks run inside the same transaction as the operation that triggered them.
+**Target:** `BeforeCreate`/`AfterCreate` (and the other 10 slots) fire correctly, including duplicate-registration panics.
+
+### Features
+
+**Fluent hook builder** - PLANNED
+
+- `entity.AddHook(Entity)` returns a chainable builder: `BeforeCreate`/`AfterCreate`/`OnConflictCreate` × `Create`/`Update`/`Delete` (9 total, all `func(ctx context.Context, i *T, conn golem.Conn) error`)
+- Registering the same slot twice on the same entity panics with the slot name
+- Hook errors cancel and roll back the triggering operation
+
+---
+
+## M8 - Transactions
+
+**Goal:** `dataSource.Transaction` provides a real `golem.Tx` that both `repository.Get` and hooks can use interchangeably with `*DataSource`.
+**Target:** The transactional many-to-many insert example in README commits/rolls back correctly.
+
+### Features
+
+**`golem.Tx`** - PLANNED
+
+- `dataSource.Transaction(ctx, func(tx golem.Tx) error) error` — commits on nil, rolls back on error
+- `golem.Tx` implements `golem.Conn` (so `repository.Get(tx, Entity)` works identically to `repository.Get(dataSource, Entity)`)
+- v1 uses the driver/DB default isolation level only — no option to request `SERIALIZABLE`/`REPEATABLE READ`/etc. Configurable isolation level is a deferred idea (see STATE.md), not in M8 scope
+
+---
+
+## M9 - Raw SQL
+
+**Goal:** Anything the builders can't express is still reachable.
+**Target:** `Exec` examples in README run and return correct data/counts.
+
+### Features
+
+**`golem.Conn.Exec`** - PLANNED
+
+- `Exec(ctx, sql string, args ...any) (golem.Result, error)`
+- `golem.Result`: `Next() bool`, `Scan() (map[string]any, error)`, `RowsAffected() (int64, error)`
+
+**`Repository[T].Exec`** - PLANNED
+
+- `Exec(ctx, sql string, args ...any) ([]T, error)` — scans using the same column→field mapping as `Col`
+
+---
+
+## M10 - Typed Errors
+
+**Goal:** Callers can branch on error kind without string-matching driver messages.
+**Target:** `errors.Is(err, golem.ErrNotFound)` etc. work for the documented sentinel set.
+
+### Features
+
+**Sentinel errors** - PLANNED
+
+- `golem.ErrNotFound`, `golem.ErrDuplicateKey`, `golem.ErrForeignKeyViolation`
+- Postgres adapter maps SQLSTATE codes (e.g. `23505` → `ErrDuplicateKey`, `23503` → `ErrForeignKeyViolation`) and wraps with `%w` so the native driver error stays reachable via `errors.Unwrap`/`errors.As`
+- Unmapped driver errors pass through unchanged (no forced generic "unknown" sentinel)
+
+---
+
+## Future Considerations
+
+- `Preload`/`With` query helper for eager-loading related rows (e.g. `question.Categories`) without a dedicated relation type
+- Aggregations (`GroupBy`/`Sum`/`Avg`/`Having`)
+- Pessimistic locking (`SELECT ... FOR UPDATE`)
+- Additional adapters beyond Postgres — MySQL/SQLite are moderate effort (closer to ANSI SQL); MSSQL/Oracle are higher effort (syntax diverges more, see AD-015 in STATE.md). Oracle specifically needs an identifier-length decision (historically 30 bytes pre-12.2, 128 from 12.2+) — validate/truncate at entity-registration time vs. let the driver error surface as-is, TBD when that adapter is actually built
+- Configurable transaction isolation level on `dataSource.Transaction` (v1 ships with driver/DB default only, see M8)
