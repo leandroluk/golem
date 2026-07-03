@@ -38,7 +38,7 @@
 package main
 
 import (
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   postgres "github.com/leandroluk/golem/adapter/postgres"
 )
 
@@ -66,8 +66,8 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 ## Implementation Status
 
 - [x] M1 - Foundation (`DataSource`, `golem.Conn`, `golem.Dialect`, Postgres adapter)
-- [ ] M2 - Schema Declaration (`entity.Builder`, `golem.ColumnType`)
-- [ ] M3 - Repository Core CRUD
+- [x] M2 - Schema Declaration (`entity.Builder`, `golem.ColumnType`) — partial, scoped to `examples/postgres-minimal-blog`'s needs (see `.specs/project/STATE.md` AD-021)
+- [x] M3 - Repository Core CRUD — partial, same scoping (Insert/InsertMany/FindByID only)
 - [ ] M4 - Query Builder & Read Paths
 - [ ] M5 - Update/Count Builders
 - [ ] M6 - Joins
@@ -107,7 +107,7 @@ history of design decisions (AD-001 through AD-017).
 package ex
 
 import (
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   postgres "github.com/leandroluk/golem/adapter/postgres"
 )
 
@@ -203,7 +203,7 @@ package ex
 import (
   "context"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   relation "github.com/leandroluk/golem/relation"
   entity "github.com/leandroluk/golem/entity"
   repository "github.com/leandroluk/golem/repository"
@@ -428,7 +428,7 @@ package ex
 import (
   "context"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   entity "github.com/leandroluk/golem/entity"
   repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/adapter/postgres"
@@ -549,7 +549,7 @@ import (
   "context"
   "fmt"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/adapter/postgres"
 )
@@ -673,7 +673,7 @@ import (
   "context"
   "fmt"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   op "github.com/leandroluk/golem/op"
   query "github.com/leandroluk/golem/query"
   postgres "github.com/leandroluk/golem/adapter/postgres"
@@ -830,7 +830,7 @@ package ex
 import (
   "context"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   op "github.com/leandroluk/golem/op"
   join "github.com/leandroluk/golem/join"
   query "github.com/leandroluk/golem/query"
@@ -896,7 +896,7 @@ import (
   "context"
   "fmt"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/adapter/postgres"
 )
@@ -977,7 +977,7 @@ import (
   "errors"
   "fmt"
 
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   repository "github.com/leandroluk/golem/repository"
 )
 
@@ -1014,7 +1014,7 @@ func handle(ctx context.Context, userRepo *repository.Repository[User]) {
 package ex
 
 import (
-  golem "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem"
   postgres "github.com/leandroluk/golem/adapter/postgres"
 )
 

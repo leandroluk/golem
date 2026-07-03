@@ -52,27 +52,28 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Entities can be declared and their metadata (columns, keys, indexes) inspected — no persistence yet.
 **Target:** `entity.New[User](func(t *User, b *entity.Builder) {...})` builds valid metadata for all documented `entity.Builder` methods.
+**Status:** ⚠️ PARTIALLY DONE — scoped down to exactly what `examples/postgres-minimal-blog` needs (AD-021). See `.specs/features/schema-declaration/`.
 
 ### Features
 
-**`entity.Builder` (table scope)** - PLANNED
+**`entity.Builder` (table scope)** - PARTIALLY DONE
 
-- `TableName`, `SchemaName` (defaults: struct name, current connection schema)
-- `PrimaryKey(fieldPtrs ...any)` (composite-capable)
-- `Unique(fieldPtrs ...any)` (composite-capable, separate from `Col`)
-- `Index(fieldPtrs ...any) *index.Builder` (`.Name`, `.Unique`)
+- `TableName`, `SchemaName` (defaults: struct name, current connection schema) — DONE
+- `PrimaryKey(fieldPtrs ...any)` (composite-capable) — DONE
+- `Unique(fieldPtrs ...any)` (composite-capable, separate from `Col`) — DEFERRED (AD-021)
+- `Index(fieldPtrs ...any) *index.Builder` (`.Name`, `.Unique`) — DEFERRED (AD-021)
 
-**`golem.ColumnType` set** - PLANNED
+**`golem.ColumnType` set** - PARTIALLY DONE
 
-- `golem.BIGINT()`, `golem.INT()`, `golem.VARCHAR(length)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()` — dialect-agnostic, grows on demand (see AD-015 in STATE.md)
-- Depends on M1's `golem.Dialect` contract existing so the Postgres adapter can bind/scan each of these
+- `golem.BIGINT()`, `golem.VARCHAR(length)`, `golem.TEXT()` — DONE
+- `golem.INT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()` — DEFERRED, not needed by the driving example yet
 
-**`entity.Builder` (column scope) + `column.Builder`** - PLANNED
+**`entity.Builder` (column scope) + `column.Builder`** - PARTIALLY DONE
 
-- `Col(fieldPtr any, type golem.ColumnType) *column.Builder`
-- `column.Builder`: `.Name`, `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))`
-- `CreateDate`/`UpdateDate` (auto-filled, no `.AutoNow()` toggle) / `DeleteDate` (soft-delete marker)
-- `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)` + full `relation.ForeignKeyOptions` chain (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`)
+- `Col(fieldPtr any, type golem.ColumnType) *column.Builder` — DONE
+- `column.Builder`: `.Name` — DONE; `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))` — DEFERRED (AD-021)
+- `CreateDate`/`UpdateDate`/`DeleteDate` — DEFERRED (AD-021, no soft-delete filtering yet either)
+- `ForeignKey(fieldPtr any, target *entity.Entity[T])` two-arg form — DONE; `opts ...*relation.ForeignKeyOptions` full chain (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`) — DEFERRED (AD-021)
 
 ---
 
@@ -80,24 +81,23 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Entities can be inserted, re-saved, deleted/restored, and fetched by PK against a real table — **including entities with a composite PK** (e.g. `QuestionToCategory` from M2).
 **Target:** `repository.Get(dataSource, UserEntity)` round-trips a row end to end; `repository.Get(dataSource, QuestionToCategoryEntity)` round-trips against a composite PK.
-**Depends on:** M1's `plan.Insert`/`plan.Update`/`plan.Delete`/`plan.Select` (PK-equality shape, composite-capable) and `Dialect.Insert`/`Dialect.Update`/`Dialect.CompileDelete`/`Dialect.CompileSelect` (AD-016) — this is where those methods get their first real caller.
+**Status:** ⚠️ PARTIALLY DONE — scoped down to exactly what `examples/postgres-minimal-blog` needs (AD-021), and via a simpler direct-SQL `Dialect.Insert`/`FindByID` contract instead of the `internal/plan` AST originally anticipated by AD-016 (see AD-020). See `.specs/features/repository-core-crud/`.
 
 ### Features
 
-**`repository.Get[T]`** - PLANNED
+**`repository.Get[T]`** - DONE
 
 - `repository.Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T]`, `T` inferred from `e`
 
-**Write paths** - PLANNED
+**Write paths** - PARTIALLY DONE
 
-- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — builds a `plan.Insert`, calls `Dialect.Insert`, scans the returned `[]map[string]any` back into `T` via `Dialect.Scan` per column
-- `SaveOne(ctx, *T) (T, error)` / `SaveMany(ctx, ...*T) ([]T, error)` — builds a `plan.Update` keyed by PK, calls `Dialect.Update`
-- `Delete(ctx, ...*T) error` — soft delete (sets `DeleteDate`) when declared, hard delete otherwise; builds `plan.Update`(soft) or `plan.Delete`(hard), compiled/executed accordingly
-- `Restore(ctx, ...*T) error` — no-op when entity has no `DeleteDate`; otherwise a `plan.Update` clearing `DeleteDate`
+- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — DONE, via `Dialect.Insert` (direct SQL, not `plan.Insert` — AD-020); zero-valued fields are omitted so DB-side defaults (e.g. `BIGSERIAL`) apply
+- `SaveOne(ctx, *T) (T, error)` / `SaveMany(ctx, ...*T) ([]T, error)` — DEFERRED (AD-021)
+- `Delete(ctx, ...*T) error` / `Restore(ctx, ...*T) error` — DEFERRED (AD-021, no `DeleteDate` support yet)
 
-**Read paths (PK only)** - PLANNED
+**Read paths (PK only)** - PARTIALLY DONE
 
-- `FindByID(ctx, id any) (T, error)` — builds a `plan.Select` (PK-equality `Where`), calls `Dialect.CompileSelect`, executes via `golem.Conn`, scans via `Dialect.Scan`; respects soft-delete filtering by default
+- `FindByID(ctx, id any) (T, error)` — DONE for single-column PK only (composite-PK `FindByID` deferred, AD-021), via `Dialect.FindByID` (direct SQL); no soft-delete filtering yet (no `DeleteDate` support)
 
 ---
 

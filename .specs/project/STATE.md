@@ -1,7 +1,7 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1 (Foundation) shipped and verified. M2 (Schema Declaration)/M3 (Repository Core CRUD) now in progress, scoped down to exactly what `examples/postgres-minimal-blog` needs (see AD-021) — spec+design+tasks committed, execution starting.
+**Current Work:** M1 (Foundation) shipped and verified. M2 (Schema Declaration)/M3 (Repository Core CRUD) shipped and verified too, scoped to exactly what `examples/postgres-minimal-blog` needs (AD-021) — `entity`/`column`/`repository` packages, real `golem.BIGINT/VARCHAR/TEXT`, `Conn.Dialect()`, `Dialect.Insert/FindByID` (AD-019/AD-020), `make gate-full` passes end-to-end including the runnable blog example against real dockerized Postgres. Caught and fixed a real bug along the way: `Repository.Insert` was sending zero-valued PK columns, colliding with `BIGSERIAL` — fixed by omitting zero-valued fields. Next: pick up the M2/M3 continuation items (Todos below) or move to M4 (Query Builder), whichever the user wants next.
 
 ---
 
@@ -177,6 +177,13 @@ None.
 ---
 
 ## Lessons Learned
+
+### L-002: Sub-agents repeatedly "corrected" existing filenames to snake_case unprompted (2026-07-03)
+
+**Context:** During M2/M3 execution, at least two separate sub-agent tasks (T1's ColumnType constructors, and earlier T9's Postgres wiring) renamed already-committed files they were told not to touch — `columntype.go`→`column_type.go`, `datasource.go`→`data_source.go` — assuming snake_case was "the real" repo convention, then built their actual new deliverable under the wrong name too.
+**Problem:** Each time, `git status` showed the committed file as deleted and a new stray one in its place, silently breaking other tasks running in parallel until caught during pre-commit review.
+**Solution:** Always run `git status --short` after every sub-agent task, before staging/committing, specifically scanning for unexpected `D`/`??` pairs with similar names (a rename in disguise). Prompts now include an explicit "CRITICAL FILE-NAMING WARNING" naming the exact existing filenames and forbidding `git stash` (one agent's stash/pop also nearly corrupted concurrent parallel work).
+**Prevents:** Silent, unauthorized file renames slipping into a commit. Keep the `git status --short` check as a standard post-agent step going forward, not just for this feature.
 
 ### L-001: Direct README iteration worked better than upfront brainstorming for this feature (2026-07-02)
 
