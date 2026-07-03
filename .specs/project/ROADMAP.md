@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M12 - Preload / Eager Loading
-**Status:** M1-M11 done, M12-M14 planned
+**Current Milestone:** M13 - Aggregations
+**Status:** M1-M12 done, M13-M14 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -255,12 +255,15 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M12 - Preload / Eager Loading
 
 **Goal:** Related rows can be fetched alongside a parent query without a dedicated relation/navigational-collection type on the struct (keeps AD-001's "plain struct" stance; see AD-024).
-**Target:** The `README.md`-documented `Preload`/`With` example runs against real tables; `ForeignKeyOptions.Eager(true)` triggers the same loading automatically when no explicit `Preload`/`With` call is present.
-**Status:** PLANNED
+**Target:** The `README.md`-documented `Preload` example runs against real tables.
+**Status:** ✅ DONE — see `.specs/features/preload-eager-loading/` (spec, design, tasks all Verified)
 
 ### Features
 
-**`Preload`/`With` query helper** - PLANNED (exact API shape TBD in design pass — returns related rows as a separate structure, e.g. `map[ParentID][]Child` or a typed paired-result, not a struct field mutation)
+**`repository.Preload[T, J any]`** - DONE
+
+- `repository.Preload(ctx, r *Repository[T], items []T, target *entity.Entity[J], criteria ...func(*J, *query.Query[J])) (map[any][]J, error)` — join column auto-discovered from the M11 FK registry, works in either FK direction, criteria mirrors `FindMany`'s shape
+- `ForeignKeyOptions.Eager(true)` is NOT auto-wired into `FindMany`/`FindOne` — hits a real Go-generics wall (variable-per-FK related type, fixed `([]T, error)` signature); accepted/stored metadata only, see design.md. Callers call `Preload` explicitly instead.
 
 ---
 

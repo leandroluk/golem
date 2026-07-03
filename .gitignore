@@ -2,3 +2,4 @@
 coverage.txt
 coverage.html
 __debug_bin.exe
+*.exe

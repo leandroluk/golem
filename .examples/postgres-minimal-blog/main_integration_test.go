@@ -129,6 +129,64 @@ func TestBlogExample_FullFlow(t *testing.T) {
 	}
 }
 
+func TestBlogExample_Preload_LoadsPostsPerUser(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+	userRepo := repository.Get(dataSource, UserEntity)
+	postRepo := repository.Get(dataSource, PostEntity)
+
+	userA, err := userRepo.Insert(ctx, &User{Name: "Preload User A", Email: "preload.a@email.com"})
+	if err != nil {
+		t.Fatalf("Insert(User A) returned error: %v", err)
+	}
+	userB, err := userRepo.Insert(ctx, &User{Name: "Preload User B", Email: "preload.b@email.com"})
+	if err != nil {
+		t.Fatalf("Insert(User B) returned error: %v", err)
+	}
+
+	if _, err := postRepo.InsertMany(ctx,
+		&Post{OwnerUserID: userA.ID, Title: "A1", Content: "..."},
+		&Post{OwnerUserID: userA.ID, Title: "A2", Content: "..."},
+		&Post{OwnerUserID: userB.ID, Title: "B1", Content: "..."},
+	); err != nil {
+		t.Fatalf("InsertMany(Post) returned error: %v", err)
+	}
+
+	users, err := userRepo.FindMany(ctx, func(u *User, q *query.Query[User]) {
+		q.Where(op.Or(op.Eq(&u.ID, userA.ID), op.Eq(&u.ID, userB.ID)))
+	})
+	if err != nil {
+		t.Fatalf("FindMany(User) returned error: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(users))
+	}
+
+	postsByUser, err := repository.Preload(ctx, userRepo, users, PostEntity)
+	if err != nil {
+		t.Fatalf("Preload returned error: %v", err)
+	}
+	if len(postsByUser[userA.ID]) != 2 {
+		t.Errorf("postsByUser[userA.ID] = %d posts, want 2", len(postsByUser[userA.ID]))
+	}
+	if len(postsByUser[userB.ID]) != 1 {
+		t.Errorf("postsByUser[userB.ID] = %d posts, want 1", len(postsByUser[userB.ID]))
+	}
+}
+
 func TestBlogExample_CascadeDeleteUser_DeletesTheirPosts(t *testing.T) {
 	dsn := resolveDSN()
 

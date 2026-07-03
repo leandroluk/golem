@@ -23,6 +23,7 @@
     - [Repository (CRUD)](#repository-crud)
     - [Query Builder](#query-builder)
     - [Joins](#joins)
+    - [Preload / Eager Loading](#preload--eager-loading)
     - [Raw SQL (escape hatch)](#raw-sql-escape-hatch)
     - [Errors](#errors)
     - [Migrations](#migrations)
@@ -74,7 +75,11 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M7 - Hooks
 - [x] M8 - Transactions
 - [x] M9 - Raw SQL
-- [ ] M10 - Typed Errors
+- [x] M10 - Typed Errors
+- [x] M11 - Relations (`ForeignKeyOptions` + Cascade)
+- [x] M12 - Preload / Eager Loading
+- [ ] M13 - Aggregations
+- [ ] M14 - Pessimistic Locking
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
 
@@ -871,6 +876,76 @@ func main() {
     panic(err)
   }
   _ = users
+}
+```
+
+### Preload / Eager Loading
+
+> `repository.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` busca as linhas relacionadas
+> a `items` (o resultado de um `FindMany`/`FindOne` anterior) e devolve um `map[any][]J` agrupado pela
+> chave da relação — NUNCA anexa o resultado de volta em `items` (não existe campo tipo `user.Posts
+> []Post` no struct; ver AD-001/AD-024 em `.specs/project/STATE.md` — isso é proposital, entities
+> continuam structs simples, sem campo navegacional).
+>
+> A coluna de junção é descoberta automaticamente a partir do `ForeignKey` já declarado entre as duas
+> entities (funciona nas duas direções: `Preload(ctx, userRepo, users, PostEntity)` — carrega os posts
+> de cada user — ou `Preload(ctx, postRepo, posts, UserEntity)` — carrega o dono de cada post). `criteria`
+> aceita o mesmo `func(j *J, q *query.Query[J])` de `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
+> sempre combinado (AND) com o filtro de junção que o `Preload` já monta sozinho.
+>
+> `ForeignKeyOptions.Eager(true)` é aceito e guardado no metadata da entity (ver seção "Declaring
+> schemas"), mas **não** dispara `Preload` automaticamente dentro de `FindMany`/`FindOne` nesta versão —
+> não há como devolver dados de tipos diferentes (`J` varia por FK) escondido atrás da assinatura fixa
+> `([]T, error)` sem reflection pesada ou quebrar a API. Chame `repository.Preload` explicitamente.
+> Detalhes: `.specs/features/preload-eager-loading/design.md`.
+
+```go
+package ex
+
+import (
+  "context"
+  "fmt"
+
+  "github.com/leandroluk/golem"
+  op "github.com/leandroluk/golem/op"
+  query "github.com/leandroluk/golem/query"
+  repository "github.com/leandroluk/golem/repository"
+  postgres "github.com/leandroluk/golem/driver/postgres"
+)
+
+func main() {
+  dataSource, err := golem.NewDataSource(
+    postgres.New(func (o *postgres.Options) {
+      o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
+    }),
+    golem.Entities(UserEntity, PostEntity),
+  )
+  if err != nil {
+    panic(err)
+  }
+  defer dataSource.Close()
+
+  ctx := context.Background()
+  userRepo := repository.Get(dataSource, UserEntity)
+
+  users, err := userRepo.FindMany(ctx, func (u *User, q *query.Query[User]) {
+    q.Where(op.Eq(&u.Name, "John Doe"))
+  })
+  if err != nil {
+    panic(err)
+  }
+
+  // busca os posts de cada user retornado acima, agrupados por User.ID
+  postsByUserID, err := repository.Preload(ctx, userRepo, users, PostEntity, func (p *Post, q *query.Query[Post]) {
+    q.Where(op.Eq(&p.Published, true))
+    q.OrderBy(op.Desc(&p.ID))
+  })
+  if err != nil {
+    panic(err)
+  }
+  for _, u := range users {
+    fmt.Printf("%s tem %d posts publicados\n", u.Name, len(postsByUserID[u.ID]))
+  }
 }
 ```
 

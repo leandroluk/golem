@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M11 concluídos com sucesso (ver histórico abaixo). M11 (Relations/`ForeignKeyOptions`+Cascade, AD-027) entregou: `relation` package completo, `ForeignKey` com opts (+ fix de um bug pré-existente onde `target` nunca era lido), registro global de FKs, cascade real (`OnDelete` Cascade/SetNull/Restrict) em `Repository[T].Delete`, exemplo + integration test reais. M12 (Preload/Eager Loading) é o próximo milestone.
+**Current Work:** M1-M12 concluídos com sucesso (ver histórico abaixo). M12 (Preload/Eager Loading, AD-028) entregou `repository.Preload[T, J]` — descobre a coluna de junção sozinho via o registro de FK do M11, funciona nas duas direções, nunca anexa dado de volta no struct (mantém AD-001/AD-024). `Eager(true)` fica só metadata (auto-wiring bateu num limite real de generics do Go, não foi só preguiça — ver AD-028). M13 (Aggregations) é o próximo milestone.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-028: M12 shipped — `repository.Preload`, no `Eager` auto-wiring (a real Go-generics wall, not a choice) (2026-07-03)
+
+**Decision:** `repository.Preload[T, J any](ctx, r *Repository[T], items []T, target *entity.Entity[J], criteria ...) (map[any][]J, error)` — a free function (mirrors `join.Inner`'s two-type-param shape), reusing M11's FK registry to auto-discover the join column in either direction (works whether `target` declares the FK or `T`'s own entity does). `ForeignKeyOptions.Eager(true)` (accepted since M11) stays metadata-only — NOT wired to automatically run inside `FindMany`/`FindOne`.
+**Reason:** Auto-wiring `Eager` hit a genuine wall, not a preference: `FindMany`'s signature (`([]T, error)`) is fixed and used everywhere; the related type varies per FK (2+ `Eager` FKs on one entity could point at 2+ different types), so there's no way to return typed preloaded data through that signature without either (a) attaching to `T` (ruled out, AD-001/AD-024) or (b) a stateful side-channel method (rejected — not idiomatic, racy under concurrent reuse of one `Repository[T]`).
+**Trade-off:** Less "automatic-feeling" than TypeORM's `eager: true`. Accepted: two explicit lines (`FindMany` then `Preload`) beats hidden magic, matches this project's existing bias.
+**Impact:** `repository/preload.go` (new). Every new function at 100% coverage (AD-026). `.examples/postgres-minimal-blog` gets `TestBlogExample_Preload_LoadsPostsPerUser`. Full reasoning: `.specs/features/preload-eager-loading/design.md`.
 
 ### AD-027: M11 shipped — only `OnDelete` gets real cascade behavior, via a global FK registry (2026-07-03)
 
@@ -263,6 +270,7 @@ None.
 - [x] ~~Fix `join.Inner`/`FindMany` fan-out: a 1:N join duplicates the parent row once per matched child row instead of deduplicating by PK~~ — DONE (`repository.FindMany` dedupes by `r.meta.PrimaryKey` via `pkRowKey`, gated on `len(q.Joins()) > 0` so no-join queries are unaffected)
 - [x] ~~Make `.examples/postgres-minimal-blog`'s integration tests actually run under `task test-integration`~~ — DONE (Taskfile.yml's `test-integration` now runs `go test -tags=integration ./.examples/postgres-minimal-blog` as a separate explicit-path step, since go's `...` wildcard skips dot-prefixed dirs even when given explicitly)
 - [ ] `OnUpdate` cascade (relation.OnUpdateCascade/SetNull/Restrict) is accepted/stored (AD-027) but not wired to any Repository[T] operation — no operation currently mutates a PK value to trigger it from. Revisit if/when a real use case for mutable PKs shows up.
-- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 54.3%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 75.0%, `repository` 72.4% (`SaveMany`/`UpdateMany` at 0%). Not blocking M12+, but should be backfilled eventually.
+- [ ] `Eager(true)` auto-wiring into `FindMany`/`FindOne` (AD-028) — not a bug, a real Go-generics limitation (see design.md). Revisit only if a design is found that doesn't hit it.
+- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 54.3%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 75.0%, `repository` 76.0% (`SaveMany`/`UpdateMany` at 0%). Not blocking M13+, but should be backfilled eventually.
 
 
