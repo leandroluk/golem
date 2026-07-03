@@ -1,5 +1,4 @@
 {
-  
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
   "editor.formatOnType": true,
@@ -18,8 +17,6 @@
     100,
     120
   ],
-  
-  
   "files.encoding": "utf8",
   "files.eol": "\n",
   "files.insertFinalNewline": false,
@@ -27,10 +24,7 @@
   "files.associations": {
     ".env*": "shellscript"
   },
-  
-  
   "git.inputValidation": false,
-  
   "[dockercompose]": {
     "editor.formatOnSave": false,
     "editor.insertSpaces": true,

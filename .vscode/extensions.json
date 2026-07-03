@@ -1,24 +1,13 @@
 {
   "recommendations": [
-    
     "vscode-icons-team.vscode-icons",
-    
-    
-    
     "eamodio.gitlens",
-    
     "ms-azuretools.vscode-docker",
-    
     "bierner.markdown-mermaid",
-    
     "yzhang.markdown-all-in-one",
-    
     "aaron-bond.better-comments",
-    
     "unifiedjs.vscode-mdx",
-    
     "bpruitt-goddard.mermaid-markdown-syntax-highlighting",
-    
     "fill-labs.dependi"
   ],
   "unwantedRecommendations": []
