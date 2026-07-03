@@ -211,7 +211,7 @@ func TestResolveField_ReturnsErrorForForeignPointer(t *testing.T) {
 	var u User
 	var other int64
 
-	_, err := resolveField(&u, &other)
+	_, err := ResolveField(&u, &other)
 	if err == nil {
 		t.Fatal("expected error when fieldPtr does not belong to zero's type, got nil")
 	}
@@ -220,19 +220,19 @@ func TestResolveField_ReturnsErrorForForeignPointer(t *testing.T) {
 func TestResolveField_OffsetBased_DistinguishesSameTypeFields(t *testing.T) {
 	var v TwoInts
 
-	nameA, err := resolveField(&v, &v.A)
+	nameA, err := ResolveField(&v, &v.A)
 	if err != nil {
-		t.Fatalf("resolveField(&v.A) error = %v", err)
+		t.Fatalf("ResolveField(&v.A) error = %v", err)
 	}
 	if nameA != "A" {
-		t.Fatalf("resolveField(&v.A) = %q, want %q", nameA, "A")
+		t.Fatalf("ResolveField(&v.A) = %q, want %q", nameA, "A")
 	}
 
-	nameB, err := resolveField(&v, &v.B)
+	nameB, err := ResolveField(&v, &v.B)
 	if err != nil {
-		t.Fatalf("resolveField(&v.B) error = %v", err)
+		t.Fatalf("ResolveField(&v.B) error = %v", err)
 	}
 	if nameB != "B" {
-		t.Fatalf("resolveField(&v.B) = %q, want %q", nameB, "B")
+		t.Fatalf("ResolveField(&v.B) = %q, want %q", nameB, "B")
 	}
 }

@@ -29,7 +29,7 @@ type pendingColumn struct {
 // newBuilder, which is generic (it has access to T via its own type
 // parameter at construction time) even though the struct it returns isn't.
 type Builder struct {
-	zero any // *T, same instance New created — needed for resolveField's offset math
+	zero any // *T, same instance New created — needed for ResolveField's offset math
 
 	setTableName  func(string)
 	setSchemaName func(string)
@@ -68,7 +68,7 @@ func (b *Builder) SchemaName(name string) { b.setSchemaName(name) }
 // so calling .Name(...) on the returned builder at any point before New
 // returns is safe.
 func (b *Builder) Col(fieldPtr any, t golem.ColumnType) *column.Builder {
-	fieldName, err := resolveField(b.zero, fieldPtr)
+	fieldName, err := ResolveField(b.zero, fieldPtr)
 	if err != nil {
 		panic(err) // programmer error — fieldPtr must belong to T
 	}
@@ -93,7 +93,7 @@ func (b *Builder) Col(fieldPtr any, t golem.ColumnType) *column.Builder {
 // only fieldPtr is resolved (so a bad fieldPtr still panics consistently
 // with Col/PrimaryKey).
 func (b *Builder) ForeignKey(fieldPtr any, target any) {
-	fieldName, err := resolveField(b.zero, fieldPtr)
+	fieldName, err := ResolveField(b.zero, fieldPtr)
 	if err != nil {
 		panic(err)
 	}
@@ -107,7 +107,7 @@ func (b *Builder) ForeignKey(fieldPtr any, target any) {
 func (b *Builder) PrimaryKey(fieldPtrs ...any) {
 	names := make([]string, len(fieldPtrs))
 	for i, fp := range fieldPtrs {
-		name, err := resolveField(b.zero, fp)
+		name, err := ResolveField(b.zero, fp)
 		if err != nil {
 			panic(err)
 		}

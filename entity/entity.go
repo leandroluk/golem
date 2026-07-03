@@ -8,12 +8,12 @@ import (
 	"github.com/leandroluk/golem"
 )
 
-// resolveField returns the struct field name that fieldPtr points into,
+// ResolveField returns the struct field name that fieldPtr points into,
 // given zero (a pointer to the same zero-value T instance the caller's
 // builder callback was given). Resolution is by memory OFFSET, not by type
 // or declaration order — this is what lets two fields of the same Go type
 // (e.g. two int64 fields) be told apart correctly.
-func resolveField(zero any, fieldPtr any) (string, error) {
+func ResolveField(zero any, fieldPtr any) (string, error) {
 	base := reflect.ValueOf(zero).Elem() // zero is *T; .Elem() must be addressable
 	baseAddr := base.UnsafeAddr()
 	fieldAddr := reflect.ValueOf(fieldPtr).Pointer() // fieldPtr is *FieldType
