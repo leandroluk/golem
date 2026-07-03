@@ -1,7 +1,7 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M6 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), e M6 (Joins no query builder e driver) estão prontos e verificados com 100% de testes verdes. Próximo passo: M7 (Hooks).
+**Current Work:** M1-M7 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), M6 (Joins), e M7 (Hooks com interceptação de conflitos e rollback) estão prontos e verificados com 100% de testes verdes. Próximo passo: M8 (Transactions).
 
 ---
 
@@ -214,7 +214,7 @@ None.
 
 ## Todos
 
-- [ ] Decide the exact panic message format for duplicate hook slot registration (AD-006) — needed before M7, not before M1
+- [x] ~~Decide the exact panic message format for duplicate hook slot registration~~ — DONE
 - [x] ~~Design the exact `op.*` positive comparison operator set~~ — DONE
 - [x] ~~Design the initial `golem.ColumnType` set~~ — DONE
 - [x] ~~M3 continuation: Delete/Restore, Count/Exists~~ — DONE

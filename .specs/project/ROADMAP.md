@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M7 - Hooks
-**Status:** M1-M6 done, M7 planned
+**Current Milestone:** M8 - Transactions
+**Status:** M1-M7 done, M8 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -168,11 +168,11 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M7 - Hooks
 
 **Goal:** Lifecycle hooks run inside the same transaction as the operation that triggered them.
-**Target:** `BeforeCreate`/`AfterCreate` (and the other 10 slots) fire correctly, including duplicate-registration panics.
+**Status:** ✅ DONE — see `.specs/features/hooks/` (spec, design, tasks all Verified)
 
 ### Features
 
-**Fluent hook builder** - PLANNED
+**Fluent hook builder** - DONE
 
 - `entity.AddHook(Entity)` returns a chainable builder: `BeforeCreate`/`AfterCreate`/`OnConflictCreate` × `Create`/`Update`/`Delete` (9 total, all `func(ctx context.Context, i *T, conn golem.Conn) error`)
 - Registering the same slot twice on the same entity panics with the slot name
