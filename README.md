@@ -66,14 +66,14 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 ## Implementation Status
 
 - [x] M1 - Foundation (`DataSource`, `golem.Conn`, `golem.Dialect`, Postgres adapter)
-- [x] M2 - Schema Declaration (`entity.Table`, `golem.ColumnType`) — partial, scoped to `examples/postgres-minimal-blog`'s needs (see `.specs/project/STATE.md` AD-021)
-- [x] M3 - Repository Core CRUD — partial, same scoping (Insert/InsertMany/FindByID only)
-- [ ] M4 - Query Builder & Read Paths
-- [ ] M5 - Update/Count Builders
-- [ ] M6 - Joins
-- [ ] M7 - Hooks
-- [ ] M8 - Transactions
-- [ ] M9 - Raw SQL
+- [x] M2 - Schema Declaration (`entity.Table`, `golem.ColumnType`)
+- [x] M3 - Repository Core CRUD (`Insert`/`InsertMany`, `FindOne`/`FindMany` — no dedicated `FindByID`, see AD-022)
+- [x] M4 - Query Builder & Read Paths
+- [x] M5 - Update/Count Builders
+- [x] M6 - Joins
+- [x] M7 - Hooks
+- [x] M8 - Transactions
+- [x] M9 - Raw SQL
 - [ ] M10 - Typed Errors
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
@@ -550,6 +550,8 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
+  op "github.com/leandroluk/golem/op"
+  query "github.com/leandroluk/golem/query"
   repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
@@ -585,8 +587,10 @@ func main() {
     panic(err)
   }
 
-  // busca por chave primária
-  found, err := users.FindByID(ctx, user.ID)
+  // busca por chave primária: FindOne + op.Eq (não existe FindByID dedicado, ver AD-022)
+  found, err := users.FindOne(ctx, func(t *User, q *query.Query[User]) {
+    q.Where(op.Eq(&t.ID, user.ID))
+  })
   if err != nil {
     panic(err)
   }
@@ -638,13 +642,12 @@ func main() {
 > | :- | :- | :- |
 > | `Insert(ctx, e *T) (T, error)` | 1 registro | insere 1 entity nova, retorna com a PK preenchida |
 > | `InsertMany(ctx, entities ...*T) ([]T, error)` | N registros | insere várias de uma vez |
-> | `SaveOne(ctx, e *T) (T, error)` | 1 registro | persiste de novo uma instância que você já tem em runtime (ex: veio de um `Insert`/`FindByID` anterior), por PK |
+> | `SaveOne(ctx, e *T) (T, error)` | 1 registro | persiste de novo uma instância que você já tem em runtime (ex: veio de um `Insert`/`FindOne` anterior), por PK |
 > | `SaveMany(ctx, entities ...*T) ([]T, error)` | N registros | igual `SaveOne`, pra várias instâncias de uma vez |
 > | `UpdateOne(ctx, criteria func(t *T, u *query.Update[T])) (T, error)` | 1 registro | atualiza direto no banco por critério (`Where`+`Set`), sem precisar ter a instância em runtime |
 > | `UpdateMany(ctx, criteria func(t *T, u *query.Update[T])) ([]T, error)` | N registros | igual `UpdateOne`, mas o critério pode casar mais de uma linha |
 > | `Delete(ctx, entities ...*T) error` | — | delete por PK; se a entity tem `DeleteDate`, seta o timestamp (soft delete) em vez de apagar a linha |
 > | `Restore(ctx, entities ...*T) error` | — | desfaz soft delete (limpa `DeleteDate`) por PK; sem `DeleteDate` declarado, é no-op |
-> | `FindByID(ctx, id any) (T, error)` | 1 registro | busca por PK |
 > | `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)` | N registros | critério opcional; sem ele, traz a tabela toda. detalhado na seção Query Builder |
 > | `FindOne(ctx, criteria ...func(t *T, q *query.Query[T])) (T, error)` | 1 registro | igual `FindMany`, limita 1 |
 > | `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` | contagem | critério opcional (só `Where`); sem ele, conta a tabela toda |
@@ -740,13 +743,7 @@ func main() {
   }
   _ = users
 
-  // busca por chave primária
-  found, err := userRepo.FindByID(ctx, user.ID)
-  if err != nil {
-    panic(err)
-  }
-
-  admin, err := userRepo.FindOne(ctx, func (t *User, q *query.Query[User]) {
+  found, err := userRepo.FindOne(ctx, func (t *User, q *query.Query[User]) {
     q.Select(&t.Name, &t.Email, &t.Age)
     q.Where(
       // aqui tendo outras condições como op.Or, op.In, op.Like, etc — op.Not(op.In(...)) compõe negação, sem NotIn dedicado
@@ -962,7 +959,7 @@ func main() {
 > conjunto inicial (mais comuns; a lista cresce conforme mais dialetos/casos forem mapeados, sem quebrar
 > o que já existe):
 >
->  - `golem.ErrNotFound`: nenhum registro encontrado (`FindOne`/`FindByID`/`UpdateOne` sem match)
+>  - `golem.ErrNotFound`: nenhum registro encontrado (`FindOne`/`UpdateOne` sem match)
 >  - `golem.ErrDuplicateKey`: violação de `Unique` (coluna ou composta)
 >  - `golem.ErrForeignKeyViolation`: violação de `ForeignKey` (aponta pra algo que não existe, ou deleta algo ainda referenciado)
 >
@@ -978,11 +975,15 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
+  "github.com/leandroluk/golem/op"
+  "github.com/leandroluk/golem/query"
   repository "github.com/leandroluk/golem/repository"
 )
 
 func handle(ctx context.Context, userRepo *repository.Repository[User]) {
-  user, err := userRepo.FindByID(ctx, 999)
+  user, err := userRepo.FindOne(ctx, func(t *User, q *query.Query[User]) {
+    q.Where(op.Eq(&t.ID, 999))
+  })
   if errors.Is(err, golem.ErrNotFound) {
     fmt.Println("usuário não existe")
     return

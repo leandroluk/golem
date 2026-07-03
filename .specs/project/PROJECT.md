@@ -30,7 +30,7 @@
 - Entity/schema declaration (`entity.New` + `entity.Table`: `Col`, `PrimaryKey`, `Unique`, `Index`, `ForeignKey`, `TableName`/`SchemaName`, `CreateDate`/`UpdateDate`/`DeleteDate`, `.Default`/`.DefaultFunc`)
 - Relations expressed as plain entities with `ForeignKey` (including many-to-many via an explicit junction entity — no dedicated relation type)
 - Fluent hooks (`entity.AddHook(Entity).BeforeCreate(...).AfterCreate(...)` etc., all `Before/After/OnConflict × Create/Update/Delete`)
-- `Repository[T]` CRUD: `Insert`/`InsertMany`, `SaveOne`/`SaveMany`, `UpdateOne`/`UpdateMany`, `Delete`/`Restore`, `FindByID`/`FindMany`/`FindOne`, `Count`/`Exists`
+- `Repository[T]` CRUD: `Insert`/`InsertMany`, `SaveOne`/`SaveMany`, `UpdateOne`/`UpdateMany`, `Delete`/`Restore`, `FindMany`/`FindOne`, `Count`/`Exists`
 - Query builder (`query.Query[T]`: `Select`/`Where`/`OrderBy`/`Limit`/`Offset`), `query.Update[T]` (`Where`+`Set`), `query.Count[T]` (`Where`)
 - Joins (`golem/join`: `Inner`/`Left`/`Right`/`Full`, `query.Join[T]` with `On`/`Where`)
 - Transactions (`dataSource.Transaction`) and the `golem.Conn` abstraction shared by `*DataSource` and `golem.Tx`
