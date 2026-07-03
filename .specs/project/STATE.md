@@ -1,11 +1,32 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M10 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), M6 (Joins), M7 (Hooks), M8 (Transactions), M9 (Raw SQL com iteradores de retorno e mapeamento por reflexão nos repositories), e M10 (Typed Errors: `golem.ErrDuplicateKey`/`golem.ErrForeignKeyViolation` mapeados a partir de SQLSTATE no adapter Postgres) estão prontos e verificados com 100% de testes verdes. ROADMAP.md não tem próximo milestone planejado — ver "Future Considerations".
+**Current Work:** M1-M10 concluídos com sucesso (ver histórico abaixo). M11 (Relations/`ForeignKeyOptions`+Cascade) é o próximo milestone ativo — ROADMAP.md promoveu M11-M14 de "Future Considerations" pra milestones reais (AD-025). Antes de M11, fechando o gap de cobertura do package `join` (0% direto, achado durante M10 — AD-026 tornou 100% coverage um requisito permanente).
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-026: 100% test coverage is a standing requirement going forward (2026-07-03)
+
+**Decision:** Every package should reach and hold 100% statement coverage, not just "the gate is green." Triggered by discovering `join` package sat at 0% direct coverage (only exercised indirectly through `repository`'s tests and the example) while a real fan-out bug lived in it undetected.
+**Reason:** User explicitly requested this after seeing the join-package coverage gap correlate with a real bug. "Gate is green" was previously read as sufficient; it wasn't, because a 0%-covered package can still be *exercised* by other packages' tests without any assertion actually pinning its behavior down.
+**Trade-off:** More test-writing overhead per feature going forward; some code (e.g. thin type-erasure/registry glue) may need light refactoring to become directly testable rather than only reachable transitively.
+**Impact:** Immediate: `join` package gets direct unit tests (tracked below). Going forward: every new package/feature (M11-M14) must ship with direct tests reaching 100% statement coverage in its own package, checked via `go test ./... -cover`, not inferred from other packages' tests passing.
+
+### AD-025: M11-M14 execution order — Relations → Preload → Aggregations → Locking (2026-07-03)
+
+**Decision:** The four items promoted from ROADMAP.md's "Future Considerations" to real milestones (`ForeignKeyOptions`+Cascade, Preload/Eager loading, Aggregations, Pessimistic locking) are built in that order.
+**Reason:** User chose this order explicitly. Relations first because `Preload`/`Eager` conceptually build on top of knowing a relation's cascade/eager settings; Aggregations and Locking are both query-builder-only additions with no cross-feature dependency, left for last as the lower-risk/smaller items.
+**Trade-off:** None — straightforward sequencing decision, no technical constraint forces a different order.
+**Impact:** ROADMAP.md's M11-M14 sections are in this order. Each gets its own `.specs/features/*/spec.md` (+ design.md where real ambiguity exists) before implementation, same convention as M1-M10.
+
+### AD-024: `Preload`/`With` stays a separate query-level API, not a struct field — AD-001 upheld (2026-07-03)
+
+**Decision:** When M12 (Preload/Eager Loading) is built, related rows load into a separate structure (e.g. `map[ParentID][]Child`, or a typed paired-result returned alongside `T`), never by adding a navigational-collection field (`Posts []Post`) onto the entity struct itself. `ForeignKeyOptions.Eager(true)` (M11) means "run the same Preload/With mechanism automatically when the query doesn't call it explicitly" — it does not imply or require a struct field to populate.
+**Reason:** User was asked directly ("keep AD-001, separate API" vs. "revoke AD-001, add a relation field to the struct") and deferred to whichever is most coherent. Keeping AD-001 avoids a breaking change to every already-declared entity struct and preserves the project's core "plain struct, zero magic" positioning — a struct field would need either a pointer/slice added to every entity that might ever be eager-loaded (viral, breaks existing structs) or reflection-based dynamic field injection (far more magic than the project has ever done elsewhere).
+**Trade-off:** Ergonomics are a step below TypeORM's `user.posts` direct property access — callers get a side-table/paired-result instead of just reading a field off the returned `T`. Accepted: matches AD-001's original trade-off acceptance almost verbatim.
+**Impact:** M12's design.md must pin down the exact `Preload`/`With` return shape before implementation (not yet decided — this AD only fixes *where it doesn't go*, not the final API surface).
 
 ### AD-023: Duplicate/FK-violation sentinels wrap the driver error, not replace it (2026-07-03)
 

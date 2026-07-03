@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** — (M1-M10 done)
-**Status:** M1-M10 done
+**Current Milestone:** M11 - Relations (`ForeignKeyOptions` + Cascade)
+**Status:** M1-M10 done, M11-M14 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -230,11 +230,52 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ---
 
+## M11 - Relations (`ForeignKeyOptions` + Cascade)
+
+**Goal:** `entity.Table.ForeignKey` accepts the full `relation.ForeignKeyOptions` chain documented in README.md (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`), and the options that have a runtime meaning (not just DDL/documentation) actually change `Repository[T]` write behavior.
+**Target:** The `Post`/`User` example in README's Schema Declaration section (with the full options chain) compiles and its `Cascade`/`OnDelete` behavior is exercised against real Postgres.
+**Status:** PLANNED
+
+### Features
+
+**`relation` package** - PLANNED
+
+- `relation.NewForeignKeyOptions()` fluent builder: `.Cascade(...)`, `.OnDelete(...)`, `.OnUpdate(...)`, `.Deferrable(...)`, `.CreateForeignKeyConstraints(bool)`, `.Lazy(bool)`, `.Eager(bool)`, `.Persistence(bool)`, `.OrphanedRowAction(...)`
+- `entity.Table.ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions)` — 3rd arg variadic, backward-compatible with the existing 2-arg form
+- Since migrations/DDL are permanently out of scope (AD-012), options are split into two groups — see `.specs/features/relations/design.md` for the exact runtime-vs-metadata-only mapping decided per option before implementation starts (this needs a design pass, not just direct coding, since several options — `Deferrable`, `CreateForeignKeyConstraints`, `Lazy` — don't have an obvious Go-idiomatic runtime meaning without a migration engine or an async/promise model)
+
+---
+
+## M12 - Preload / Eager Loading
+
+**Goal:** Related rows can be fetched alongside a parent query without a dedicated relation/navigational-collection type on the struct (keeps AD-001's "plain struct" stance; see AD-024).
+**Target:** The `README.md`-documented `Preload`/`With` example runs against real tables; `ForeignKeyOptions.Eager(true)` triggers the same loading automatically when no explicit `Preload`/`With` call is present.
+**Status:** PLANNED
+
+### Features
+
+**`Preload`/`With` query helper** - PLANNED (exact API shape TBD in design pass — returns related rows as a separate structure, e.g. `map[ParentID][]Child` or a typed paired-result, not a struct field mutation)
+
+---
+
+## M13 - Aggregations
+
+**Goal:** `query.Query[T]` supports `GroupBy`/`Sum`/`Avg`/`Having` for read paths that need aggregate results instead of full rows.
+**Target:** README examples using `GroupBy`/aggregate functions run against real tables.
+**Status:** PLANNED
+
+---
+
+## M14 - Pessimistic Locking
+
+**Goal:** `query.Query[T]` supports `SELECT ... FOR UPDATE` (and dialect-appropriate variants) for read-then-write concurrency control.
+**Target:** A `.ForUpdate()`-style example on `FindOne`/`FindMany` runs against real tables inside a transaction.
+**Status:** PLANNED
+
+---
+
 ## Future Considerations
 
-- `Preload`/`With` query helper for eager-loading related rows (e.g. `question.Categories`) without a dedicated relation type
-- Aggregations (`GroupBy`/`Sum`/`Avg`/`Having`)
-- Pessimistic locking (`SELECT ... FOR UPDATE`)
 - Additional adapters beyond Postgres — MySQL/SQLite are moderate effort (closer to ANSI SQL); MSSQL/Oracle are higher effort (syntax diverges more, see AD-015 in STATE.md). Oracle specifically needs an identifier-length decision (historically 30 bytes pre-12.2, 128 from 12.2+) — validate/truncate at entity-registration time vs. let the driver error surface as-is, TBD when that adapter is actually built
 - Configurable transaction isolation level on `dataSource.Transaction` (v1 ships with driver/DB default only, see M8)
 
