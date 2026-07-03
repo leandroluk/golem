@@ -9,6 +9,8 @@ type fakeConn struct{}
 
 func (fakeConn) isConn() {}
 
+func (fakeConn) Dialect() Dialect { return nil }
+
 var _ Conn = (*fakeConn)(nil)
 
 func TestFakeConnImplementsConn(t *testing.T) {

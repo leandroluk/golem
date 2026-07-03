@@ -33,6 +33,10 @@ func NewDataSource(opts ...Option) (*DataSource, error) {
 // Name returns the DataSource's configured name.
 func (ds *DataSource) Name() string { return ds.name }
 
+// Dialect returns the active Dialect established by the last successful
+// Connect(). Returns nil if never connected.
+func (ds *DataSource) Dialect() Dialect { return ds.dialect }
+
 // Connect establishes the connection via the configured Connector and stores
 // the resulting Dialect. Idempotent: calling Connect again on an already-
 // connected DataSource is a no-op that returns nil. On failure, the
