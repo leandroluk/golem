@@ -7,6 +7,7 @@ package main
 import (
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/entity"
+	"github.com/leandroluk/golem/relation"
 )
 
 type User struct {
@@ -47,7 +48,9 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
 	b.Col(&t.Title, golem.VARCHAR(50))
 	b.Col(&t.Content, golem.TEXT())
 	b.PrimaryKey(&t.ID)
-	b.ForeignKey(&t.OwnerUserID, UserEntity)
+	// deleting a User cascades into deleting their Posts (real runtime
+	// behavior — see Repository[T].Delete / .specs/features/relations).
+	b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 })
 
 var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Table) {

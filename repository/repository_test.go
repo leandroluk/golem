@@ -89,8 +89,15 @@ type fakeDialect struct {
 	selectResult []map[string]any
 	selectErr    error
 
-	deleteCalls []*stmt.Delete
-	execCalls   []execCall
+	deleteCalls   []*stmt.Delete
+	deleteCompErr error
+	execCalls     []execCall
+	execErr       error
+	queryErr      error
+
+	beginCalls int
+	beginErr   error
+	commitErr  error
 }
 
 func (d *fakeDialect) Bind(t golem.ColumnType, value any) (driver.Value, error) {
@@ -127,15 +134,24 @@ func (d *fakeDialect) CompileSelect(s *stmt.Select) (string, []any, error) {
 
 func (d *fakeDialect) CompileDelete(s *stmt.Delete) (string, []any, error) {
 	d.deleteCalls = append(d.deleteCalls, s)
+	if d.deleteCompErr != nil {
+		return "", nil, d.deleteCompErr
+	}
 	return "mock-sql-delete", nil, nil
 }
 
 func (d *fakeDialect) Query(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, error) {
+	if d.queryErr != nil {
+		return nil, d.queryErr
+	}
 	return d.selectResult, nil
 }
 
 func (d *fakeDialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []any) (int64, error) {
 	d.execCalls = append(d.execCalls, execCall{sql: sql, args: args})
+	if d.execErr != nil {
+		return 0, d.execErr
+	}
 	return 0, nil
 }
 
@@ -154,11 +170,12 @@ func (d *fakeDialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, 
 type fakeTx struct {
 	committed  bool
 	rolledBack bool
+	commitErr  error
 }
 
 func (t *fakeTx) Commit(ctx context.Context) error {
 	t.committed = true
-	return nil
+	return t.commitErr
 }
 
 func (t *fakeTx) Rollback(ctx context.Context) error {
@@ -167,7 +184,11 @@ func (t *fakeTx) Rollback(ctx context.Context) error {
 }
 
 func (d *fakeDialect) Begin(ctx context.Context, conn golem.Conn) (golem.TxConn, error) {
-	return &fakeTx{}, nil
+	d.beginCalls++
+	if d.beginErr != nil {
+		return nil, d.beginErr
+	}
+	return &fakeTx{commitErr: d.commitErr}, nil
 }
 
 var _ golem.Dialect = (*fakeDialect)(nil)

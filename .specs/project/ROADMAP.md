@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M11 - Relations (`ForeignKeyOptions` + Cascade)
-**Status:** M1-M10 done, M11-M14 planned
+**Current Milestone:** M12 - Preload / Eager Loading
+**Status:** M1-M11 done, M12-M14 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -233,16 +233,22 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M11 - Relations (`ForeignKeyOptions` + Cascade)
 
 **Goal:** `entity.Table.ForeignKey` accepts the full `relation.ForeignKeyOptions` chain documented in README.md (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`), and the options that have a runtime meaning (not just DDL/documentation) actually change `Repository[T]` write behavior.
-**Target:** The `Post`/`User` example in README's Schema Declaration section (with the full options chain) compiles and its `Cascade`/`OnDelete` behavior is exercised against real Postgres.
-**Status:** PLANNED
+**Target:** The `Post`/`User` example in README's Schema Declaration section (with the full options chain) compiles and its `OnDelete` cascade behavior is exercised against real Postgres.
+**Status:** ✅ DONE — see `.specs/features/relations/` (spec, design, tasks all Verified)
 
 ### Features
 
-**`relation` package** - PLANNED
+**`relation` package** - DONE
 
-- `relation.NewForeignKeyOptions()` fluent builder: `.Cascade(...)`, `.OnDelete(...)`, `.OnUpdate(...)`, `.Deferrable(...)`, `.CreateForeignKeyConstraints(bool)`, `.Lazy(bool)`, `.Eager(bool)`, `.Persistence(bool)`, `.OrphanedRowAction(...)`
-- `entity.Table.ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions)` — 3rd arg variadic, backward-compatible with the existing 2-arg form
-- Since migrations/DDL are permanently out of scope (AD-012), options are split into two groups — see `.specs/features/relations/design.md` for the exact runtime-vs-metadata-only mapping decided per option before implementation starts (this needs a design pass, not just direct coding, since several options — `Deferrable`, `CreateForeignKeyConstraints`, `Lazy` — don't have an obvious Go-idiomatic runtime meaning without a migration engine or an async/promise model)
+- `relation.NewForeignKeyOptions()` fluent builder: `.Cascade(...)`, `.OnDelete(...)`, `.OnUpdate(...)`, `.Deferrable(...)`, `.CreateForeignKeyConstraints(bool)`, `.Lazy(bool)`, `.Eager(bool)`, `.Persistence(bool)`, `.OrphanedRowAction(...)` — 100% test coverage
+- `entity.Table.ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions)` — 3rd arg variadic, backward-compatible with the existing 2-arg form. Also fixes a pre-existing bug: `target` was previously never even type-asserted/read
+- Since migrations/DDL are permanently out of scope (AD-012) and entities never carry a navigational relation field (AD-001/AD-024), only `OnDelete` has real runtime effect in this pass — `Cascade*`/`Persistence`/`OrphanedRowAction`/`CreateForeignKeyConstraints`/`Deferrable` are accepted and stored (never silently dropped) but have no runtime behavior; `Eager` is stored, wired to real preloading in M12; `OnUpdate` is stored, not yet wired to any operation (no PK-mutating operation exists) — see `.specs/features/relations/design.md` for the full reasoning (AD-027 in STATE.md)
+
+**FK registry + cascade** - DONE
+
+- `entity.ForeignKeysReferencing(targetTable string) []FKRegistration` — package-level registry, populated as a side effect of `entity.New`/`ForeignKey`, indexed by the parent (target) side
+- `Repository[T].Delete` applies `OnDeleteCascade`/`OnDeleteSetNull`/`OnDeleteRestrict` for every FK registered against the entity being deleted, honoring the child's own soft-delete config, wrapped in an implicit transaction when needed (reuses an existing `Tx` instead of nesting)
+- `OnDeleteRestrict` returns `golem.ErrForeignKeyViolation` (M10 sentinel, reused) when blocked
 
 ---
 

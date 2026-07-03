@@ -18,6 +18,7 @@ import (
 	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/op"
 	"github.com/leandroluk/golem/query"
+	"github.com/leandroluk/golem/relation"
 )
 
 // Repository[T] is bound to one entity's metadata and a connection.
@@ -650,16 +651,153 @@ func (r *Repository[T]) UpdateMany(ctx context.Context, criteria func(*T, *query
 	return results, nil
 }
 
+// cascadeActionable reports whether action requires golem to do something at
+// delete time (as opposed to OnDeleteDefault/OnDeleteNoAction, which both
+// mean "golem does nothing — defer to whatever real DB constraint, if any,
+// exists outside golem's knowledge").
+func cascadeActionable(action relation.OnDeleteAction) bool {
+	switch action {
+	case relation.OnDeleteCascade, relation.OnDeleteSetNull, relation.OnDeleteRestrict:
+		return true
+	default:
+		return false
+	}
+}
+
+// beginCascadeTx opens a transaction for a Delete call that has 1+
+// cascade-actionable incoming FKs, so the cascade side effects and the
+// parent row's own delete commit or roll back together. If conn is already
+// a golem.Tx, it's reused as-is (commit/rollback become no-ops — the caller
+// that opened that Tx owns its boundary). If no FK is cascade-actionable,
+// r.conn is returned unchanged with no-op commit/rollback.
+func (r *Repository[T]) beginCascadeTx(ctx context.Context, fkRegs []entity.FKRegistration) (golem.Conn, func() error, func(), error) {
+	needsTx := false
+	for _, reg := range fkRegs {
+		if cascadeActionable(reg.Options.ResolvedOnDelete()) {
+			needsTx = true
+			break
+		}
+	}
+	noop := func() error { return nil }
+	if !needsTx {
+		return r.conn, noop, func() {}, nil
+	}
+	if tx, ok := r.conn.(golem.Tx); ok {
+		return tx, noop, func() {}, nil
+	}
+	txConn, err := r.conn.Dialect().Begin(ctx, r.conn)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("repository: delete: begin cascade tx: %w", err)
+	}
+	tx := golem.NewTx(r.conn.Dialect(), txConn)
+	return tx, func() error { return tx.Commit(ctx) }, func() { _ = tx.Rollback(ctx) }, nil
+}
+
+// applyDeleteCascades runs every cascade-actionable OnDelete action
+// registered against r.meta.TableName, for the row identified by pkValue.
+// Restrict checks run before any Cascade/SetNull mutation, so a rejected
+// delete never leaves a partial cascade behind (the caller's transaction,
+// opened by beginCascadeTx, is the actual safety net either way).
+func applyDeleteCascades(ctx context.Context, conn golem.Conn, fkRegs []entity.FKRegistration, pkValue any) error {
+	for _, reg := range fkRegs {
+		if reg.Options.ResolvedOnDelete() != relation.OnDeleteRestrict {
+			continue
+		}
+		where := stmt.Predicate(stmt.Comparison{Column: reg.ChildColumn, Op: "eq", Value: pkValue})
+		if reg.ChildDeleteDateColumn != "" {
+			where = stmt.Logical{Op: "and", Predicates: []stmt.Predicate{
+				where,
+				stmt.Comparison{Column: reg.ChildDeleteDateColumn, Op: "is_null"},
+			}}
+		}
+		selPlan := &stmt.Select{Table: reg.ChildTableName, Where: where, Count: true}
+		sql, args, err := conn.Dialect().CompileSelect(selPlan)
+		if err != nil {
+			return fmt.Errorf("repository: delete: restrict check on %q: %w", reg.ChildTableName, err)
+		}
+		rows, err := conn.Dialect().Query(ctx, conn, sql, args)
+		if err != nil {
+			return fmt.Errorf("repository: delete: restrict check on %q: %w", reg.ChildTableName, err)
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		for _, v := range rows[0] {
+			if countValue(v) > 0 {
+				return golem.ErrForeignKeyViolation
+			}
+		}
+	}
+
+	for _, reg := range fkRegs {
+		switch reg.Options.ResolvedOnDelete() {
+		case relation.OnDeleteCascade:
+			if reg.ChildDeleteDateColumn != "" {
+				updPlan := &stmt.Update{
+					Table: reg.ChildTableName,
+					Sets:  []stmt.UpdateClause{{Column: reg.ChildDeleteDateColumn, Value: time.Now()}},
+					Where: stmt.Comparison{Column: reg.ChildColumn, Op: "eq", Value: pkValue},
+				}
+				if _, err := conn.Dialect().Update(ctx, conn, updPlan); err != nil {
+					return fmt.Errorf("repository: delete: cascade soft-delete %q: %w", reg.ChildTableName, err)
+				}
+			} else {
+				delPlan := &stmt.Delete{
+					Table: reg.ChildTableName,
+					Where: stmt.Comparison{Column: reg.ChildColumn, Op: "eq", Value: pkValue},
+				}
+				sql, args, err := conn.Dialect().CompileDelete(delPlan)
+				if err != nil {
+					return fmt.Errorf("repository: delete: cascade delete %q: %w", reg.ChildTableName, err)
+				}
+				if _, err := conn.Dialect().Exec(ctx, conn, sql, args); err != nil {
+					return fmt.Errorf("repository: delete: cascade delete %q: %w", reg.ChildTableName, err)
+				}
+			}
+
+		case relation.OnDeleteSetNull:
+			updPlan := &stmt.Update{
+				Table: reg.ChildTableName,
+				Sets:  []stmt.UpdateClause{{Column: reg.ChildColumn, Value: nil}},
+				Where: stmt.Comparison{Column: reg.ChildColumn, Op: "eq", Value: pkValue},
+			}
+			if _, err := conn.Dialect().Update(ctx, conn, updPlan); err != nil {
+				return fmt.Errorf("repository: delete: cascade set-null %q: %w", reg.ChildTableName, err)
+			}
+		}
+	}
+	return nil
+}
+
+// countValue normalizes the handful of integer types a COUNT(*) projection
+// can come back as across dialects/drivers.
+func countValue(v any) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int32:
+		return int64(n)
+	case int:
+		return int64(n)
+	default:
+		return 0
+	}
+}
+
 // Delete deletes the given items. If the entity has soft-delete enabled,
 // it performs a soft-delete (UPDATE setting the delete column to the current time);
-// otherwise it runs a hard DELETE. Triggers BeforeDelete/AfterDelete hooks,
-// and OnConflictDelete on database integrity conflicts.
+// otherwise it runs a hard DELETE. Before the delete itself, applies every
+// cascade-actionable OnDelete action (relation.OnDeleteCascade/SetNull/
+// Restrict) registered by other entities' ForeignKey declarations pointing
+// at this one — see entity.ForeignKeysReferencing. Triggers BeforeDelete/
+// AfterDelete hooks, and OnConflictDelete on database integrity conflicts.
 func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 	if len(items) == 0 {
 		return nil
 	}
 	pkSet := r.pkColumnSet()
 	f2c := r.fieldToColumn()
+	fkRegs := entity.ForeignKeysReferencing(r.meta.TableName)
 
 	for _, item := range items {
 		if err := r.entity.TriggerBeforeDelete(ctx, item, r.conn); err != nil {
@@ -668,6 +806,7 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 
 		v := reflect.ValueOf(item).Elem()
 		var pkPreds []stmt.Predicate
+		var pkValue any
 		for _, col := range r.meta.Columns {
 			if pkSet[col.Name] {
 				fieldVal := v.FieldByName(col.FieldName)
@@ -676,6 +815,7 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 					Op:     "eq",
 					Value:  fieldVal.Interface(),
 				})
+				pkValue = fieldVal.Interface()
 			}
 		}
 		if len(pkPreds) == 0 {
@@ -688,10 +828,21 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 			wherePred = stmt.Logical{Op: "and", Predicates: pkPreds}
 		}
 
-		var err error
+		conn, commit, rollback, err := r.beginCascadeTx(ctx, fkRegs)
+		if err != nil {
+			return err
+		}
+
+		if err := applyDeleteCascades(ctx, conn, fkRegs, pkValue); err != nil {
+			rollback()
+			return err
+		}
+
+		var delErr error
 		if r.meta.DeleteDateField != "" {
 			colName, ok := f2c[r.meta.DeleteDateField]
 			if !ok {
+				rollback()
 				return fmt.Errorf("repository: delete date field %q is not mapped to any column", r.meta.DeleteDateField)
 			}
 			updPlan := &stmt.Update{
@@ -701,7 +852,7 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 				},
 				Where: wherePred,
 			}
-			_, err = r.conn.Dialect().Update(ctx, r.conn, updPlan)
+			_, delErr = conn.Dialect().Update(ctx, conn, updPlan)
 		} else {
 			delPlan := &stmt.Delete{
 				Table: r.meta.TableName,
@@ -709,19 +860,24 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 			}
 			var sql string
 			var args []any
-			sql, args, err = r.conn.Dialect().CompileDelete(delPlan)
-			if err == nil {
-				_, err = r.conn.Dialect().Exec(ctx, r.conn, sql, args)
+			sql, args, delErr = conn.Dialect().CompileDelete(delPlan)
+			if delErr == nil {
+				_, delErr = conn.Dialect().Exec(ctx, conn, sql, args)
 			}
 		}
 
-		if err != nil {
-			if r.conn.Dialect().IsConflict(err) {
+		if delErr != nil {
+			rollback()
+			if r.conn.Dialect().IsConflict(delErr) {
 				if hookErr := r.entity.TriggerOnConflictDelete(ctx, item, r.conn); hookErr != nil {
 					return hookErr
 				}
 			}
-			return fmt.Errorf("repository: delete: %w", err)
+			return fmt.Errorf("repository: delete: %w", delErr)
+		}
+
+		if err := commit(); err != nil {
+			return fmt.Errorf("repository: delete: commit cascade: %w", err)
 		}
 
 		if err := r.entity.TriggerAfterDelete(ctx, item, r.conn); err != nil {

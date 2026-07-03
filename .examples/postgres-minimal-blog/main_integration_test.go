@@ -129,6 +129,66 @@ func TestBlogExample_FullFlow(t *testing.T) {
 	}
 }
 
+func TestBlogExample_CascadeDeleteUser_DeletesTheirPosts(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+	userRepo := repository.Get(dataSource, UserEntity)
+	postRepo := repository.Get(dataSource, PostEntity)
+
+	user, err := userRepo.Insert(ctx, &User{
+		Name:  "Cascade Delete User",
+		Email: "cascade.delete@email.com",
+	})
+	if err != nil {
+		t.Fatalf("Insert(User) returned error: %v", err)
+	}
+
+	// Intentionally no PostToCategory row for this post — post_to_category's
+	// own FK constraint (no cascade) would otherwise block the cascaded
+	// Post delete below, since PostEntity's ForeignKey(OwnerUserID, User)
+	// cascade is a single level (it deletes matching Post rows directly,
+	// it does not recurse into whatever references those Post rows in turn).
+	post, err := postRepo.Insert(ctx, &Post{
+		OwnerUserID: user.ID,
+		Title:       "Post that should be cascade-deleted",
+		Content:     "deleting the owning user should delete this row too",
+	})
+	if err != nil {
+		t.Fatalf("Insert(Post) returned error: %v", err)
+	}
+
+	if err := userRepo.Delete(ctx, &user); err != nil {
+		t.Fatalf("Delete(User) returned error: %v", err)
+	}
+
+	_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+		q.Where(op.Eq(&u.ID, user.ID))
+	})
+	if !errors.Is(err, golem.ErrNotFound) {
+		t.Errorf("expected deleted user to be ErrNotFound, got %v", err)
+	}
+
+	_, err = postRepo.FindOne(ctx, func(p *Post, q *query.Query[Post]) {
+		q.Where(op.Eq(&p.ID, post.ID))
+	})
+	if !errors.Is(err, golem.ErrNotFound) {
+		t.Errorf("expected cascade-deleted post to be ErrNotFound, got %v", err)
+	}
+}
+
 func TestBlogExample_TypedErrors(t *testing.T) {
 	dsn := resolveDSN()
 

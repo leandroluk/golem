@@ -1,10 +1,20 @@
 package entity
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/relation"
 )
+
+// describer is implemented by every *entity.Entity[J] regardless of J —
+// ForeignKey's target argument is typed any (Table itself isn't generic
+// over the target's type parameter), so this is how it reaches the
+// target's already-finalized EntityMeta.
+type describer interface {
+	Describe() EntityMeta
+}
 
 // pendingColumn defers a Col() declaration's final ColumnMeta resolution
 // until after the user's callback has finished running. This is required
@@ -20,6 +30,15 @@ type pendingColumn struct {
 type pendingIndex struct {
 	fieldNames []string
 	ib         *Index
+}
+
+// pendingForeignKey defers ForeignKey() resolution until finalize(), since
+// the child column name (from Col's deferred naming) isn't known yet.
+type pendingForeignKey struct {
+	fieldName        string
+	targetTableName  string
+	targetPrimaryKey string
+	opts             *relation.ForeignKeyOptions
 }
 
 // Table is passed into the callback given to New. Every method resolves
@@ -38,9 +57,11 @@ type Table struct {
 	setUpdateDate   func(string)
 	setDeleteDate   func(string)
 
+	getTableName func() string
+
 	pendingColumns    []pendingColumn
 	pendingPrimaryKey []string // field names, translated to column names at finalize()
-	pendingForeignKey []string // field names
+	pendingForeignKey []pendingForeignKey
 	pendingUniques    [][]string // each inner slice is field names
 	pendingIndexes    []pendingIndex
 	pendingCreateDate string
@@ -51,6 +72,7 @@ type Table struct {
 func newTable[T any](zero *T, e *Entity[T]) *Table {
 	return &Table{
 		zero:          zero,
+		getTableName:  func() string { return e.meta.TableName },
 		setTableName:  func(n string) { e.meta.TableName = n },
 		setSchemaName: func(n string) { e.meta.SchemaName = n },
 		setPrimaryKey: func(cols []string) { e.meta.PrimaryKey = cols },
@@ -88,13 +110,39 @@ func (b *Table) Col(fieldPtr any, t golem.ColumnType) *Column {
 	return cb
 }
 
-// ForeignKey records that fieldPtr's column references target's primary key.
-func (b *Table) ForeignKey(fieldPtr any, target any) {
+// ForeignKey records that fieldPtr's column references target's primary
+// key. target must be a *entity.Entity[J] for some J (any concrete J works
+// — Table itself isn't parameterized over J). opts is optional; when
+// omitted, relation.NewForeignKeyOptions()'s defaults apply. target's
+// primary key must be exactly one column — composite-PK targets aren't
+// supported (ForeignKey only resolves a single fieldPtr, so there's no way
+// to express a composite FK column set).
+func (b *Table) ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions) {
 	fieldName, err := ResolveField(b.zero, fieldPtr)
 	if err != nil {
 		panic(err)
 	}
-	b.pendingForeignKey = append(b.pendingForeignKey, fieldName)
+
+	d, ok := target.(describer)
+	if !ok {
+		panic(fmt.Sprintf("entity: ForeignKey target %T does not implement Describe() EntityMeta (must be *entity.Entity[J] for some J)", target))
+	}
+	targetMeta := d.Describe()
+	if len(targetMeta.PrimaryKey) != 1 {
+		panic(fmt.Sprintf("entity: ForeignKey target %q has a composite or missing primary key (%v) — composite-PK FK targets are not supported", targetMeta.TableName, targetMeta.PrimaryKey))
+	}
+
+	o := relation.NewForeignKeyOptions()
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+
+	b.pendingForeignKey = append(b.pendingForeignKey, pendingForeignKey{
+		fieldName:        fieldName,
+		targetTableName:  targetMeta.TableName,
+		targetPrimaryKey: targetMeta.PrimaryKey[0],
+		opts:             o,
+	})
 }
 
 // PrimaryKey declares the entity's primary key, single or composite.
@@ -209,9 +257,27 @@ func (b *Table) finalize() {
 	}
 
 	if len(b.pendingForeignKey) > 0 {
+		childTable := b.getTableName()
 		fks := make([]ForeignKeyMeta, len(b.pendingForeignKey))
-		for i, fieldName := range b.pendingForeignKey {
-			fks[i] = ForeignKeyMeta{FieldName: fieldName}
+		for i, pfk := range b.pendingForeignKey {
+			colName, ok := fieldToColumn[pfk.fieldName]
+			if !ok {
+				colName = strings.ToLower(pfk.fieldName)
+			}
+			fks[i] = ForeignKeyMeta{
+				FieldName:        pfk.fieldName,
+				ColumnName:       colName,
+				TargetTableName:  pfk.targetTableName,
+				TargetPrimaryKey: pfk.targetPrimaryKey,
+				Options:          pfk.opts,
+			}
+			registerForeignKey(FKRegistration{
+				ChildTableName:        childTable,
+				ChildColumn:           colName,
+				ChildDeleteDateColumn: fieldToColumn[b.pendingDeleteDate],
+				TargetTableName:       pfk.targetTableName,
+				Options:               pfk.opts,
+			})
 		}
 		b.setForeignKey(fks)
 	}

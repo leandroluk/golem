@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M10 concluídos com sucesso (ver histórico abaixo). M11 (Relations/`ForeignKeyOptions`+Cascade) é o próximo milestone ativo — ROADMAP.md promoveu M11-M14 de "Future Considerations" pra milestones reais (AD-025). Antes de M11, fechando o gap de cobertura do package `join` (0% direto, achado durante M10 — AD-026 tornou 100% coverage um requisito permanente).
+**Current Work:** M1-M11 concluídos com sucesso (ver histórico abaixo). M11 (Relations/`ForeignKeyOptions`+Cascade, AD-027) entregou: `relation` package completo, `ForeignKey` com opts (+ fix de um bug pré-existente onde `target` nunca era lido), registro global de FKs, cascade real (`OnDelete` Cascade/SetNull/Restrict) em `Repository[T].Delete`, exemplo + integration test reais. M12 (Preload/Eager Loading) é o próximo milestone.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-027: M11 shipped — only `OnDelete` gets real cascade behavior, via a global FK registry (2026-07-03)
+
+**Decision:** `entity.Table.ForeignKey` now takes a 3rd variadic `...*relation.ForeignKeyOptions`. Of the 9 documented options, only `OnDelete` (`Cascade`/`SetNull`/`Restrict`) changes `Repository[T]` behavior — implemented via a new package-level registry (`entity.ForeignKeysReferencing`, populated as a side effect of `entity.New` running `ForeignKey`, keyed by the TARGET/parent table since the declaration direction is child→parent, the opposite of what cascade needs to query) consulted by `Repository[T].Delete`, which wraps cascade+delete in an implicit transaction (reusing an existing `Tx` if already inside one) only when 1+ registered FK is cascade-actionable.
+**Reason:** This was flagged to the user mid-design (see conversation) before implementation: `Cascade*`/`Persistence`/`OrphanedRowAction` (TypeORM semantics) all require an attached in-memory related object on the owning struct to cascade a write from/to — which AD-001/AD-024 already ruled out (no navigational collection field). `CreateForeignKeyConstraints`/`Deferrable` describe DDL-time behavior golem never emits (AD-012). `OnDelete`/`OnUpdate` are the only two that operate purely on "who references this row," needing no attached object — and only `OnDelete` had an operation (`Delete`) to hang real behavior off of; no operation currently mutates a PK value, so `OnUpdate` has nothing to trigger from yet.
+**Trade-off:** 5 of 9 options (`Cascade*`, `Persistence`, `OrphanedRowAction`, `CreateForeignKeyConstraints`, `Deferrable`) are accepted/stored but functionally inert — a caller setting them gets no error but also no behavior, which could surprise someone coming from TypeORM. Mitigated by loud documentation (package doc in `relation/relation.go`, README.md inline comments, spec.md/design.md) rather than silently rejecting them, so the API shape stays a faithful superset of the original design and nothing needs to change if a future milestone finds a way to make more of them real (e.g. once M12's Preload exists, `Eager` gets wired up for real, no API break).
+**Impact:** Also fixed a pre-existing bug found while implementing this: `ForeignKey`'s `target` argument was NEVER type-asserted or read before M11 — `ForeignKeyMeta` only stored `FieldName`. Now stores `ColumnName`/`TargetTableName`/`TargetPrimaryKey`/`Options` too, and panics if `target` doesn't implement `Describe() EntityMeta` or has a composite PK (composite-PK FK targets unsupported — `ForeignKey` only resolves one `fieldPtr`). New packages/functions from this milestone (`relation`, `entity.FKRegistration`+registry, `repository`'s `cascadeActionable`/`beginCascadeTx`/`applyDeleteCascades`/`countValue`) are all at 100% statement coverage per AD-026. Full design: `.specs/features/relations/design.md`.
 
 ### AD-026: 100% test coverage is a standing requirement going forward (2026-07-03)
 
@@ -255,5 +262,7 @@ None.
 - [x] ~~Build `internal/stmt` AST for real~~ — DONE
 - [x] ~~Fix `join.Inner`/`FindMany` fan-out: a 1:N join duplicates the parent row once per matched child row instead of deduplicating by PK~~ — DONE (`repository.FindMany` dedupes by `r.meta.PrimaryKey` via `pkRowKey`, gated on `len(q.Joins()) > 0` so no-join queries are unaffected)
 - [x] ~~Make `.examples/postgres-minimal-blog`'s integration tests actually run under `task test-integration`~~ — DONE (Taskfile.yml's `test-integration` now runs `go test -tags=integration ./.examples/postgres-minimal-blog` as a separate explicit-path step, since go's `...` wildcard skips dot-prefixed dirs even when given explicitly)
+- [ ] `OnUpdate` cascade (relation.OnUpdateCascade/SetNull/Restrict) is accepted/stored (AD-027) but not wired to any Repository[T] operation — no operation currently mutates a PK value to trigger it from. Revisit if/when a real use case for mutable PKs shows up.
+- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 54.3%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 75.0%, `repository` 72.4% (`SaveMany`/`UpdateMany` at 0%). Not blocking M12+, but should be backfilled eventually.
 
 

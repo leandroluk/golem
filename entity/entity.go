@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/relation"
 )
 
 // ResolveField returns the struct field name that fieldPtr points into,
@@ -40,10 +41,15 @@ type ColumnMeta struct {
 	DefaultFunc func() (any, error)
 }
 
-// ForeignKeyMeta records that FieldName's column references another entity's
-// primary key.
+// ForeignKeyMeta records that FieldName's column references TargetTableName's
+// primary key (TargetPrimaryKey, always exactly one column — composite-PK
+// targets are rejected at declaration time, see Table.ForeignKey).
 type ForeignKeyMeta struct {
-	FieldName string
+	FieldName        string
+	ColumnName       string
+	TargetTableName  string
+	TargetPrimaryKey string
+	Options          *relation.ForeignKeyOptions
 }
 
 // IndexMeta describes a named index over one or more columns.

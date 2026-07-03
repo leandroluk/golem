@@ -284,18 +284,28 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   // índice secundário: acelera queries que filtram por OwnerUserID (ex: "posts de um usuário")
   b.Index(&t.OwnerUserID)
   // o terceiro parametro é opcional
+  // AVISO: Cascade/Persistence/OrphanedRowAction/CreateForeignKeyConstraints/Deferrable são aceitos e
+  // guardados no metadata da entity (b.ForeignKey nunca ignora silenciosamente um valor passado), mas
+  // NÃO têm efeito em runtime nesta versão — golem nunca gera DDL (sem migrations, ver AD-012) e
+  // entities nunca têm um campo navegacional pra relação anexada em memória (ver AD-001/AD-024), que é
+  // o que essas opções cascateariam no TypeORM. Só OnDelete tem comportamento real hoje (ver abaixo);
+  // Eager passa a ter efeito quando Preload/Eager Loading (M12) existir. Detalhes:
+  // .specs/features/relations/design.md
   b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().
     // em caso de criação de um usuário todos os posts deste usuário serão criados
     // outras opções disponíveis: CascadeInsert, CascadeUpdate, CascadeRemove, CascadeSoftRemove, CascadeRecover
     Cascade(relation.CascadeAll).
-    // em caso de deleção de um usuário todos os posts deste usuário serão deletados
+    // em caso de deleção de um usuário todos os posts deste usuário serão deletados.
+    // real: Repository[T].Delete aplica isso de verdade (consulta um registro global de FKs)
     // outras opções são:
-    // - relation.OnDeleteRestrict
+    // - relation.OnDeleteDefault (não faz nada a nível golem; se existir uma constraint real no banco fora do golem, vale o que ela disser)
+    // - relation.OnDeleteRestrict (bloqueia o delete com golem.ErrForeignKeyViolation se existir post referenciando)
     // - relation.OnDeleteSetNull
-    // - relation.OnDeleteCascade
-    // - relation.OnDeleteNoAction
-    OnDelete(relation.OnDeleteDefault).
-    // em caso de atualização do ID de um usuário todos os posts deste usuário serão atualizados
+    // - relation.OnDeleteNoAction (mesmo efeito de OnDeleteDefault a nível golem)
+    OnDelete(relation.OnDeleteCascade).
+    // aceito e guardado no metadata, mas SEM efeito em runtime nesta versão — chaves primárias nunca
+    // mudam de valor nos exemplos, e OnUpdate ainda não tem um gatilho (SaveOne/UpdateOne) que dispare
+    // esse cascade de verdade. Ver .specs/features/relations/design.md.
     // outras opções são:
     // - relation.OnUpdateRestrict
     // - relation.OnUpdateSetNull
