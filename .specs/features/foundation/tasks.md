@@ -47,10 +47,10 @@ T6, T7, T8, T2 ──→ T9
 
 ## Task Breakdown
 
-### T1: Test infra — Makefile + docker-compose.test.yml
+### T1: Test infra — Taskfile.yml + docker-compose.test.yml
 
-**What**: Root `Makefile` with `build`/`vet`/`test`/`test-integration`/`gate-quick`/`gate-full` targets, plus `docker-compose.test.yml` defining a disposable Postgres service for integration tests.
-**Where**: `Makefile`, `docker-compose.test.yml`
+**What**: Root `Taskfile.yml` with `build`/`vet`/`test`/`test-integration`/`gate-quick`/`gate-full` targets, plus `docker-compose.test.yml` defining a disposable Postgres service for integration tests.
+**Where**: `Taskfile.yml`, `docker-compose.test.yml`
 **Depends on**: None
 **Reuses**: N/A (first artifact)
 **Requirement**: N/A (tooling)
@@ -60,15 +60,15 @@ T6, T7, T8, T2 ──→ T9
 - Skill: NONE
 
 **Done when**:
-- [x] `Makefile` has `build`, `vet`, `test`, `test-integration`, `gate-quick`, `gate-full` targets matching `.specs/codebase/TESTING.md`
+- [x] `Taskfile.yml` has `build`, `vet`, `test`, `test-integration`, `gate-quick`, `gate-full` targets matching `.specs/codebase/TESTING.md`
 - [x] `docker-compose.test.yml` defines a Postgres service with a healthcheck (`pg_isready`) so `up -d --wait` blocks until ready
 - [x] `make -n gate-quick`/`make -n gate-full` dry-run shows the correct command sequence; `docker compose -f docker-compose.test.yml config` validates
-- [x] SPEC_DEVIATION: `go vet ./...` exits non-zero ("no packages to vet") on a source-free module — a real gate-quick pass is deferred to T2 (first task adding source); this is a Go tooling quirk on an empty tree, not a Makefile defect
+- [x] SPEC_DEVIATION: `go vet ./...` exits non-zero ("no packages to vet") on a source-free module — a real gate-quick pass is deferred to T2 (first task adding source); this is a Go tooling quirk on an empty tree, not a Taskfile.yml defect
 
 **Tests**: none
 **Gate**: build (manual: `make gate-quick` succeeds)
 
-**Commit**: `chore(test): add Makefile and docker-compose test infra`
+**Commit**: `chore(test): add Taskfile.yml and docker-compose test infra`
 
 ---
 
@@ -324,49 +324,49 @@ T9 is deliberately NOT `[P]` — it's `integration`-tested (Parallel-Safe: No pe
 
 ## Task Granularity Check
 
-| Task | Scope | Status |
-| --- | --- | --- |
-| T1: Makefile + docker-compose | 2 files, pure tooling | ✅ Granular |
-| T2: Logger + LogLevel | 1 file | ✅ Granular |
-| T3: ColumnType stub | 1 file | ✅ Granular |
-| T4: Conn marker interface | 1 file | ✅ Granular |
-| T5: Dialect + Connector interfaces | 2 small, cohesive files (both pure contracts, no logic) | ✅ Granular (OK as 2-in-1: both are 3-line interface declarations) |
-| T6: DataSource + Options | 2 files, one cohesive component (lifecycle + its config) | ✅ Granular |
-| T7: postgres Options + resolveDSN | 2 files, one cohesive component (config + its parsing) | ✅ Granular |
-| T8: postgres dialect stub | 1 file | ✅ Granular |
-| T9: postgres connector + New | 2 files, one cohesive component (real connection + its public entrypoint) | ✅ Granular |
+| Task                               | Scope                                                                     | Status                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| T1: Taskfile.yml + docker-compose  | 2 files, pure tooling                                                     | ✅ Granular                                                        |
+| T2: Logger + LogLevel              | 1 file                                                                    | ✅ Granular                                                        |
+| T3: ColumnType stub                | 1 file                                                                    | ✅ Granular                                                        |
+| T4: Conn marker interface          | 1 file                                                                    | ✅ Granular                                                        |
+| T5: Dialect + Connector interfaces | 2 small, cohesive files (both pure contracts, no logic)                   | ✅ Granular (OK as 2-in-1: both are 3-line interface declarations) |
+| T6: DataSource + Options           | 2 files, one cohesive component (lifecycle + its config)                  | ✅ Granular                                                        |
+| T7: postgres Options + resolveDSN  | 2 files, one cohesive component (config + its parsing)                    | ✅ Granular                                                        |
+| T8: postgres dialect stub          | 1 file                                                                    | ✅ Granular                                                        |
+| T9: postgres connector + New       | 2 files, one cohesive component (real connection + its public entrypoint) | ✅ Granular                                                        |
 
 ---
 
 ## Diagram-Definition Cross-Check
 
-| Task | Depends On (task body) | Diagram Shows | Status |
-| --- | --- | --- | --- |
-| T1 | None | Phase 1, no incoming arrows | ✅ Match |
-| T2 | T1 | Phase 2, arrow from T1 | ✅ Match |
-| T3 | T1 | Phase 2, arrow from T1 | ✅ Match |
-| T4 | T1 | Phase 2, arrow from T1 | ✅ Match |
-| T5 | T3 | Phase 3, arrow from T3 | ✅ Match |
-| T6 | T4, T5 | Phase 4, arrows from T4 and T5 | ✅ Match |
-| T7 | T2 | Phase 3, arrow from T2 | ✅ Match |
-| T8 | T3, T5 | Phase 4, arrows from T3 and T5 | ✅ Match |
-| T9 | T6, T7, T8, T2 | Phase 5, arrows from T6, T7, T8 (T2 transitively via T7/T9's own logger use) | ✅ Match |
+| Task | Depends On (task body) | Diagram Shows                                                                | Status  |
+| ---- | ---------------------- | ---------------------------------------------------------------------------- | ------- |
+| T1   | None                   | Phase 1, no incoming arrows                                                  | ✅ Match |
+| T2   | T1                     | Phase 2, arrow from T1                                                       | ✅ Match |
+| T3   | T1                     | Phase 2, arrow from T1                                                       | ✅ Match |
+| T4   | T1                     | Phase 2, arrow from T1                                                       | ✅ Match |
+| T5   | T3                     | Phase 3, arrow from T3                                                       | ✅ Match |
+| T6   | T4, T5                 | Phase 4, arrows from T4 and T5                                               | ✅ Match |
+| T7   | T2                     | Phase 3, arrow from T2                                                       | ✅ Match |
+| T8   | T3, T5                 | Phase 4, arrows from T3 and T5                                               | ✅ Match |
+| T9   | T6, T7, T8, T2         | Phase 5, arrows from T6, T7, T8 (T2 transitively via T7/T9's own logger use) | ✅ Match |
 
 ---
 
 ## Test Co-location Validation
 
-| Task | Code Layer Created/Modified | Matrix Requires | Task Says | Status |
-| --- | --- | --- | --- | --- |
-| T1: Makefile/compose | tooling (no code layer) | — | none | ✅ OK |
-| T2: Logger | `golem` root package | unit | unit | ✅ OK |
-| T3: ColumnType | `golem` root package | unit | unit | ✅ OK |
-| T4: Conn | `golem` root package | unit | unit | ✅ OK |
-| T5: Dialect/Connector | `golem` root package | unit | unit | ✅ OK |
-| T6: DataSource | `golem` root package | unit | unit | ✅ OK |
-| T7: postgres Options/resolveDSN | `adapter/postgres` (DSN resolution) | unit | unit | ✅ OK |
-| T8: postgres dialect stub | `adapter/postgres` (dialect stub) | unit | unit | ✅ OK |
-| T9: postgres connector/New | `adapter/postgres` (real connector) | integration | integration | ✅ OK |
+| Task                            | Code Layer Created/Modified         | Matrix Requires | Task Says   | Status |
+| ------------------------------- | ----------------------------------- | --------------- | ----------- | ------ |
+| T1: Taskfile.yml/compose        | tooling (no code layer)             | —               | none        | ✅ OK   |
+| T2: Logger                      | `golem` root package                | unit            | unit        | ✅ OK   |
+| T3: ColumnType                  | `golem` root package                | unit            | unit        | ✅ OK   |
+| T4: Conn                        | `golem` root package                | unit            | unit        | ✅ OK   |
+| T5: Dialect/Connector           | `golem` root package                | unit            | unit        | ✅ OK   |
+| T6: DataSource                  | `golem` root package                | unit            | unit        | ✅ OK   |
+| T7: postgres Options/resolveDSN | `adapter/postgres` (DSN resolution) | unit            | unit        | ✅ OK   |
+| T8: postgres dialect stub       | `adapter/postgres` (dialect stub)   | unit            | unit        | ✅ OK   |
+| T9: postgres connector/New      | `adapter/postgres` (real connector) | integration     | integration | ✅ OK   |
 
 No task defers its required tests to "another task" — every task's `Done when` includes its own gate check.
 

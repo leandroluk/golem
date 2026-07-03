@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M2 - Schema Declaration
-**Status:** M1 done, M2 not started
+**Current Milestone:** M4 - Query Builder & Read Paths
+**Status:** M1 done, M2 done, M3 partially done (Insert/InsertMany/SaveOne/SaveMany/FindMany/FindOne/UpdateOne/UpdateMany done; Delete/Restore/Count/Exists deferred)
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -23,19 +23,19 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 - `golem.Conn` interface (implemented later by both `*DataSource` and `golem.Tx`)
 - `golem.Logger` interface + default console logger
 
-**`internal/plan` (minimal skeleton)** - PLANNED (deferred to M3, not needed until repository/query building starts)
+**`internal/stmt` (minimal skeleton)** - PLANNED (deferred to M3, not needed until repository/query building starts)
 
-- Internal AST package (not public API): `plan.Select`, `plan.Insert`, `plan.Update`, `plan.Delete`
+- Internal AST package (not public API): `stmt.Select`, `stmt.Insert`, `stmt.Update`, `stmt.Delete`
 - M1 scope only: table ref + PK-equality `Where` — **PK-equality means AND of 1+ column=value checks, not just 1 column**, since composite PKs already exist in the design (e.g. `QuestionToCategory` from M2, PK = `QuestionID`+`CategoryID`); `FindByID`/`SaveOne`/`Delete`/`Restore` in M3 must work against composite PKs from day one, not as a later upgrade. Full arbitrary predicate tree (OR, comparisons beyond equality), `Set`, and `Join` are added incrementally in M4/M5/M6 — see AD-016 in STATE.md
 
 **`golem.Dialect` contract** - DONE
 
 - Value-level: `Bind(t golem.ColumnType, value any) (driver.Value, error)`, `Scan(t golem.ColumnType, raw any, dest any) error`
 - Statement-level, asymmetric by kind (not 4 symmetric methods — see AD-016):
-  - `CompileSelect(p *plan.Select) (sql string, args []any, err error)` — pure compile, 1 round-trip
-  - `CompileDelete(p *plan.Delete) (sql string, args []any, err error)` — pure compile, 1 round-trip, no row data
-  - `Insert(ctx context.Context, conn golem.Conn, p *plan.Insert) ([]map[string]any, error)` — execute, adapter picks round-trip strategy (matters for dialects without `RETURNING`, e.g. MySQL)
-  - `Update(ctx context.Context, conn golem.Conn, p *plan.Update) ([]map[string]any, error)` — same reasoning as `Insert`
+  - `CompileSelect(s *stmt.Select) (sql string, args []any, err error)` — pure compile, 1 round-trip
+  - `CompileDelete(s *stmt.Delete) (sql string, args []any, err error)` — pure compile, 1 round-trip, no row data
+  - `Insert(ctx context.Context, conn golem.Conn, s *stmt.Insert) ([]map[string]any, error)` — execute, adapter picks round-trip strategy (matters for dialects without `RETURNING`, e.g. MySQL)
+  - `Update(ctx context.Context, conn golem.Conn, s *stmt.Update) ([]map[string]any, error)` — same reasoning as `Insert`
 - Every adapter (starting with `postgres`) implements it; `DataSource` holds the active `Dialect` for the connection it manages
 - Enables `golem.ColumnType` (M2) to stay adapter-agnostic from day one
 
@@ -52,7 +52,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Entities can be declared and their metadata (columns, keys, indexes) inspected — no persistence yet.
 **Target:** `entity.New[User](func(t *User, b *entity.Builder) {...})` builds valid metadata for all documented `entity.Builder` methods.
-**Status:** ⚠️ PARTIALLY DONE — scoped down to exactly what `examples/postgres-minimal-blog` needs (AD-021). See `.specs/features/schema-declaration/`.
+**Status:** ✅ DONE — `entity.Builder` completo: `Col` (com `Nullable`/`Default`/`DefaultFunc`), `PrimaryKey`, `ForeignKey`, `TableName`/`SchemaName`, `Unique`, `Index` (com `*index.Builder`), `CreateDate`/`UpdateDate`/`DeleteDate`. `golem.ColumnType` completo: `BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`. Pacote `index` criado. `column.Builder` completo.
 
 ### Features
 
@@ -81,7 +81,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Entities can be inserted, re-saved, deleted/restored, and fetched by PK against a real table — **including entities with a composite PK** (e.g. `QuestionToCategory` from M2).
 **Target:** `repository.Get(dataSource, UserEntity)` round-trips a row end to end; `repository.Get(dataSource, QuestionToCategoryEntity)` round-trips against a composite PK.
-**Status:** ⚠️ PARTIALLY DONE — scoped down to exactly what `examples/postgres-minimal-blog` needs (AD-021), and via a simpler direct-SQL `Dialect.Insert`/`FindByID` contract instead of the `internal/plan` AST originally anticipated by AD-016 (see AD-020). See `.specs/features/repository-core-crud/`.
+**Status:** ⚠️ PARTIALLY DONE — `Insert`/`InsertMany`, `FindMany`/`FindOne`, `SaveOne`/`SaveMany`, `UpdateOne`/`UpdateMany` implementados. `FindByID` removido (substituído por `FindOne` + `op.Eq`). `Delete`/`Restore`/`Count`/`Exists` deferred (dependem de `DeleteDate` e M4).
 
 ### Features
 
@@ -91,7 +91,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Write paths** - PARTIALLY DONE
 
-- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — DONE, via `Dialect.Insert` (direct SQL, not `plan.Insert` — AD-020); zero-valued fields are omitted so DB-side defaults (e.g. `BIGSERIAL`) apply
+- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — DONE, via `Dialect.Insert` (direct SQL, not `stmt.Insert` — AD-020); zero-valued fields are omitted so DB-side defaults (e.g. `BIGSERIAL`) apply
 - `SaveOne(ctx, *T) (T, error)` / `SaveMany(ctx, ...*T) ([]T, error)` — DEFERRED (AD-021)
 - `Delete(ctx, ...*T) error` / `Restore(ctx, ...*T) error` — DEFERRED (AD-021, no `DeleteDate` support yet)
 
@@ -105,7 +105,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Arbitrary filtered reads work: `FindMany`/`FindOne` with `Where`/`Select`/`OrderBy`/`Limit`/`Offset`.
 **Target:** The `FindOne`/`FindMany` examples in `README.md` run against a real table.
-**Depends on:** extends `plan.Select` (M1/M3) from PK-equality-only to a full AND/OR/NOT predicate tree (AD-016).
+**Depends on:** extends `stmt.Select` (M1/M3) from PK-equality-only to a full AND/OR/NOT predicate tree (AD-016).
 
 ### Features
 
@@ -131,7 +131,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Criteria-based updates and counts work without needing an in-memory instance.
 **Target:** `UpdateOne`/`UpdateMany`/`Count`/`Exists` examples in README run against a real table.
-**Depends on:** extends `plan.Update` (M1/M3) with a `Set` clause + full predicate `Where`; `plan.Select` reused (with a `COUNT(*)` projection mode) for `Count`/`Exists`.
+**Depends on:** extends `stmt.Update` (M1/M3) with a `Set` clause + full predicate `Where`; `stmt.Select` reused (with a `COUNT(*)` projection mode) for `Count`/`Exists`.
 
 ### Features
 
@@ -154,7 +154,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Queries can join across entities for filtering, including the many-to-many-via-junction-entity pattern.
 **Target:** The `join.Inner` example in README (users with a published post) runs against real tables.
-**Depends on:** adds a `Join` list to `plan.Select` (kind, target table, `On` predicate, joined-side `Where` predicate).
+**Depends on:** adds a `Join` list to `stmt.Select` (kind, target table, `On` predicate, joined-side `Where` predicate).
 
 ### Features
 

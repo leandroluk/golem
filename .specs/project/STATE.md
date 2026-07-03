@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1 (Foundation) shipped and verified. M2 (Schema Declaration)/M3 (Repository Core CRUD) shipped and verified too, scoped to exactly what `examples/postgres-minimal-blog` needs (AD-021) — `entity`/`column`/`repository` packages, real `golem.BIGINT/VARCHAR/TEXT`, `Conn.Dialect()`, `Dialect.Insert/FindByID` (AD-019/AD-020), `make gate-full` passes end-to-end including the runnable blog example against real dockerized Postgres. Caught and fixed a real bug along the way: `Repository.Insert` was sending zero-valued PK columns, colliding with `BIGSERIAL` — fixed by omitting zero-valued fields. Next: pick up the M2/M3 continuation items (Todos below) or move to M4 (Query Builder), whichever the user wants next.
+**Current Work:** M2 (Schema Declaration) 100% concluído: `entity.Builder` agora tem `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate`, `column.Builder` tem `Nullable`/`Default`/`DefaultFunc`, `golem.ColumnType` tem todos os construtores (`BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`), novo pacote `index`. M3 avançado: `FindMany`/`FindOne`/`SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany` implementados no repository. `FindByID` removido (AD-022) — substituído por `FindOne` + `op.Eq`. `go test ./...` 100% verde. Next: M4 (Query Builder) para ter `op` completo e desbloquear `Delete`/`Restore`/`Count`/`Exists` do M3.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-022: `FindByID` removido — substituído por `FindOne` + `op.Eq` (2026-07-03)
+
+**Decision:** `Repository[T].FindByID` foi removido do package `repository`. Busca por PK passa a ser expressa como `repo.FindOne(ctx, func(t *T, q *query.Query[T]) { q.Where(op.Eq(&t.ID, id)) })`.
+**Reason:** O usuário apontou que `FindOne` já cobre o caso de uso de `FindByID` sem necessidade de um método dedicado — e sem necessidade de adicionar `FindByID` à interface `golem.Dialect` (que nunca foi implementado e quebrava o build).
+**Trade-off:** Sintaxe um pouco mais verbosa para o caso de busca por PK vs. um método curto e conveniente. Aceito: é consistente com o princípio do projeto de não crescer a API sem justificativa.
+**Impact:** `repository.go` sem `FindByID`; `examples/postgres-minimal-blog/main.go` e `main_integration_test.go` atualizados para usar `FindOne`; `errors.go` atualizado; `golem.Dialect` não precisou de novo método.
 
 ### AD-021: M2/M3 scoped to `postgres-minimal-blog`, not the full ROADMAP.md bullet list (2026-07-03)
 
@@ -14,12 +21,12 @@
 **Trade-off:** `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `column.Builder.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions`, `SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany`/`Delete`/`Restore`/`Count`/`Exists`/`FindMany`/`FindOne`, and composite-PK `FindByID` are all deferred — see Todos below.
 **Impact:** `.specs/features/schema-declaration/spec.md` and `.specs/features/repository-core-crud/spec.md` both document this scoping explicitly as a SPEC_DEVIATION from ROADMAP.md. ROADMAP.md's M2/M3 sections should be treated as "partially done" until a later continuation picks up the deferred items.
 
-### AD-020: No `internal/plan` AST yet — direct SQL building in `Dialect.Insert`/`FindByID` (2026-07-03)
+### AD-020: No `internal/stmt` AST yet — direct SQL building in `Dialect.Insert`/`FindByID` (2026-07-03)
 
-**Decision:** Instead of building AD-016's anticipated `internal/plan` AST + fully asymmetric `Compile*`/execute `Dialect` contract, this pass adds two simple, concrete `Dialect` methods (`Insert(ctx, conn, table, columns, values)`, `FindByID(ctx, conn, table, pkColumn, id)`) that build parameterized SQL directly.
-**Reason:** No query builder (M4) exists yet to need an AST — building it now would be speculative infrastructure for capabilities (arbitrary predicates, joins, multi-dialect divergent round-trip strategies) that don't exist in this pass. Same YAGNI principle as AD-021's scoping.
-**Trade-off:** When M4 (query builder) lands, `internal/plan` will need to be built for real, and `Dialect.Insert`/`FindByID` either get subsumed into that contract or coexist as a simple-case fast path — a real (if contained) rework, accepted now to avoid guessing the AST's shape before there's a second real caller.
-**Impact:** `Dialect` interface in `dialect.go` grows two methods beyond the AD-016-anticipated `Bind`/`Scan`/`CompileSelect`/`CompileDelete`/`Insert`/`Update` shape — the ones added here are simpler than AD-016's eventual `Insert`/`Update(ctx, conn, *plan.Insert/*plan.Update)` signatures (no `plan.*` types exist yet). Full details in `repository-core-crud/design.md`.
+**Decision:** Instead of building AD-016's anticipated `internal/stmt` AST + fully asymmetric `Compile*`/execute `Dialect` contract, this pass adds two simple, concrete `Dialect` methods (`Insert(ctx, conn, table, columns, values)`, `FindByID(ctx, conn, table, pkColumn, id)`) that build parameterized SQL directly.
+**Reason:** The query builder is deferred in this pass, and the driving example only needs simple insert/find by ID.
+**Trade-off:** When M4 (query builder) lands, `internal/stmt` will need to be built for real, and `Dialect.Insert`/`FindByID` either get subsumed into that contract or coexist as a simple-case fast path — a real (if contained) rework, accepted now to avoid guessing the AST's shape before there's a second real caller.
+**Impact:** `Dialect` interface in `dialect.go` grows two methods beyond the AD-016-anticipated `Bind`/`Scan`/`CompileSelect`/`CompileDelete`/`Insert`/`Update` shape — the ones added here are simpler than AD-016's eventual `Insert`/`Update(ctx, conn, *stmt.Insert/*stmt.Update)` signatures (no `stmt.*` types exist yet). Full details in `repository-core-crud/design.md`.
 
 ### AD-019: `golem.Conn` grows `Dialect() Dialect` (2026-07-03, the FOUND-11/18-anticipated growth)
 
@@ -32,8 +39,8 @@
 
 **Decision:** `docker-compose.test.yml`'s Postgres service binds to host port `55432` (container-internal port stays `5432`), not the default `5432`.
 **Reason:** Discovered during M1/T9 that the dev machine already runs an unrelated Postgres instance on host port 5432 (`postgres://postgres:postgres@localhost:5432/postgres`). Binding the test container to the same host port would either fail outright or, worse, silently interact with an unrelated database.
-**Trade-off:** `GOLEM_TEST_DSN`'s default (in `Makefile`) and any local override must use `:55432`, not `:5432` — a minor deviation from the "just use the standard port" default, but avoids ever touching a database the test suite doesn't own.
-**Impact:** `Makefile`'s `GOLEM_TEST_DSN ?=` default and `adapter/postgres/connector_integration_test.go`'s fallback DSN both use `:55432`. Anyone running `make test-integration` on a machine where 5432 is free is unaffected either way.
+**Trade-off:** `GOLEM_TEST_DSN`'s default (in `Taskfile.yml.yml`) and any local override must use `:55432`, not `:5432` — a minor deviation from the "just use the standard port" default, but avoids ever touching a database the test suite doesn't own.
+**Impact:** `Taskfile.yml.yml`'s `GOLEM_TEST_DSN` default and `adapter/postgres/connector_integration_test.go`'s fallback DSN both use `:55432`. Anyone running `task test-integration` on a machine where 5432 is free is unaffected either way.
 
 ### AD-000: Implement standalone in `golem`, not inside `gox/orm` (2026-07-03)
 
@@ -150,16 +157,16 @@
 
 **Considered follow-up (not yet decided):** exact initial `golem.ColumnType` set beyond what README examples use (`BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`) — grows on demand (YAGNI), needed before M2 implementation starts.
 
-### AD-016: `internal/plan` IR + asymmetric `Dialect` statement contract (2026-07-03, extends AD-015)
+### AD-016: `internal/stmt` AST + asymmetric `Dialect` statement contract (2026-07-03, extends AD-015)
 
-**Decision:** `golem.Dialect` grows beyond `Bind`/`Scan` to also cover statement generation, via a shared internal AST (`golem/internal/plan`: `plan.Select`, `plan.Insert`, `plan.Update`, `plan.Delete`) that `query.Query[T]`/`query.Update[T]`/`query.Count[T]`/`query.Join[T]`/`Repository[T]` build internally and hand to the active `Dialect`. The contract is **asymmetric by statement kind**, not 4 symmetric `Compile*` methods:
-  - `CompileSelect(p *plan.Select) (sql string, args []any, err error)` — pure compile, always 1 round-trip (used by `FindMany`/`FindOne`/`FindByID`/`Count`/`Exists`/joins).
-  - `CompileDelete(p *plan.Delete) (sql string, args []any, err error)` — pure compile, always 1 round-trip, no row data needed (`Delete`/`Restore` only return `error`, never `T`).
-  - `Insert(ctx context.Context, conn golem.Conn, p *plan.Insert) ([]map[string]any, error)` — **execute**, not compile. The adapter decides internally how many round-trips it needs.
-  - `Update(ctx context.Context, conn golem.Conn, p *plan.Update) ([]map[string]any, error)` — same reasoning as `Insert`.
+**Decision:** `golem.Dialect` grows beyond `Bind`/`Scan` to also cover statement generation, via a shared internal AST (`golem/internal/stmt`: `stmt.Select`, `stmt.Insert`, `stmt.Update`, `stmt.Delete`) that `query.Query[T]`/`query.Update[T]`/`query.Count[T]`/`query.Join[T]`/`Repository[T]` build internally and hand to the active `Dialect`. The contract is **asymmetric by statement kind**, not 4 symmetric `Compile*` methods:
+  - `CompileSelect(s *stmt.Select) (sql string, args []any, err error)` — pure compile, always 1 round-trip (used by `FindMany`/`FindOne`/`FindByID`/`Count`/`Exists`/joins).
+  - `CompileDelete(s *stmt.Delete) (sql string, args []any, err error)` — pure compile, always 1 round-trip, no row data needed (`Delete`/`Restore` only return `error`, never `T`).
+  - `Insert(ctx context.Context, conn golem.Conn, s *stmt.Insert) (map[string]any, error)` — **execute**, not compile. The adapter decides internally how many round-trips it needs.
+  - `Update(ctx context.Context, conn golem.Conn, s *stmt.Update) ([]map[string]any, error)` — same reasoning as `Insert`.
 **Reason:** `RETURNING` (or equivalent) is not universal. Postgres/Oracle/MSSQL have a native one-round-trip way to get the affected row back (`RETURNING`, `RETURNING INTO`, `OUTPUT`). MySQL does not — getting the full row back after an `INSERT`/`UPDATE` (required because `Insert`/`InsertMany`/`SaveOne`/`SaveMany`/`UpdateOne`/`UpdateMany` all return `T`/`[]T` per AD-005) needs a second `SELECT` there. A pure `Compile → (sql, args)` contract can't express "maybe 2 queries," so `Insert`/`Update` must be full `Execute`-style methods where the adapter owns the round-trip strategy. `Select`/`Delete` never need this (no dialect lacks a working `SELECT`, and `Delete`/`Restore` don't return row data at all), so they stay pure-compile.
 **Trade-off:** `Dialect` is no longer 4 symmetric methods — slightly more surface to document, but each method's shape now matches what it actually needs to do per dialect instead of forcing every dialect through the same (Postgres-shaped) assumption.
-**Impact:** `plan.*` types are internal (`golem/internal/plan`), not part of the public API — end users never construct them directly, only `query.*`/`Repository[T]` (via `golem`) and adapters touch them. Side effect: since `Dialect`'s method signatures reference internal types, only adapters built inside the `golem` module tree can implement it — acceptable, since that was already true in practice (nobody outside the module was expected to write a conforming adapter anyway). `plan.*` grows incrementally per milestone (M1: minimal `Select`/`Insert`/`Update`/`Delete` skeletons with table ref + PK-equality `Where` only — PK-equality is AND of 1+ column=value checks from day one, since composite PKs already exist, e.g. `QuestionToCategory`; M4: full arbitrary predicate tree; M5: `Set` clause on `plan.Update` for criteria-only updates; M6: `Join` on `plan.Select`), not fully speced upfront.
+**Impact:** `stmt.*` types are internal (`golem/internal/stmt`), not part of the public API — end users never construct them directly, only `query.*`/`Repository[T]` (via `golem`) and adapters touch them. Side effect: since `Dialect`'s method signatures reference internal types, only adapters built inside the `golem` module tree can implement it — acceptable, since that was already true in practice (nobody outside the module was expected to write a conforming adapter anyway). `stmt.*` grows incrementally per milestone (M1: minimal `Select`/`Insert`/`Update`/`Delete` skeletons with table ref + PK-equality `Where` only — PK-equality is AND of 1+ column=value checks from day one, since composite PKs already exist, e.g. `QuestionToCategory`; M4: full arbitrary predicate tree; M5: `Set` clause on `stmt.Update` for criteria-only updates; M6: `Join` on `stmt.Select`), not fully speced upfront.
 
 ### AD-017: `op.Not(condition)` composes over any condition — no dedicated negated variants (2026-07-03)
 
@@ -210,7 +217,7 @@ None.
 - [ ] Design the exact `op.*` positive comparison operator set (`Eq`, `Gt`, `Gte`, `Lt`, `Lte`, `In`, `Like`, ... — negation is `op.Not(...)` composed, not a separate function per AD-017) — needed before M4, not before M1
 - [ ] Decide the exact panic message format for duplicate hook slot registration (AD-006) — needed before M7, not before M1
 - [ ] Design the initial `golem.ColumnType` set (which concrete types ship first: `BIGINT`, `VARCHAR`, `UUID`, `JSON`, ...) — needed before M2, not before M1. `golem.Dialect`'s interface shape itself is already decided (AD-015 + AD-016: `Bind`/`Scan`/`CompileSelect`/`CompileDelete`/`Insert`/`Update`)
-- [x] ~~Design the minimal `internal/plan.{Select,Insert,Update,Delete}` field shapes for M1~~ — not a pre-requisite: M1 is Medium-sized (sizing already done), so exact Go struct fields for `plan.*` are implementation detail resolved while writing M1's code, not something to spec upfront. The *shape rules* (table ref + composite-capable PK-equality `Where`) are already decided (AD-016) — that's enough to start coding
-- [ ] M2 continuation: `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `column.Builder.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions` chain — deferred by AD-021, needed before any entity in the codebase actually requires them
-- [ ] M3 continuation: `SaveOne`/`SaveMany`, `UpdateOne`/`UpdateMany`, `Delete`/`Restore`, `Count`/`Exists`, `FindMany`/`FindOne` (needs M4's `op`/`query` packages), composite-PK `FindByID` — deferred by AD-021
-- [ ] Build `internal/plan` AST for real once M4 (query builder) starts — AD-020's `Dialect.Insert`/`FindByID` were a deliberate simple-case shortcut, not a replacement
+- [x] ~~Design the minimal `internal/stmt.{Select,Insert,Update,Delete}` field shapes for M1~~ — not a pre-requisite: M1 is Medium-sized (sizing already done), so exact Go struct fields for `stmt.*` are implementation detail resolved while writing M1's code, not something to spec upfront. The *shape rules* (table ref + composite-capable PK-equality `Where`) are already decided (AD-016) — that's enough to start coding
+- [x] ~~M2 continuation: `Unique`, `Index`, `CreateDate`/`UpdateDate`/`DeleteDate` (+ soft-delete filtering), `column.Builder.Default`/`.DefaultFunc`, full `relation.ForeignKeyOptions` chain~~ — DONE (2026-07-03): `Unique`/`Index`/`CreateDate`/`UpdateDate`/`DeleteDate` implementados; `column.Builder.Nullable`/`.Default`/`.DefaultFunc` implementados; `golem.ColumnType` completo. `ForeignKeyOptions` chain ainda deferred (sem uso até M7/hooks)
+- [ ] M3 continuation: `Delete`/`Restore` (depende de `DeleteDate` no soft-delete filter), `Count`/`Exists` (depende do `op` completo do M4) — `SaveOne`/`SaveMany`/`FindMany`/`FindOne`/`UpdateOne`/`UpdateMany` já feitos
+- [ ] Build `internal/stmt` AST for real once M4 (query builder) starts — AD-020's `Dialect.Insert` was a deliberate simple-case shortcut, not a replacement

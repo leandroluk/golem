@@ -33,6 +33,6 @@ Per user direction: drop `Repository[T].FindByID` entirely — `FindOne`/`FindMa
 
 ## Success Criteria
 
-- [ ] `examples/postgres-minimal-blog/main.go` uses `FindOne` instead of the removed `FindByID`, still round-trips correctly
+- [ ] `.examples/postgres-minimal-blog/main.go` uses `FindOne` instead of the removed `FindByID`, still round-trips correctly
 - [ ] `go test ./op/... ./query/... ./repository/...` pass (unit, fakes)
 - [ ] Integration test (real Postgres) covers `FindMany`/`FindOne`/`SaveOne`/`UpdateOne`/`UpdateMany`
