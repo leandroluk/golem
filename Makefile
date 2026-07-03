@@ -1,4 +1,4 @@
-GOLEM_TEST_DSN ?= postgres://golem:golem@localhost:5432/golem_test?sslmode=disable
+GOLEM_TEST_DSN ?= postgres://golem:golem@localhost:55432/golem_test?sslmode=disable
 
 .PHONY: build vet test test-integration gate-quick gate-full
 
