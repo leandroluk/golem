@@ -172,7 +172,7 @@ T6, T7, T8, T2 ──→ T9
 
 ---
 
-### T6: `golem.DataSource` + `Option`/`NewDataSource`/`Connect`/`Close` [P]
+### T6: `golem.DataSource` + `Option`/`NewDataSource`/`Connect`/`Close` [P] — ✅ Complete
 
 **What**: `DataSource` struct, `Option` type, `DataSourceName`, `WithConnector`, `NewDataSource`, `(*DataSource) Connect()`/`Close()` with idempotency rules from design.md, `(*DataSource) isConn()` satisfying `Conn`.
 **Where**: `datasource.go`, `options.go`
@@ -232,7 +232,7 @@ T6, T7, T8, T2 ──→ T9
 
 ---
 
-### T8: `postgres.dialect` stub (implements `golem.Dialect`) [P]
+### T8: `postgres.dialect` stub (implements `golem.Dialect`) [P] — ✅ Complete
 
 **What**: Minimal `dialect` type whose `Bind`/`Scan` return a descriptive "unrecognized column type" error for any input (no real `ColumnType` set exists until M2).
 **Where**: `adapter/postgres/dialect.go`
