@@ -34,6 +34,20 @@ type Not struct {
 
 func (Not) isPredicate() {}
 
+// AggregateComparison represents an aggregate-expression-to-value comparison
+// (e.g. `SUM("amount")>$1`), used in HAVING clauses. Unlike Comparison, Column
+// is the source column an aggregate function applies to, not a bare
+// identifier — Func names which aggregate wraps it ("sum", "avg", "min",
+// "max", "count", "count_all"; "count_all" ignores Column, always COUNT(*)).
+type AggregateComparison struct {
+	Func   string
+	Column string
+	Op     string // "eq", "gt", "gte", "lt", "lte"
+	Value  any
+}
+
+func (AggregateComparison) isPredicate() {}
+
 // OrderElement represents a single column ordering clause.
 type OrderElement struct {
 	Column string
@@ -54,18 +68,32 @@ type Join struct {
 	Where Predicate
 }
 
-// Select represents a SELECT statement plan.
-type Select struct {
-	Table   string
-	Columns []string // Empty means "*"
-	Where   Predicate
-	OrderBy []OrderElement
-	Limit   *int
-	Offset  *int
-	Count   bool // If true, projects COUNT(*) instead of Columns
-	Joins   []Join
+// Projection represents one SELECT-list expression in an aggregate query.
+// Func "" means a bare column (a GROUP BY column being carried through to
+// the result); any other value ("sum", "avg", "min", "max", "count",
+// "count_all") wraps Column in that aggregate function ("count_all" ignores
+// Column, always COUNT(*)). Alias is always present — it's both the SQL
+// column alias and the row-map key the caller scans results by.
+type Projection struct {
+	Column string
+	Func   string
+	Alias  string
 }
 
+// Select represents a SELECT statement plan.
+type Select struct {
+	Table       string
+	Columns     []string     // Empty means "*"
+	Projections []Projection // When non-empty, used instead of Columns/Count (aggregate queries)
+	Where       Predicate
+	GroupBy     []string
+	Having      Predicate
+	OrderBy     []OrderElement
+	Limit       *int
+	Offset      *int
+	Count       bool // If true, projects COUNT(*) instead of Columns
+	Joins       []Join
+}
 
 // Delete represents a DELETE statement plan.
 type Delete struct {
@@ -92,4 +120,3 @@ type Update struct {
 	Sets  []UpdateClause
 	Where Predicate
 }
-

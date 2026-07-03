@@ -187,6 +187,30 @@ func (r *Repository[T]) applySoftDeleteFilter(tableName string, deleteDateField 
 }
 
 
+// assignFieldValue writes raw onto field, converting between Go types when
+// they aren't identical but one is convertible to the other (e.g. int32 ->
+// int64). A no-op if field is invalid/unsettable, or raw itself is invalid
+// (never happens for a real driver value, but matches the old scanRow
+// behavior for zero-value/nil-ish inputs).
+func assignFieldValue(field reflect.Value, raw any, colName, fieldName string) error {
+	if !field.IsValid() || !field.CanSet() {
+		return nil
+	}
+	rawVal := reflect.ValueOf(raw)
+	if !rawVal.IsValid() {
+		return nil
+	}
+	if rawVal.Type() == field.Type() {
+		field.Set(rawVal)
+		return nil
+	}
+	if rawVal.Type().ConvertibleTo(field.Type()) {
+		field.Set(rawVal.Convert(field.Type()))
+		return nil
+	}
+	return fmt.Errorf("repository: column %q (Go value %v, type %s) is not convertible to field %s (%s)", colName, raw, rawVal.Type(), fieldName, field.Type())
+}
+
 // scanRow builds a new T and writes each declared column's value from row
 // (keyed by column name) onto the corresponding struct field.
 func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
@@ -198,20 +222,8 @@ func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
 		if !ok {
 			continue
 		}
-		field := v.FieldByName(col.FieldName)
-		if !field.IsValid() || !field.CanSet() {
-			continue
-		}
-		rawVal := reflect.ValueOf(raw)
-		if !rawVal.IsValid() {
-			continue
-		}
-		if rawVal.Type() == field.Type() {
-			field.Set(rawVal)
-		} else if rawVal.Type().ConvertibleTo(field.Type()) {
-			field.Set(rawVal.Convert(field.Type()))
-		} else {
-			return result, fmt.Errorf("repository: column %q (Go value %v, type %s) is not convertible to field %s (%s)", col.Name, raw, rawVal.Type(), col.FieldName, field.Type())
+		if err := assignFieldValue(v.FieldByName(col.FieldName), raw, col.Name, col.FieldName); err != nil {
+			return result, err
 		}
 	}
 	return result, nil

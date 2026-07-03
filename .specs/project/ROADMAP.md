@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M13 - Aggregations
-**Status:** M1-M12 done, M13-M14 planned
+**Current Milestone:** M14 - Pessimistic Locking
+**Status:** M1-M13 done, M14 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -271,7 +271,16 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** `query.Query[T]` supports `GroupBy`/`Sum`/`Avg`/`Having` for read paths that need aggregate results instead of full rows.
 **Target:** README examples using `GroupBy`/aggregate functions run against real tables.
-**Status:** PLANNED
+**Status:** ✅ DONE — see `.specs/features/aggregations/` (spec, design, tasks all Verified)
+
+### Features
+
+**`repository.Aggregate[T, R any]`** - DONE
+
+- `repository.Aggregate(ctx, r *Repository[T], fn func(t *T, res *R, a *query.Aggregate[T, R])) ([]R, error)` — `R` is a plain struct (not an `entity.Entity`), resolved by field-pointer offset like everywhere else
+- `query.Aggregate[T, R]`: `GroupBy`, `Sum`/`Avg`/`Count(sourceFieldPtr, destFieldPtr)`, `CountAll(destFieldPtr)`, `Where` (pre-aggregation, against `T`), `Having` (post-aggregation, against `R`, must reference a registered aggregate field), `OrderBy`, `Limit`/`Offset`/`WithDeleted`
+- `Sum`/`Avg` always yield `float64` (Postgres dialect casts to `DOUBLE PRECISION` so pgx never returns `pgtype.Numeric` for an integer column)
+- `Min`/`Max` deliberately not included (would need per-column-type-aware casting; out of this pass's stated scope) — see design.md
 
 ---
 

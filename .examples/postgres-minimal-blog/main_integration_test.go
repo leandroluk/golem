@@ -129,6 +129,62 @@ func TestBlogExample_FullFlow(t *testing.T) {
 	}
 }
 
+type UserPostStats struct {
+	OwnerUserID int64
+	PostCount   int64
+}
+
+func TestBlogExample_Aggregate_PostCountPerUser(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+	userRepo := repository.Get(dataSource, UserEntity)
+	postRepo := repository.Get(dataSource, PostEntity)
+
+	user, err := userRepo.Insert(ctx, &User{Name: "Aggregate User", Email: "aggregate@email.com"})
+	if err != nil {
+		t.Fatalf("Insert(User) returned error: %v", err)
+	}
+	if _, err := postRepo.InsertMany(ctx,
+		&Post{OwnerUserID: user.ID, Title: "P1", Content: "..."},
+		&Post{OwnerUserID: user.ID, Title: "P2", Content: "..."},
+		&Post{OwnerUserID: user.ID, Title: "P3", Content: "..."},
+	); err != nil {
+		t.Fatalf("InsertMany(Post) returned error: %v", err)
+	}
+
+	stats, err := repository.Aggregate(ctx, postRepo, func(p *Post, res *UserPostStats, a *query.Aggregate[Post, UserPostStats]) {
+		a.GroupBy(&p.OwnerUserID, &res.OwnerUserID)
+		a.CountAll(&res.PostCount)
+		a.Where(op.Eq(&p.OwnerUserID, user.ID))
+		a.Having(op.Gt(&res.PostCount, int64(0)))
+	})
+	if err != nil {
+		t.Fatalf("Aggregate returned error: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 grouped result, got %d", len(stats))
+	}
+	if stats[0].OwnerUserID != user.ID {
+		t.Errorf("OwnerUserID = %d, want %d", stats[0].OwnerUserID, user.ID)
+	}
+	if stats[0].PostCount != 3 {
+		t.Errorf("PostCount = %d, want 3", stats[0].PostCount)
+	}
+}
+
 func TestBlogExample_Preload_LoadsPostsPerUser(t *testing.T) {
 	dsn := resolveDSN()
 

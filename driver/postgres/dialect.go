@@ -254,6 +254,36 @@ func quoteIdent(name string) string {
 	return `"` + name + `"`
 }
 
+// aggregateSQLFunc builds a SUM/AVG/COUNT(column) expression. SUM/AVG are
+// cast to double precision so pgx always decodes them as a native Go
+// float64 (Postgres promotes SUM/AVG of integer columns to NUMERIC, which
+// pgx maps to pgtype.Numeric, not float64, by default). MIN/MAX aren't
+// offered in this pass (deliberately, not an oversight) — they're valid
+// over non-numeric columns too (text, timestamps, ...) where a blanket
+// DOUBLE PRECISION cast would be wrong, and ROADMAP.md's M13 scope only
+// calls for GroupBy/Sum/Avg/Having.
+func aggregateSQLFunc(fn, column string) string {
+	switch fn {
+	case "count_all":
+		return "COUNT(*)"
+	case "count":
+		return fmt.Sprintf("COUNT(%s)", quoteIdent(column))
+	case "sum", "avg":
+		return fmt.Sprintf("CAST(%s(%s) AS DOUBLE PRECISION)", strings.ToUpper(fn), quoteIdent(column))
+	default:
+		return quoteIdent(column)
+	}
+}
+
+// projectionSQL builds one SELECT-list expression (with its alias) from a
+// stmt.Projection.
+func projectionSQL(p stmt.Projection) string {
+	if p.Func == "" {
+		return fmt.Sprintf("%s AS %s", quoteIdent(p.Column), quoteIdent(p.Alias))
+	}
+	return fmt.Sprintf("%s AS %s", aggregateSQLFunc(p.Func, p.Column), quoteIdent(p.Alias))
+}
+
 // compilePredicate recursively builds the Postgres SQL WHERE clause from a stmt.Predicate
 func compilePredicate(p stmt.Predicate, argOffset *int, args *[]any) (string, error) {
 	if p == nil {
@@ -350,6 +380,37 @@ func compilePredicate(p stmt.Predicate, argOffset *int, args *[]any) (string, er
 		}
 		return "NOT (" + part + ")", nil
 
+	case stmt.AggregateComparison:
+		expr := aggregateSQLFunc(v.Func, v.Column)
+		switch v.Op {
+		case "eq":
+			sql := fmt.Sprintf("%s=$%d", expr, *argOffset)
+			*args = append(*args, v.Value)
+			*argOffset++
+			return sql, nil
+		case "gt":
+			sql := fmt.Sprintf("%s>$%d", expr, *argOffset)
+			*args = append(*args, v.Value)
+			*argOffset++
+			return sql, nil
+		case "gte":
+			sql := fmt.Sprintf("%s>=$%d", expr, *argOffset)
+			*args = append(*args, v.Value)
+			*argOffset++
+			return sql, nil
+		case "lt":
+			sql := fmt.Sprintf("%s<$%d", expr, *argOffset)
+			*args = append(*args, v.Value)
+			*argOffset++
+			return sql, nil
+		case "lte":
+			sql := fmt.Sprintf("%s<=$%d", expr, *argOffset)
+			*args = append(*args, v.Value)
+			*argOffset++
+			return sql, nil
+		}
+		return "", fmt.Errorf("postgres: unsupported having comparison operator %q", v.Op)
+
 	default:
 		return "", fmt.Errorf("postgres: unsupported predicate type %T", p)
 	}
@@ -359,7 +420,13 @@ func compilePredicate(p stmt.Predicate, argOffset *int, args *[]any) (string, er
 func (d *dialect) CompileSelect(s *stmt.Select) (string, []any, error) {
 	var sb strings.Builder
 	sb.WriteString("SELECT ")
-	if s.Count {
+	if len(s.Projections) > 0 {
+		parts := make([]string, len(s.Projections))
+		for i, p := range s.Projections {
+			parts[i] = projectionSQL(p)
+		}
+		sb.WriteString(strings.Join(parts, ", "))
+	} else if s.Count {
 		sb.WriteString("COUNT(*)")
 	} else if len(s.Columns) == 0 {
 		sb.WriteString("*")
@@ -406,6 +473,26 @@ func (d *dialect) CompileSelect(s *stmt.Select) (string, []any, error) {
 		}
 		if sql != "" {
 			sb.WriteString(" WHERE ")
+			sb.WriteString(sql)
+		}
+	}
+
+	if len(s.GroupBy) > 0 {
+		sb.WriteString(" GROUP BY ")
+		groupCols := make([]string, len(s.GroupBy))
+		for i, col := range s.GroupBy {
+			groupCols[i] = quoteIdent(col)
+		}
+		sb.WriteString(strings.Join(groupCols, ", "))
+	}
+
+	if s.Having != nil {
+		sql, err := compilePredicate(s.Having, &argOffset, &args)
+		if err != nil {
+			return "", nil, err
+		}
+		if sql != "" {
+			sb.WriteString(" HAVING ")
 			sb.WriteString(sql)
 		}
 	}
@@ -633,4 +720,3 @@ func (t *pgTx) Commit(ctx context.Context) error {
 func (t *pgTx) Rollback(ctx context.Context) error {
 	return t.tx.Rollback(ctx)
 }
-

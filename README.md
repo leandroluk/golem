@@ -24,6 +24,7 @@
     - [Query Builder](#query-builder)
     - [Joins](#joins)
     - [Preload / Eager Loading](#preload--eager-loading)
+    - [Aggregations](#aggregations)
     - [Raw SQL (escape hatch)](#raw-sql-escape-hatch)
     - [Errors](#errors)
     - [Migrations](#migrations)
@@ -78,7 +79,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M10 - Typed Errors
 - [x] M11 - Relations (`ForeignKeyOptions` + Cascade)
 - [x] M12 - Preload / Eager Loading
-- [ ] M13 - Aggregations
+- [x] M13 - Aggregations
 - [ ] M14 - Pessimistic Locking
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
@@ -945,6 +946,79 @@ func main() {
   }
   for _, u := range users {
     fmt.Printf("%s tem %d posts publicados\n", u.Name, len(postsByUserID[u.ID]))
+  }
+}
+```
+
+### Aggregations
+
+> `repository.Aggregate[T, R](ctx, repo, func(t *T, res *R, a *query.Aggregate[T, R]) {...}) ([]R, error)` —
+> mesmo princípio do `Preload`: `R` é um struct qualquer (não precisa de `entity.New`), resolvido por
+> ponteiro de campo contra `t` (fonte, `T`) e `res` (destino, `R`), sem tags.
+>
+> `a.GroupBy(&t.Campo, &res.Campo)` marca uma coluna de agrupamento, carregando o valor pro campo de
+> destino. `a.Sum`/`a.Avg`/`a.Count` recebem `(sourceFieldPtr, destFieldPtr)` — a agregação lê de `T`,
+> escreve em `R`. `a.CountAll(&res.Campo)` é `COUNT(*)`, sem coluna de origem. `a.Where(...)` filtra
+> ANTES de agrupar (resolvido contra `T`, igual `FindMany`); `a.Having(...)` filtra DEPOIS de agrupar —
+> o `FieldPtr` de cada condição do `Having` precisa apontar pra um campo de `R` que já foi registrado via
+> `Sum`/`Avg`/`Count`/`CountAll` (não dá pra fazer `HAVING` sobre uma coluna de `GroupBy` simples nesta
+> versão). `a.OrderBy(...)` aceita tanto campos de `GroupBy` quanto de agregação.
+>
+> `Sum`/`Avg` sempre voltam como `float64` no destino (o driver Postgres força `CAST(... AS DOUBLE
+> PRECISION)` — sem isso, `SUM`/`AVG` de coluna inteira vira `NUMERIC` no Postgres, que o driver não
+> decodifica direto como `float64`). `MIN`/`MAX` não existem nesta versão (de propósito, não esquecimento
+> — teriam sentido em colunas não-numéricas como texto/data, onde o cast pra `DOUBLE PRECISION` quebraria;
+> ver `.specs/features/aggregations/design.md`).
+
+```go
+package ex
+
+import (
+  "context"
+  "fmt"
+
+  "github.com/leandroluk/golem"
+  op "github.com/leandroluk/golem/op"
+  query "github.com/leandroluk/golem/query"
+  repository "github.com/leandroluk/golem/repository"
+  postgres "github.com/leandroluk/golem/driver/postgres"
+)
+
+type CategoryTotal struct {
+  Category string
+  Total    float64
+  Count    int64
+}
+
+func main() {
+  dataSource, err := golem.NewDataSource(
+    postgres.New(func (o *postgres.Options) {
+      o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
+    }),
+    golem.Entities(PostEntity),
+  )
+  if err != nil {
+    panic(err)
+  }
+  defer dataSource.Close()
+
+  ctx := context.Background()
+  postRepo := repository.Get(dataSource, PostEntity)
+
+  // total (e contagem) de posts por categoria, só categorias com mais de 1 post
+  totals, err := repository.Aggregate(ctx, postRepo, func (p *Post, res *CategoryTotal, a *query.Aggregate[Post, CategoryTotal]) {
+    a.GroupBy(&p.Category, &res.Category)
+    a.Sum(&p.Views, &res.Total)
+    a.CountAll(&res.Count)
+    a.Where(op.Eq(&p.Published, true))
+    a.Having(op.Gt(&res.Count, int64(1)))
+    a.OrderBy(op.Desc(&res.Total))
+  })
+  if err != nil {
+    panic(err)
+  }
+  for _, t := range totals {
+    fmt.Printf("%s: %d posts, %.0f views\n", t.Category, t.Count, t.Total)
   }
 }
 ```

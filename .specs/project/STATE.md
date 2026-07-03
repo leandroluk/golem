@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M12 concluídos com sucesso (ver histórico abaixo). M12 (Preload/Eager Loading, AD-028) entregou `repository.Preload[T, J]` — descobre a coluna de junção sozinho via o registro de FK do M11, funciona nas duas direções, nunca anexa dado de volta no struct (mantém AD-001/AD-024). `Eager(true)` fica só metadata (auto-wiring bateu num limite real de generics do Go, não foi só preguiça — ver AD-028). M13 (Aggregations) é o próximo milestone.
+**Current Work:** M1-M13 concluídos com sucesso (ver histórico abaixo). M13 (Aggregations, AD-029) entregou `repository.Aggregate[T, R]` — `R` é struct qualquer, resolvido por ponteiro igual o resto do projeto, sem precisar de `entity.New`. `Sum`/`Avg` sempre `float64` (cast pra `DOUBLE PRECISION` evita `pgtype.Numeric`); `Min`/`Max` ficaram de fora de propósito (cast quebraria em colunas não-numéricas). M14 (Pessimistic Locking) é o próximo milestone — último do roadmap atual.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-029: M13 shipped — `repository.Aggregate[T, R]`, `Min`/`Max` deliberately dropped (2026-07-03)
+
+**Decision:** `repository.Aggregate[T, R any](ctx, r *Repository[T], fn func(t *T, res *R, a *query.Aggregate[T, R])) ([]R, error)` — same free-function-with-2-type-params shape as `Preload`/`join.Inner` (methods can't add a type parameter). `R` is a plain struct, resolved by field-pointer offset against both `T`'s and `R`'s zero values — no `entity.New` needed for `R`, no tags. `GroupBy`/`Sum`/`Avg`/`Count`/`CountAll`/`Where`/`Having`/`OrderBy`/`Limit`/`Offset`/`WithDeleted` on `query.Aggregate[T, R]`. `Min`/`Max` are NOT included.
+**Reason:** `Sum`/`Avg` need a `CAST(... AS DOUBLE PRECISION)` in the generated SQL so pgx never hands back `pgtype.Numeric` for an integer column's aggregate (Postgres promotes `SUM`/`AVG` of integer columns to `NUMERIC`) — but that same blanket cast would be wrong for `MIN`/`MAX`, which are valid over non-numeric columns (text, timestamps) where casting to a float makes no sense. Supporting `MIN`/`MAX` correctly needs per-column-type-aware casting, which is real, separate scope beyond what ROADMAP.md's M13 goal (`GroupBy`/`Sum`/`Avg`/`Having`) actually called for.
+**Trade-off:** Callers wanting `MIN`/`MAX` must drop to raw SQL (`Repository[T].Exec`, M9) for now.
+**Impact:** New `stmt.Projection`/`stmt.Select.GroupBy`/`.Having`/`stmt.AggregateComparison` (internal AST, M1/AD-016's asymmetric contract extended again). `HAVING` clauses always repeat the full aggregate expression (`HAVING CAST(SUM(...) AS DOUBLE PRECISION)>$N`), never the SQL alias — Postgres doesn't allow referencing SELECT-list aliases in `HAVING` (unlike `ORDER BY`, which does, and which `Aggregate`'s `OrderBy` relies on). `scanRow`'s field-assignment logic was extracted into a shared `assignFieldValue` helper, reused by `Aggregate` (pure refactor, no behavior change). Every new function at 100% coverage (AD-026). Full reasoning: `.specs/features/aggregations/design.md`.
 
 ### AD-028: M12 shipped — `repository.Preload`, no `Eager` auto-wiring (a real Go-generics wall, not a choice) (2026-07-03)
 
@@ -271,6 +278,7 @@ None.
 - [x] ~~Make `.examples/postgres-minimal-blog`'s integration tests actually run under `task test-integration`~~ — DONE (Taskfile.yml's `test-integration` now runs `go test -tags=integration ./.examples/postgres-minimal-blog` as a separate explicit-path step, since go's `...` wildcard skips dot-prefixed dirs even when given explicitly)
 - [ ] `OnUpdate` cascade (relation.OnUpdateCascade/SetNull/Restrict) is accepted/stored (AD-027) but not wired to any Repository[T] operation — no operation currently mutates a PK value to trigger it from. Revisit if/when a real use case for mutable PKs shows up.
 - [ ] `Eager(true)` auto-wiring into `FindMany`/`FindOne` (AD-028) — not a bug, a real Go-generics limitation (see design.md). Revisit only if a design is found that doesn't hit it.
-- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 54.3%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 75.0%, `repository` 76.0% (`SaveMany`/`UpdateMany` at 0%). Not blocking M13+, but should be backfilled eventually.
+- [ ] `Min`/`Max` aggregates (AD-029) — dropped from M13's scope on purpose (blanket float cast would break non-numeric columns). Revisit with per-column-type-aware casting if a real need comes up.
+- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 59.1%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 85.4%, `repository` 79.7% (`SaveMany`/`UpdateMany` at 0%). Not blocking M14+, but should be backfilled eventually.
 
 
