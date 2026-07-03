@@ -127,31 +127,31 @@ future milestones (repository, transactions) will depend on.
 
 | Requirement ID | Story | Task | Status |
 | --- | --- | --- | --- |
-| FOUND-01 | P1: Connect to Postgres | T6, T9 | In Tasks |
-| FOUND-02 | P1: Connect to Postgres | T6, T9 | In Tasks |
-| FOUND-03 | P1: Connect to Postgres | T6, T9 | In Tasks |
-| FOUND-04 | P1: Connect to Postgres | T6, T9 | In Tasks |
-| FOUND-05 | P1: Connect to Postgres | T6 | In Tasks |
-| FOUND-06 | P1: Configure connection | T7 | In Tasks |
-| FOUND-07 | P1: Configure connection | T7 | In Tasks |
-| FOUND-08 | P1: Configure connection | T7 | In Tasks |
-| FOUND-09 | P1: Configure connection | T6, T7 | In Tasks |
-| FOUND-10 | P2: golem.Conn abstraction | T4, T6 | In Tasks |
-| FOUND-11 | P2: golem.Conn abstraction | T4, T6 | In Tasks |
-| FOUND-12 | P2: Pluggable logger | T9 | In Tasks |
-| FOUND-13 | P2: Pluggable logger | T9 | In Tasks |
-| FOUND-14 | P2: Pluggable logger | T9 | In Tasks |
-| FOUND-15 | P2: Pluggable logger | T9 | In Tasks |
-| FOUND-16 | P2: golem.Dialect contract | T5, T9 | In Tasks |
-| FOUND-17 | P2: golem.Dialect contract | T8 | In Tasks |
-| FOUND-18 | P2: golem.Dialect contract | T6 | In Tasks |
-| FOUND-19 | P2: golem.Dialect contract | T8 | In Tasks |
+| FOUND-01 | P1: Connect to Postgres | T6, T9 | Verified |
+| FOUND-02 | P1: Connect to Postgres | T6, T9 | Verified |
+| FOUND-03 | P1: Connect to Postgres | T6, T9 | Verified |
+| FOUND-04 | P1: Connect to Postgres | T6, T9 | Verified |
+| FOUND-05 | P1: Connect to Postgres | T6 | Verified |
+| FOUND-06 | P1: Configure connection | T7 | Verified |
+| FOUND-07 | P1: Configure connection | T7 | Verified |
+| FOUND-08 | P1: Configure connection | T7 | Verified |
+| FOUND-09 | P1: Configure connection | T6, T7 | Verified |
+| FOUND-10 | P2: golem.Conn abstraction | T4, T6 | Verified |
+| FOUND-11 | P2: golem.Conn abstraction | T4, T6 | Verified |
+| FOUND-12 | P2: Pluggable logger | T9 | Verified |
+| FOUND-13 | P2: Pluggable logger | T9 | Verified |
+| FOUND-14 | P2: Pluggable logger | T9 | Verified |
+| FOUND-15 | P2: Pluggable logger | T9 | Verified |
+| FOUND-16 | P2: golem.Dialect contract | T5, T9 | Verified |
+| FOUND-17 | P2: golem.Dialect contract | T8 | Verified |
+| FOUND-18 | P2: golem.Dialect contract | T6 | Verified |
+| FOUND-19 | P2: golem.Dialect contract | T8 | Verified |
 
 **ID format:** `FOUND-[NUMBER]`
 
-**Status values:** Pending → In Design → In Tasks → Implementing → Verified
+**Status values:** Pending → In Design → Verified → Implementing → Verified
 
-**Coverage:** 19 total, 19 mapped to tasks, 0 unmapped ✅
+**Coverage:** 19 total, 19 mapped to tasks, 0 unmapped ✅ — all Verified via `make gate-full` (unit tests + real dockerized Postgres integration, see `.specs/features/foundation/tasks.md` T9)
 
 ---
 

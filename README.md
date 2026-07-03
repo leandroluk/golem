@@ -65,7 +65,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 
 ## Implementation Status
 
-- [ ] M1 - Foundation (`DataSource`, `golem.Conn`, `golem.Dialect`, Postgres adapter)
+- [x] M1 - Foundation (`DataSource`, `golem.Conn`, `golem.Dialect`, Postgres adapter)
 - [ ] M2 - Schema Declaration (`entity.Builder`, `golem.ColumnType`)
 - [ ] M3 - Repository Core CRUD
 - [ ] M4 - Query Builder & Read Paths

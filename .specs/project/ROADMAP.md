@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M1 - Foundation
-**Status:** Planning
+**Current Milestone:** M2 - Schema Declaration
+**Status:** M1 done, M2 not started
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -12,22 +12,23 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** A `DataSource` can be created, connected, and closed against Postgres. No entities yet.
 **Target:** `golem.NewDataSource(...)` + `postgres.New(...)` compiles and connects to a real Postgres instance.
+**Status:** ✅ DONE — see `.specs/features/foundation/` (spec, design, tasks all Verified)
 
 ### Features
 
-**`golem.Conn` + `DataSource`** - PLANNED
+**`golem.Conn` + `DataSource`** - DONE
 
 - `golem.NewDataSource(options...)`, `golem.DataSourceName(name)`
 - `DataSource.Connect()` / `.Close()`
 - `golem.Conn` interface (implemented later by both `*DataSource` and `golem.Tx`)
 - `golem.Logger` interface + default console logger
 
-**`internal/plan` (minimal skeleton)** - PLANNED
+**`internal/plan` (minimal skeleton)** - PLANNED (deferred to M3, not needed until repository/query building starts)
 
 - Internal AST package (not public API): `plan.Select`, `plan.Insert`, `plan.Update`, `plan.Delete`
 - M1 scope only: table ref + PK-equality `Where` — **PK-equality means AND of 1+ column=value checks, not just 1 column**, since composite PKs already exist in the design (e.g. `QuestionToCategory` from M2, PK = `QuestionID`+`CategoryID`); `FindByID`/`SaveOne`/`Delete`/`Restore` in M3 must work against composite PKs from day one, not as a later upgrade. Full arbitrary predicate tree (OR, comparisons beyond equality), `Set`, and `Join` are added incrementally in M4/M5/M6 — see AD-016 in STATE.md
 
-**`golem.Dialect` contract** - PLANNED
+**`golem.Dialect` contract** - DONE
 
 - Value-level: `Bind(t golem.ColumnType, value any) (driver.Value, error)`, `Scan(t golem.ColumnType, raw any, dest any) error`
 - Statement-level, asymmetric by kind (not 4 symmetric methods — see AD-016):
@@ -38,7 +39,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 - Every adapter (starting with `postgres`) implements it; `DataSource` holds the active `Dialect` for the connection it manages
 - Enables `golem.ColumnType` (M2) to stay adapter-agnostic from day one
 
-**Postgres adapter** - PLANNED
+**Postgres adapter** - DONE (M1 scope: connect/close, DSN resolution, Dialect stub. Real `Bind`/`Scan` type recognition lands in M2 alongside `golem.ColumnType`'s real constructors)
 
 - `postgres.New(func(*postgres.Options))`: DSN or discrete fields (host/port/user/password/db/sslmode), DSN+fields precedence rule (fields win)
 - `o.Logging` / `o.Logger` wiring

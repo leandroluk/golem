@@ -1,7 +1,9 @@
 # Foundation (M1) Tasks
 
 **Design**: `.specs/features/foundation/design.md`
-**Status**: Draft
+**Status**: Done — all 9 tasks complete, `make gate-full` passes (unit + real dockerized Postgres integration)
+
+**SPEC_DEVIATION**: `docker-compose.test.yml`'s Postgres service was originally mapped to host port 5432; during T9 this conflicted with an unrelated Postgres instance already running locally on the machine. Remapped to host port 55432 (container-internal port unchanged) — see commit `fix(test): remap test Postgres to host port 55432`.
 
 ---
 
@@ -257,7 +259,7 @@ T6, T7, T8, T2 ──→ T9
 
 ---
 
-### T9: `postgres.connector` + `postgres.New` (real Postgres wiring)
+### T9: `postgres.connector` + `postgres.New` (real Postgres wiring) — ✅ Complete
 
 **What**: `connector` type implementing `golem.Connector` via `pgxpool` (resolves DSN via T7, opens the pool, runs a `SELECT 1` liveness check, wraps connect errors descriptively, logs lifecycle events through `Options.Logger`/default when `Options.Logging`); `New(configure func(*Options)) golem.Option` wiring it all through `golem.WithConnector`.
 **Where**: `adapter/postgres/connector.go`, `adapter/postgres/postgres.go` (`New` func)

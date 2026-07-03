@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** Specs ported from `gox/orm/.specs` into this repo (`golem`), module path adjusted (`github.com/leandroluk/gox/orm` → `github.com/leandroluk/golem`, `orm.*` symbol references → `golem.*`). Ready to start M1 (Foundation) Design phase.
+**Current Work:** M1 (Foundation) shipped and verified — `DataSource`/`Conn`/`Dialect`/`Connector` contracts, Postgres adapter (real `pgxpool` connect/close, DSN precedence, logger wiring), all 9 tasks (T1-T9) complete, `make gate-full` passes against a real dockerized Postgres. Next: M2 (Schema Declaration) — not started.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-018: Test Postgres remapped to host port 55432 (2026-07-03)
+
+**Decision:** `docker-compose.test.yml`'s Postgres service binds to host port `55432` (container-internal port stays `5432`), not the default `5432`.
+**Reason:** Discovered during M1/T9 that the dev machine already runs an unrelated Postgres instance on host port 5432 (`postgres://postgres:postgres@localhost:5432/postgres`). Binding the test container to the same host port would either fail outright or, worse, silently interact with an unrelated database.
+**Trade-off:** `GOLEM_TEST_DSN`'s default (in `Makefile`) and any local override must use `:55432`, not `:5432` — a minor deviation from the "just use the standard port" default, but avoids ever touching a database the test suite doesn't own.
+**Impact:** `Makefile`'s `GOLEM_TEST_DSN ?=` default and `adapter/postgres/connector_integration_test.go`'s fallback DSN both use `:55432`. Anyone running `make test-integration` on a machine where 5432 is free is unaffected either way.
 
 ### AD-000: Implement standalone in `golem`, not inside `gox/orm` (2026-07-03)
 
