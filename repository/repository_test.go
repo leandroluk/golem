@@ -146,6 +146,25 @@ func (d *fakeDialect) IsConflict(err error) bool {
 	return strings.Contains(err.Error(), "conflict")
 }
 
+type fakeTx struct {
+	committed  bool
+	rolledBack bool
+}
+
+func (t *fakeTx) Commit(ctx context.Context) error {
+	t.committed = true
+	return nil
+}
+
+func (t *fakeTx) Rollback(ctx context.Context) error {
+	t.rolledBack = true
+	return nil
+}
+
+func (d *fakeDialect) Begin(ctx context.Context, conn golem.Conn) (golem.TxConn, error) {
+	return &fakeTx{}, nil
+}
+
 var _ golem.Dialect = (*fakeDialect)(nil)
 
 type anyDialectConnector struct {
@@ -880,6 +899,92 @@ func TestRepository_Insert_HookErrorRollsBack(t *testing.T) {
 		t.Errorf("database insert was called despite before error")
 	}
 }
+
+func TestDataSource_Transaction_CommitOnSuccess(t *testing.T) {
+	d := &fakeDialect{}
+	connector := &anyDialectConnector{dialect: d}
+	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	if err != nil {
+		t.Fatalf("NewDataSource: %v", err)
+	}
+	_ = ds.Connect()
+
+	var usedTx golem.Tx
+	err = ds.Transaction(context.Background(), func(tx golem.Tx) error {
+		usedTx = tx
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Transaction: %v", err)
+	}
+
+	ft := usedTx.Underlying().(*fakeTx)
+	if !ft.committed {
+		t.Error("expected transaction to be committed")
+	}
+	if ft.rolledBack {
+		t.Error("expected transaction not to be rolled back")
+	}
+}
+
+func TestDataSource_Transaction_RollbackOnError(t *testing.T) {
+	d := &fakeDialect{}
+	connector := &anyDialectConnector{dialect: d}
+	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	if err != nil {
+		t.Fatalf("NewDataSource: %v", err)
+	}
+	_ = ds.Connect()
+
+	var usedTx golem.Tx
+	expectedErr := errors.New("trans_error")
+	err = ds.Transaction(context.Background(), func(tx golem.Tx) error {
+		usedTx = tx
+		return expectedErr
+	})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected Transaction to return expectedErr, got %v", err)
+	}
+
+	ft := usedTx.Underlying().(*fakeTx)
+	if ft.committed {
+		t.Error("expected transaction not to be committed")
+	}
+	if !ft.rolledBack {
+		t.Error("expected transaction to be rolled back")
+	}
+}
+
+func TestDataSource_Transaction_RollbackOnPanic(t *testing.T) {
+	d := &fakeDialect{}
+	connector := &anyDialectConnector{dialect: d}
+	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	if err != nil {
+		t.Fatalf("NewDataSource: %v", err)
+	}
+	_ = ds.Connect()
+
+	var usedTx golem.Tx
+	defer func() {
+		r := recover()
+		if r == nil || r.(string) != "panic_msg" {
+			t.Fatalf("expected panic 'panic_msg', got %v", r)
+		}
+		ft := usedTx.Underlying().(*fakeTx)
+		if ft.committed {
+			t.Error("expected transaction not to be committed after panic")
+		}
+		if !ft.rolledBack {
+			t.Error("expected transaction to be rolled back after panic")
+		}
+	}()
+
+	_ = ds.Transaction(context.Background(), func(tx golem.Tx) error {
+		usedTx = tx
+		panic("panic_msg")
+	})
+}
+
 
 
 

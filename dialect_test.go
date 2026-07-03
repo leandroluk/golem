@@ -41,6 +41,20 @@ func (fakeDialect) IsConflict(err error) bool {
 	return false
 }
 
+type fakeTx struct{}
+
+func (fakeTx) Commit(ctx context.Context) error {
+	return nil
+}
+
+func (fakeTx) Rollback(ctx context.Context) error {
+	return nil
+}
+
+func (fakeDialect) Begin(ctx context.Context, conn Conn) (TxConn, error) {
+	return &fakeTx{}, nil
+}
+
 var _ Dialect = (*fakeDialect)(nil)
 
 func TestFakeDialect_Bind(t *testing.T) {

@@ -477,7 +477,7 @@ func (d *dialect) Insert(ctx context.Context, conn golem.Conn, s *stmt.Insert) (
 		args[i] = v
 	}
 
-	rows, err := d.pool.Query(ctx, sql, args...)
+	rows, err := d.getExecutor(conn).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: insert: %w", err)
 	}
@@ -518,7 +518,7 @@ func (d *dialect) Update(ctx context.Context, conn golem.Conn, s *stmt.Update) (
 
 	sb.WriteString(" RETURNING *")
 
-	rows, err := d.pool.Query(ctx, sb.String(), args...)
+	rows, err := d.getExecutor(conn).Query(ctx, sb.String(), args...)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: update: %w", err)
 	}
@@ -531,7 +531,7 @@ func (d *dialect) Update(ctx context.Context, conn golem.Conn, s *stmt.Update) (
 
 // Query executes a raw compiled SELECT query statement.
 func (d *dialect) Query(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, error) {
-	rows, err := d.pool.Query(ctx, sql, args...)
+	rows, err := d.getExecutor(conn).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -540,7 +540,7 @@ func (d *dialect) Query(ctx context.Context, conn golem.Conn, sql string, args [
 
 // Exec executes a raw compiled command query (command executing, no rows returned).
 func (d *dialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []any) (int64, error) {
-	ct, err := d.pool.Exec(ctx, sql, args...)
+	ct, err := d.getExecutor(conn).Exec(ctx, sql, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -559,5 +559,41 @@ func (d *dialect) IsConflict(err error) bool {
 		return strings.HasPrefix(pgErr.Code, "23")
 	}
 	return false
+}
+
+// Begin starts a new transaction on the database.
+func (d *dialect) Begin(ctx context.Context, conn golem.Conn) (golem.TxConn, error) {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: begin: %w", err)
+	}
+	return &pgTx{tx: tx, d: d}, nil
+}
+
+type pgExecutor interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+}
+
+func (d *dialect) getExecutor(conn golem.Conn) pgExecutor {
+	if tx, ok := conn.(golem.Tx); ok {
+		if pgTx, ok := tx.Underlying().(*pgTx); ok {
+			return pgTx.tx
+		}
+	}
+	return d.pool
+}
+
+type pgTx struct {
+	tx pgx.Tx
+	d  *dialect
+}
+
+func (t *pgTx) Commit(ctx context.Context) error {
+	return t.tx.Commit(ctx)
+}
+
+func (t *pgTx) Rollback(ctx context.Context) error {
+	return t.tx.Rollback(ctx)
 }
 

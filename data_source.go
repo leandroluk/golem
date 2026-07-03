@@ -1,6 +1,9 @@
 package golem
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // DataSource owns the connect/close lifecycle for one logical database
 // connection, and holds the Dialect the active Connector produces once
@@ -63,5 +66,34 @@ func (ds *DataSource) Close() error {
 	err := ds.connector.Close()
 	ds.connected = false
 	return err
+}
+
+// Transaction executes fn inside a transaction. If fn returns a non-nil error,
+// the transaction is rolled back; if fn returns nil, the transaction is committed.
+// If fn panics, the transaction is rolled back and the panic is propagated.
+func (ds *DataSource) Transaction(ctx context.Context, fn func(tx Tx) error) error {
+	dialect := ds.Dialect()
+	if dialect == nil {
+		return fmt.Errorf("golem: cannot start transaction on disconnected data source")
+	}
+	txConn, err := dialect.Begin(ctx, ds)
+	if err != nil {
+		return err
+	}
+	tx := NewTx(dialect, txConn)
+
+	defer func() {
+		if r := recover(); r != nil {
+			_ = tx.Rollback(ctx)
+			panic(r)
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback(ctx)
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 

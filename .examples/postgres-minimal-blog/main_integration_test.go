@@ -246,4 +246,98 @@ func TestBlogExample_DeleteCountAndExists(t *testing.T) {
 	}
 }
 
+func TestBlogExample_Transactions(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+
+	// 1. Success path (commit)
+	err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
+		userRepo := repository.Get(tx, UserEntity)
+		_, err := userRepo.Insert(ctx, &User{
+			Name:  "Tx User Success",
+			Email: "tx.success@email.com",
+		})
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Transaction failed: %v", err)
+	}
+
+	// Verify user exists in database
+	userRepo := repository.Get(dataSource, UserEntity)
+	dbUser, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+		q.Where(op.Eq(&u.Email, "tx.success@email.com"))
+	})
+	if err != nil {
+		t.Fatalf("Failed to find committed user: %v", err)
+	}
+	if dbUser.Name != "Tx User Success" {
+		t.Errorf("expected user name 'Tx User Success', got %q", dbUser.Name)
+	}
+
+	// 2. Failure path (rollback)
+	txErr := errors.New("abort transaction")
+	err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
+		userRepoTx := repository.Get(tx, UserEntity)
+		_, err := userRepoTx.Insert(ctx, &User{
+			Name:  "Tx User Failed",
+			Email: "tx.failed@email.com",
+		})
+		if err != nil {
+			return err
+		}
+		return txErr
+	})
+	if !errors.Is(err, txErr) {
+		t.Fatalf("expected transaction to return txErr, got %v", err)
+	}
+
+	// Verify user does NOT exist in database
+	_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+		q.Where(op.Eq(&u.Email, "tx.failed@email.com"))
+	})
+	if !errors.Is(err, golem.ErrNotFound) {
+		t.Errorf("expected ErrNotFound for rolled back user, got %v", err)
+	}
+
+	// 3. Panic path (rollback)
+	defer func() {
+		r := recover()
+		if r == nil || r.(string) != "panic in tx" {
+			t.Fatalf("expected panic 'panic in tx', got %v", r)
+		}
+
+		// Verify panic-inserted user does NOT exist in database
+		_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+			q.Where(op.Eq(&u.Email, "tx.panic@email.com"))
+		})
+		if !errors.Is(err, golem.ErrNotFound) {
+			t.Errorf("expected ErrNotFound for panic-rolled-back user, got %v", err)
+		}
+	}()
+
+	_ = dataSource.Transaction(ctx, func(tx golem.Tx) error {
+		userRepoTx := repository.Get(tx, UserEntity)
+		_, _ = userRepoTx.Insert(ctx, &User{
+			Name:  "Tx User Panic",
+			Email: "tx.panic@email.com",
+		})
+		panic("panic in tx")
+	})
+}
+
+
 

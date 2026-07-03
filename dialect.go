@@ -36,5 +36,8 @@ type Dialect interface {
 
 	// IsConflict returns true if the error represents a database integrity constraint violation.
 	IsConflict(err error) bool
+
+	// Begin starts a new transaction on the database.
+	Begin(ctx context.Context, conn Conn) (TxConn, error)
 }
 
