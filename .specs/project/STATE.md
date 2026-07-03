@@ -1,7 +1,7 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M8 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), M6 (Joins), M7 (Hooks), e M8 (Transactions com rollback automático por erros/pânicos) estão prontos e verificados com 100% de testes verdes. Próximo passo: M9 (Raw SQL).
+**Current Work:** M1-M9 concluídos com sucesso. M1 (Foundation), M2 (Schema Declaration refatorada para Table, Column, Index), M3 (Repository Core CRUD com soft-delete, restores, count, exists), M4 (Query Builder completo com op.*), M5 (Update/Count Builders), M6 (Joins), M7 (Hooks), M8 (Transactions), e M9 (Raw SQL com iteradores de retorno e mapeamento por reflexão nos repositories) estão prontos e verificados com 100% de testes verdes. Próximo passo: M10 (Typed Errors).
 
 ---
 

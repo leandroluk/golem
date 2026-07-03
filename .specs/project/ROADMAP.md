@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M9 - Raw SQL
-**Status:** M1-M8 done, M9 planned
+**Current Milestone:** M10 - Typed Errors
+**Status:** M1-M9 done, M10 planned
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -198,16 +198,16 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M9 - Raw SQL
 
 **Goal:** Anything the builders can't express is still reachable.
-**Target:** `Exec` examples in README run and return correct data/counts.
+**Status:** ✅ DONE — see `.specs/features/raw-sql/` (spec, design, tasks all Verified)
 
 ### Features
 
-**`golem.Conn.Exec`** - PLANNED
+**`golem.Conn.Exec`** - DONE
 
 - `Exec(ctx, sql string, args ...any) (golem.Result, error)`
 - `golem.Result`: `Next() bool`, `Scan() (map[string]any, error)`, `RowsAffected() (int64, error)`
 
-**`Repository[T].Exec`** - PLANNED
+**`Repository[T].Exec`** - DONE
 
 - `Exec(ctx, sql string, args ...any) ([]T, error)` — scans using the same column→field mapping as `Col`
 
