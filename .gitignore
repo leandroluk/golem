@@ -1,5 +1,4 @@
 .env
 coverage.txt
 coverage.html
-.docker
 __debug_bin.exe
