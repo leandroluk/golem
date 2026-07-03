@@ -146,7 +146,7 @@ T6, T7, T8, T2 ──→ T9
 
 ---
 
-### T5: `golem.Dialect` + `golem.Connector` interfaces [P]
+### T5: `golem.Dialect` + `golem.Connector` interfaces [P] — ✅ Complete
 
 **What**: `Dialect` interface (`Bind`/`Scan`) and `Connector` interface (`Connect() (Dialect, error)`, `Close() error`).
 **Where**: `dialect.go`, `connector.go`
@@ -204,7 +204,7 @@ T6, T7, T8, T2 ──→ T9
 
 ---
 
-### T7: `postgres.Options` + `resolveDSN` [P]
+### T7: `postgres.Options` + `resolveDSN` [P] — ✅ Complete
 
 **What**: `Options` struct (`DSN`, `Host`, `Port`, `User`, `Password`, `Database`, `SSLMode`, `Logging`, `Logger`) and `resolveDSN(o *Options) (string, error)` implementing the documented DSN/discrete-field precedence.
 **Where**: `adapter/postgres/postgres.go` (Options struct), `adapter/postgres/dsn.go` (resolveDSN)
