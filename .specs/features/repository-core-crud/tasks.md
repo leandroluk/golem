@@ -3,7 +3,9 @@
 Covers both `.specs/features/schema-declaration/` and `.specs/features/repository-core-crud/` (delivered together, driven by `examples/postgres-minimal-blog`).
 
 **Design**: `schema-declaration/design.md`, `repository-core-crud/design.md`
-**Status**: Draft
+**Status**: Done — all 9 tasks complete, `make gate-full` passes (unit + real dockerized Postgres integration, including `examples/postgres-minimal-blog`)
+
+**SPEC_DEVIATION found during T9**: `Repository[T].Insert` originally sent every declared column, including a zero-valued PK, which collided with `BIGSERIAL` defaults (caught via the real-Postgres integration test). Fixed in `repository/repository.go`: zero-valued fields are now omitted from the INSERT so DB-side defaults apply. See commit `fix(repository): omit zero-valued fields from Insert`.
 
 ---
 
@@ -22,7 +24,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 
 ## Task Breakdown
 
-### T1: `golem.BIGINT()`/`VARCHAR(n)`/`TEXT()` constructors [P]
+### T1: `golem.BIGINT()`/`VARCHAR(n)`/`TEXT()` constructors [P] — ✅ Complete
 
 **What**: Real `ColumnType` constructors. Add an unexported `length int` field to the existing `ColumnType` struct (`columntype.go`, additive only) and a new file with the three constructors.
 **Where**: `columntype.go` (modify: add `length int` field only), `columntype_constructors.go` (new)
@@ -30,7 +32,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit (construct each, assert internal `kind`/`length` via in-package test)
 **Gate**: quick
 
-### T2: `column.Builder` [P]
+### T2: `column.Builder` [P] — ✅ Complete
 
 **What**: New `column` package, `Builder` struct with `.Name(name string) *Builder`.
 **Where**: `column/builder.go`
@@ -38,7 +40,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit
 **Gate**: quick
 
-### T3: `entity` package — field-pointer resolution + `Entity[T]`/`Builder`/`New`/`Describe`
+### T3: `entity` package — field-pointer resolution + `Entity[T]`/`Builder`/`New`/`Describe`  — ✅ Complete
 
 **What**: Full `entity` package per `schema-declaration/design.md`: `resolveField` (offset-matching), `Entity[T]`, `Builder` (`TableName`/`SchemaName`/`PrimaryKey`/`Col`/`ForeignKey`), `New[T]`, `EntityMeta`/`ColumnMeta`, `Describe()`.
 **Where**: `entity/entity.go`, `entity/builder.go`
@@ -46,7 +48,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit — MUST include the "two same-Go-type fields resolved correctly by identity, not type/order" case from spec.md AC-2, plus composite `PrimaryKey`, `ForeignKey` metadata, and table/column name defaulting rules
 **Gate**: quick
 
-### T4: Core package growth — `Conn.Dialect()`, `Dialect.Insert`/`FindByID`, `golem.ErrNotFound` [P]
+### T4: Core package growth — `Conn.Dialect()`, `Dialect.Insert`/`FindByID`, `golem.ErrNotFound` [P]  — ✅ Complete
 
 **What**: Modify `conn.go` (add `Dialect() Dialect` to the `Conn` interface), `datasource.go` (implement it), `dialect.go` (add `Insert`/`FindByID` to the `Dialect` interface), new `errors.go` (`ErrNotFound`).
 **Where**: `conn.go`, `datasource.go`, `dialect.go`, `errors.go` (new)
@@ -54,7 +56,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit — existing `datasource_test.go`/`dialect_test.go` fakes need updating to satisfy the grown interfaces (their fakes must gain the new methods or the package won't compile) — this is EXPECTED and must be done in this task, not treated as breakage
 **Gate**: quick
 
-### T5: `postgres.dialect` gains pool + real `Insert`/`FindByID`
+### T5: `postgres.dialect` gains pool + real `Insert`/`FindByID`  — ✅ Complete
 
 **What**: `connector.Connect()` returns `&dialect{pool: pool}` instead of the stateless stub; `dialect.Insert`/`dialect.FindByID` build parameterized SQL (double-quoted identifiers) and execute via `pgx.CollectOneRow(rows, pgx.RowToMap)`.
 **Where**: `adapter/postgres/dialect.go` (modify), `adapter/postgres/connector.go` (modify)
@@ -62,7 +64,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit for SQL-string-building helpers (pure functions, no DB); real execution is proven end-to-end in T9's integration test, not re-tested here in isolation
 **Gate**: quick
 
-### T6: `repository` package — `Get`/`Insert`/`InsertMany`/`FindByID`
+### T6: `repository` package — `Get`/`Insert`/`InsertMany`/`FindByID`  — ✅ Complete
 
 **What**: Full `repository` package per `repository-core-crud/design.md`, using `reflect` to move values between `*T` and `map[string]any`.
 **Where**: `repository/repository.go`
@@ -70,7 +72,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit — fake `Conn`/`Dialect` (in-package or via a test-only fake implementing the grown interfaces), covering: `Insert` populates PK+all columns from the fake's returned row, `InsertMany` preserves order, `FindByID` returns `golem.ErrNotFound` when the fake reports not-found, `FindByID` on a composite-PK entity returns a descriptive (non-`ErrNotFound`) error
 **Gate**: quick
 
-### T7: `testdata/schema.sql` + `docker-compose.test.yml` mount [P]
+### T7: `testdata/schema.sql` + `docker-compose.test.yml` mount [P]  — ✅ Complete
 
 **What**: DDL for `users`/`post`/`category`/`post_to_category` (real FK constraints), mounted into the existing test Postgres service via `docker-entrypoint-initdb.d`.
 **Where**: `testdata/schema.sql` (new), `docker-compose.test.yml` (modify: add volume mount)
@@ -78,7 +80,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: none (infra) — validated implicitly when T9's integration test runs against it
 **Gate**: build (`docker compose -f docker-compose.test.yml config` validates)
 
-### T8: `examples/postgres-minimal-blog` entity declarations [P]
+### T8: `examples/postgres-minimal-blog` entity declarations [P]  — ✅ Complete
 
 **What**: `User`/`Post`/`Category`/`PostToCategory` structs + their `entity.New[...]` declarations, matching `testdata/schema.sql`'s table/column names exactly (explicit `.TableName("users")`/`.TableName("post_to_category")`/`.Name("owner_user_id")` etc. where defaults wouldn't match).
 **Where**: `examples/postgres-minimal-blog/entities.go`
@@ -86,7 +88,7 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: unit — `go build` succeeding on this file IS the test (declarations either compile and resolve correctly or don't); one light test per entity asserting `Describe()` returns the expected table/column names is worth adding since it directly proves the naming-match with `schema.sql`
 **Gate**: quick
 
-### T9: `examples/postgres-minimal-blog/main.go` + integration test
+### T9: `examples/postgres-minimal-blog/main.go` + integration test  — ✅ Complete
 
 **What**: A runnable `main.go` demonstrating: insert a user, insert 2 posts owned by that user, insert 2 categories, insert `post_to_category` junction rows linking them, `FindByID` the user back to prove the round-trip. An integration test (`//go:build integration`) running the same flow programmatically (not just eyeballing `main.go` output) against the dockerized Postgres from T7's schema.
 **Where**: `examples/postgres-minimal-blog/main.go`, `examples/postgres-minimal-blog/main_integration_test.go`
