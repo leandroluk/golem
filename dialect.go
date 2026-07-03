@@ -33,5 +33,8 @@ type Dialect interface {
 
 	// Exec executes a compiled command query (returning rows affected count).
 	Exec(ctx context.Context, conn Conn, sql string, args []any) (int64, error)
+
+	// IsConflict returns true if the error represents a database integrity constraint violation.
+	IsConflict(err error) bool
 }
 

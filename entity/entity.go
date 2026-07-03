@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -66,11 +67,24 @@ type EntityMeta struct {
 	DeleteDateField string // field name of the soft-delete timestamp column, or ""
 }
 
+type hooks[T any] struct {
+	BeforeCreate     func(context.Context, *T, golem.Conn) error
+	AfterCreate      func(context.Context, *T, golem.Conn) error
+	OnConflictCreate func(context.Context, *T, golem.Conn) error
+	BeforeUpdate     func(context.Context, *T, golem.Conn) error
+	AfterUpdate      func(context.Context, *T, golem.Conn) error
+	OnConflictUpdate func(context.Context, *T, golem.Conn) error
+	BeforeDelete     func(context.Context, *T, golem.Conn) error
+	AfterDelete      func(context.Context, *T, golem.Conn) error
+	OnConflictDelete func(context.Context, *T, golem.Conn) error
+}
+
 // Entity holds a T's schema metadata, built once via New and read via
 // Describe(). It never generates DDL (golem never does — migrations are
 // always an external concern).
 type Entity[T any] struct {
-	meta EntityMeta
+	meta  EntityMeta
+	hooks hooks[T]
 }
 
 // New builds an Entity[T] by running fn against a zero-value *T and a
@@ -89,5 +103,77 @@ func New[T any](fn func(t *T, b *Table)) *Entity[T] {
 // Describe returns the entity's fully resolved schema metadata.
 func (e *Entity[T]) Describe() EntityMeta {
 	return e.meta
+}
+
+// TriggerBeforeCreate runs the registered BeforeCreate hook if present.
+func (e *Entity[T]) TriggerBeforeCreate(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.BeforeCreate != nil {
+		return e.hooks.BeforeCreate(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerAfterCreate runs the registered AfterCreate hook if present.
+func (e *Entity[T]) TriggerAfterCreate(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.AfterCreate != nil {
+		return e.hooks.AfterCreate(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerOnConflictCreate runs the registered OnConflictCreate hook if present.
+func (e *Entity[T]) TriggerOnConflictCreate(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.OnConflictCreate != nil {
+		return e.hooks.OnConflictCreate(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerBeforeUpdate runs the registered BeforeUpdate hook if present.
+func (e *Entity[T]) TriggerBeforeUpdate(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.BeforeUpdate != nil {
+		return e.hooks.BeforeUpdate(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerAfterUpdate runs the registered AfterUpdate hook if present.
+func (e *Entity[T]) TriggerAfterUpdate(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.AfterUpdate != nil {
+		return e.hooks.AfterUpdate(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerOnConflictUpdate runs the registered OnConflictUpdate hook if present.
+func (e *Entity[T]) TriggerOnConflictUpdate(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.OnConflictUpdate != nil {
+		return e.hooks.OnConflictUpdate(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerBeforeDelete runs the registered BeforeDelete hook if present.
+func (e *Entity[T]) TriggerBeforeDelete(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.BeforeDelete != nil {
+		return e.hooks.BeforeDelete(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerAfterDelete runs the registered AfterDelete hook if present.
+func (e *Entity[T]) TriggerAfterDelete(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.AfterDelete != nil {
+		return e.hooks.AfterDelete(ctx, i, conn)
+	}
+	return nil
+}
+
+// TriggerOnConflictDelete runs the registered OnConflictDelete hook if present.
+func (e *Entity[T]) TriggerOnConflictDelete(ctx context.Context, i *T, conn golem.Conn) error {
+	if e.hooks.OnConflictDelete != nil {
+		return e.hooks.OnConflictDelete(ctx, i, conn)
+	}
+	return nil
 }
 

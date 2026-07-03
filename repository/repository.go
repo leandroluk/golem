@@ -21,14 +21,15 @@ import (
 
 // Repository[T] is bound to one entity's metadata and a connection.
 type Repository[T any] struct {
-	conn golem.Conn
-	meta entity.EntityMeta
+	conn   golem.Conn
+	meta   entity.EntityMeta
+	entity *entity.Entity[T]
 }
 
 // Get builds a Repository[T] bound to conn and e. T is inferred from e's
 // type (*entity.Entity[T]).
 func Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T] {
-	return &Repository[T]{conn: conn, meta: e.Describe()}
+	return &Repository[T]{conn: conn, meta: e.Describe(), entity: e}
 }
 
 // fieldToColumn builds a fieldName → columnName map from EntityMeta.
@@ -214,10 +215,14 @@ func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
 	return result, nil
 }
 
-// Insert inserts one new T, returning it with every column (including any
-// DB-populated PK) filled from the RETURNING row.
+// Insert inserts a single entity. Triggers BeforeCreate/AfterCreate hooks,
+// and OnConflictCreate in case of database integrity conflicts.
 func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	var zero T
+	if err := r.entity.TriggerBeforeCreate(ctx, i, r.conn); err != nil {
+		return zero, err
+	}
+
 	v := reflect.ValueOf(i).Elem()
 
 	columns := make([]string, 0, len(r.meta.Columns))
@@ -239,9 +244,24 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 
 	row, err := r.conn.Dialect().Insert(ctx, r.conn, insPlan)
 	if err != nil {
+		if r.conn.Dialect().IsConflict(err) {
+			if hookErr := r.entity.TriggerOnConflictCreate(ctx, i, r.conn); hookErr != nil {
+				return zero, hookErr
+			}
+		}
 		return zero, fmt.Errorf("repository: insert: %w", err)
 	}
-	return r.scanRow(row)
+
+	res, err := r.scanRow(row)
+	if err != nil {
+		return zero, err
+	}
+
+	if err := r.entity.TriggerAfterCreate(ctx, &res, r.conn); err != nil {
+		return zero, err
+	}
+
+	return res, nil
 }
 
 // InsertMany inserts each item via sequential Insert calls, preserving order.
@@ -424,6 +444,10 @@ func (r *Repository[T]) FindOne(ctx context.Context, criteria ...func(*T, *query
 // <all non-PK columns>, including zero values (unlike Insert).
 func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
 	var zero T
+	if err := r.entity.TriggerBeforeUpdate(ctx, i, r.conn); err != nil {
+		return zero, err
+	}
+
 	v := reflect.ValueOf(i).Elem()
 	pkSet := r.pkColumnSet()
 
@@ -465,12 +489,27 @@ func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
 
 	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
 	if err != nil {
+		if r.conn.Dialect().IsConflict(err) {
+			if hookErr := r.entity.TriggerOnConflictUpdate(ctx, i, r.conn); hookErr != nil {
+				return zero, hookErr
+			}
+		}
 		return zero, fmt.Errorf("repository: save one: %w", err)
 	}
 	if len(rows) == 0 {
 		return zero, golem.ErrNotFound
 	}
-	return r.scanRow(rows[0])
+
+	res, err := r.scanRow(rows[0])
+	if err != nil {
+		return zero, err
+	}
+
+	if err := r.entity.TriggerAfterUpdate(ctx, &res, r.conn); err != nil {
+		return zero, err
+	}
+
+	return res, nil
 }
 
 // SaveMany re-persists multiple instances via sequential SaveOne calls.
@@ -524,7 +563,14 @@ func (r *Repository[T]) UpdateOne(ctx context.Context, criteria func(*T, *query.
 	if len(rows) == 0 {
 		return zero, golem.ErrNotFound
 	}
-	return r.scanRow(rows[0])
+	res, err := r.scanRow(rows[0])
+	if err != nil {
+		return zero, err
+	}
+	if err := r.entity.TriggerAfterUpdate(ctx, &res, r.conn); err != nil {
+		return zero, err
+	}
+	return res, nil
 }
 
 // UpdateMany applies WHERE + SET criteria and returns all affected rows.
@@ -569,6 +615,9 @@ func (r *Repository[T]) UpdateMany(ctx context.Context, criteria func(*T, *query
 		if err != nil {
 			return nil, err
 		}
+		if err := r.entity.TriggerAfterUpdate(ctx, &item, r.conn); err != nil {
+			return nil, err
+		}
 		results = append(results, item)
 	}
 	return results, nil
@@ -576,7 +625,8 @@ func (r *Repository[T]) UpdateMany(ctx context.Context, criteria func(*T, *query
 
 // Delete deletes the given items. If the entity has soft-delete enabled,
 // it performs a soft-delete (UPDATE setting the delete column to the current time);
-// otherwise it runs a hard DELETE.
+// otherwise it runs a hard DELETE. Triggers BeforeDelete/AfterDelete hooks,
+// and OnConflictDelete on database integrity conflicts.
 func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 	if len(items) == 0 {
 		return nil
@@ -585,6 +635,10 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 	f2c := r.fieldToColumn()
 
 	for _, item := range items {
+		if err := r.entity.TriggerBeforeDelete(ctx, item, r.conn); err != nil {
+			return err
+		}
+
 		v := reflect.ValueOf(item).Elem()
 		var pkPreds []stmt.Predicate
 		for _, col := range r.meta.Columns {
@@ -607,6 +661,7 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 			wherePred = stmt.Logical{Op: "and", Predicates: pkPreds}
 		}
 
+		var err error
 		if r.meta.DeleteDateField != "" {
 			colName, ok := f2c[r.meta.DeleteDateField]
 			if !ok {
@@ -619,23 +674,31 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 				},
 				Where: wherePred,
 			}
-			_, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
-			if err != nil {
-				return fmt.Errorf("repository: delete: %w", err)
-			}
+			_, err = r.conn.Dialect().Update(ctx, r.conn, updPlan)
 		} else {
 			delPlan := &stmt.Delete{
 				Table: r.meta.TableName,
 				Where: wherePred,
 			}
-			sql, args, err := r.conn.Dialect().CompileDelete(delPlan)
-			if err != nil {
-				return fmt.Errorf("repository: compile delete: %w", err)
+			var sql string
+			var args []any
+			sql, args, err = r.conn.Dialect().CompileDelete(delPlan)
+			if err == nil {
+				_, err = r.conn.Dialect().Exec(ctx, r.conn, sql, args)
 			}
-			_, err = r.conn.Dialect().Exec(ctx, r.conn, sql, args)
-			if err != nil {
-				return fmt.Errorf("repository: delete: %w", err)
+		}
+
+		if err != nil {
+			if r.conn.Dialect().IsConflict(err) {
+				if hookErr := r.entity.TriggerOnConflictDelete(ctx, item, r.conn); hookErr != nil {
+					return hookErr
+				}
 			}
+			return fmt.Errorf("repository: delete: %w", err)
+		}
+
+		if err := r.entity.TriggerAfterDelete(ctx, item, r.conn); err != nil {
+			return err
 		}
 	}
 	return nil

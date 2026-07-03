@@ -3,12 +3,14 @@ package postgres
 import (
 	"context"
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/stmt"
@@ -543,5 +545,19 @@ func (d *dialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []
 		return 0, err
 	}
 	return ct.RowsAffected(), nil
+}
+
+// IsConflict returns true if the error represents a database integrity constraint violation.
+func (d *dialect) IsConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		// Class 23 — Integrity Constraint Violation
+		// Reference: https://www.postgresql.org/docs/current/errcodes-appendix.html
+		return strings.HasPrefix(pgErr.Code, "23")
+	}
+	return false
 }
 

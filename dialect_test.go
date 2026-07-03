@@ -37,6 +37,10 @@ func (fakeDialect) Exec(ctx context.Context, conn Conn, sql string, args []any) 
 	return 0, nil
 }
 
+func (fakeDialect) IsConflict(err error) bool {
+	return false
+}
+
 var _ Dialect = (*fakeDialect)(nil)
 
 func TestFakeDialect_Bind(t *testing.T) {

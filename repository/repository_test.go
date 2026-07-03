@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,6 +139,12 @@ func (d *fakeDialect) Exec(ctx context.Context, conn golem.Conn, sql string, arg
 	return 0, nil
 }
 
+func (d *fakeDialect) IsConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "conflict")
+}
 
 var _ golem.Dialect = (*fakeDialect)(nil)
 
@@ -788,6 +795,92 @@ func TestRepository_FindMany_WithInnerJoin(t *testing.T) {
 		t.Errorf("expected ID = 10 comparison, got %+v", logical.Predicates[1])
 	}
 }
+
+type hookedTestSubject struct {
+	ID   int64
+	Name string
+}
+
+func TestRepository_Insert_RunsLifecycleHooks(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+
+	hookedEntity := entity.New(func(s *hookedTestSubject, b *entity.Table) {
+		b.TableName("hooked")
+		b.Col(&s.ID, golem.BIGINT())
+		b.PrimaryKey(&s.ID)
+	})
+
+	var calls []string
+	entity.AddHook(hookedEntity).
+		BeforeCreate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
+			calls = append(calls, "before")
+			return nil
+		}).
+		AfterCreate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
+			calls = append(calls, "after")
+			return nil
+		}).
+		OnConflictCreate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
+			calls = append(calls, "conflict")
+			return nil
+		})
+
+	repo := Get(conn, hookedEntity)
+
+	// Test successful insert
+	d.insertResult = map[string]any{"id": int64(1)}
+	_, err := repo.Insert(context.Background(), &hookedTestSubject{ID: 1})
+	if err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	if len(calls) != 2 || calls[0] != "before" || calls[1] != "after" {
+		t.Errorf("unexpected successful hook execution sequence: %v", calls)
+	}
+
+	// Reset calls
+	calls = nil
+
+	// Test conflict error insert
+	d.insertErr = errors.New("conflict error")
+	_, err = repo.Insert(context.Background(), &hookedTestSubject{ID: 1})
+	if err == nil {
+		t.Fatal("expected insert to fail")
+	}
+
+	if len(calls) != 2 || calls[0] != "before" || calls[1] != "conflict" {
+		t.Errorf("unexpected conflict hook execution sequence: %v", calls)
+	}
+}
+
+func TestRepository_Insert_HookErrorRollsBack(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+
+	hookedEntity := entity.New(func(s *hookedTestSubject, b *entity.Table) {
+		b.TableName("hooked_rollback")
+		b.Col(&s.ID, golem.BIGINT())
+		b.PrimaryKey(&s.ID)
+	})
+
+	entity.AddHook(hookedEntity).
+		BeforeCreate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
+			return errors.New("before_error")
+		})
+
+	repo := Get(conn, hookedEntity)
+
+	_, err := repo.Insert(context.Background(), &hookedTestSubject{ID: 1})
+	if err == nil || err.Error() != "before_error" {
+		t.Fatalf("expected insert to fail with 'before_error', got %v", err)
+	}
+
+	if len(d.insertCalls) != 0 {
+		t.Errorf("database insert was called despite before error")
+	}
+}
+
 
 
 
