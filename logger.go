@@ -59,3 +59,10 @@ func (defaultLogger) Warn(msg string, args map[string]any) {
 func (defaultLogger) Error(msg string, args map[string]any) {
 	fmt.Println("[ERROR]", msg, args)
 }
+
+// DefaultLogger returns the built-in console Logger used when no custom
+// Logger is configured. Exposed so adapter packages (postgres, and later
+// mysql/mssql/oracle) can fall back to it explicitly.
+func DefaultLogger() Logger {
+	return defaultLogger{}
+}

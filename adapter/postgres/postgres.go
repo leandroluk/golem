@@ -17,3 +17,12 @@ type Options struct {
 	Logging  bool
 	Logger   golem.Logger
 }
+
+// New builds a golem.Option that wires a Postgres Connector configured by
+// the given function. This is the ONLY supported way end users configure a
+// Postgres DataSource — see README.md examples.
+func New(configure func(*Options)) golem.Option {
+	opts := &Options{}
+	configure(opts)
+	return golem.WithConnector(&connector{opts: opts})
+}
