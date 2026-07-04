@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M13 concluídos com sucesso (ver histórico abaixo). M13 (Aggregations, AD-029) entregou `repository.Aggregate[T, R]` — `R` é struct qualquer, resolvido por ponteiro igual o resto do projeto, sem precisar de `entity.New`. `Sum`/`Avg` sempre `float64` (cast pra `DOUBLE PRECISION` evita `pgtype.Numeric`); `Min`/`Max` ficaram de fora de propósito (cast quebraria em colunas não-numéricas). M14 (Pessimistic Locking) é o próximo milestone — último do roadmap atual.
+**Current Work:** M1-M14 concluídos com sucesso (ver histórico abaixo) — todo o ROADMAP.md atual está fechado, nenhum milestone "planned" no momento. M14 (Pessimistic Locking, AD-030) entregou `.ForUpdate`/`.ForNoKeyUpdate`/`.ForShare`/`.ForKeyShare` em `query.Query[T]`, com trava exigindo `golem.Tx` real (senão erro, não no-op silencioso), verificado com teste real de bloqueio entre duas transações concorrentes contra Postgres. Ver "Deferred Ideas"/"Future Considerations" pra candidatos de próximos passos (novos adapters, backfill de coverage legado, etc) — nada decidido ainda.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-030: M14 shipped — `query.Query[T]` locking, guarded to require a real `golem.Tx` (2026-07-03)
+
+**Decision:** `query.Query[T]` gains `.ForUpdate(wait ...LockWait)`/`.ForNoKeyUpdate(...)`/`.ForShare(...)`/`.ForKeyShare(...)` (each optionally `LockWaitNoWait`/`LockWaitSkipLocked`). `Repository[T].FindMany`/`FindOne` return an error — before compiling or issuing any query — if a lock is requested and `r.conn` isn't a `golem.Tx`. `repository.Aggregate` gets no locking support at all.
+**Reason:** `SELECT ... FOR UPDATE` outside an explicit transaction is valid SQL that does nothing useful (Postgres's implicit per-statement transaction releases the lock before the caller's next statement runs) — a silent footgun exactly like the join-fan-out and unused-`ForeignKey`-target bugs found earlier this session (STATE.md L-003, AD-027's "target was never read" fix). Erroring loudly instead of silently no-op'ing matches this project's established bias. `Aggregate` has no locking support because Postgres itself rejects `FOR UPDATE` combined with `GROUP BY`/aggregate functions — not a golem scoping choice, a hard DB restriction.
+**Trade-off:** None significant — the guard only blocks a usage pattern that never worked correctly anyway.
+**Impact:** New `stmt.LockClause` on `stmt.Select` (M1/AD-016's asymmetric contract extended once more — still just `CompileSelect`, no new `Dialect` methods). Verified against real Postgres with an actual two-goroutine, two-transaction, channel-synchronized blocking test (`TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker`) — not just SQL-shape unit assertions, since blocking is a runtime concurrency property no amount of string-matching can prove. Every new function at 100% coverage (AD-026). This closes ROADMAP.md's M1-M14 — the full milestone list as of this writing has nothing left "planned"; see Deferred Ideas below for what could come next. Full reasoning: `.specs/features/pessimistic-locking/design.md`.
 
 ### AD-029: M13 shipped — `repository.Aggregate[T, R]`, `Min`/`Max` deliberately dropped (2026-07-03)
 
@@ -279,6 +286,6 @@ None.
 - [ ] `OnUpdate` cascade (relation.OnUpdateCascade/SetNull/Restrict) is accepted/stored (AD-027) but not wired to any Repository[T] operation — no operation currently mutates a PK value to trigger it from. Revisit if/when a real use case for mutable PKs shows up.
 - [ ] `Eager(true)` auto-wiring into `FindMany`/`FindOne` (AD-028) — not a bug, a real Go-generics limitation (see design.md). Revisit only if a design is found that doesn't hit it.
 - [ ] `Min`/`Max` aggregates (AD-029) — dropped from M13's scope on purpose (blanket float cast would break non-numeric columns). Revisit with per-column-type-aware casting if a real need comes up.
-- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 59.1%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 85.4%, `repository` 79.7% (`SaveMany`/`UpdateMany` at 0%). Not blocking M14+, but should be backfilled eventually.
+- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 60.6%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 87.0%, `repository` 80.0% (`SaveMany`/`UpdateMany` at 0%). No milestone currently planned that depends on this — should be backfilled as standalone follow-up work.
 
 

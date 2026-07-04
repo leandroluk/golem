@@ -25,6 +25,7 @@
     - [Joins](#joins)
     - [Preload / Eager Loading](#preload--eager-loading)
     - [Aggregations](#aggregations)
+    - [Pessimistic Locking](#pessimistic-locking)
     - [Raw SQL (escape hatch)](#raw-sql-escape-hatch)
     - [Errors](#errors)
     - [Migrations](#migrations)
@@ -80,7 +81,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M11 - Relations (`ForeignKeyOptions` + Cascade)
 - [x] M12 - Preload / Eager Loading
 - [x] M13 - Aggregations
-- [ ] M14 - Pessimistic Locking
+- [x] M14 - Pessimistic Locking
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
 
@@ -1019,6 +1020,73 @@ func main() {
   }
   for _, t := range totals {
     fmt.Printf("%s: %d posts, %.0f views\n", t.Category, t.Count, t.Total)
+  }
+}
+```
+
+### Pessimistic Locking
+
+> `query.Query[T]` ganha `.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()` — viram
+> `SELECT ... FOR UPDATE`/`FOR NO KEY UPDATE`/`FOR SHARE`/`FOR KEY SHARE` no Postgres. Cada um aceita um
+> `query.LockWaitNoWait` ou `query.LockWaitSkipLocked` opcional (padrão: bloqueia até a linha destravar).
+>
+> **Travar uma leitura fora de uma transação é um no-op disfarçado de sucesso** — a trava libera assim
+> que o statement isolado termina, então `FindMany`/`FindOne` com `.ForUpdate()` (ou qualquer variante)
+> retornam erro se `conn` não for um `golem.Tx` (`repository.Get(dataSource, ...)` direto não vale;
+> precisa ser `repository.Get(tx, ...)` dentro de `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`).
+>
+> Não se aplica a `repository.Aggregate` — o próprio Postgres não permite `FOR UPDATE` junto de funções
+> agregadas.
+
+```go
+package ex
+
+import (
+  "context"
+
+  "github.com/leandroluk/golem"
+  op "github.com/leandroluk/golem/op"
+  query "github.com/leandroluk/golem/query"
+  repository "github.com/leandroluk/golem/repository"
+  postgres "github.com/leandroluk/golem/driver/postgres"
+)
+
+func main() {
+  dataSource, err := golem.NewDataSource(
+    postgres.New(func (o *postgres.Options) {
+      o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
+    }),
+    golem.Entities(UserEntity),
+  )
+  if err != nil {
+    panic(err)
+  }
+  defer dataSource.Close()
+
+  ctx := context.Background()
+
+  // padrão leitura-então-escrita: trava a linha, decide o que fazer com base nela, atualiza,
+  // tudo dentro da mesma transação — nenhuma outra transação consegue travar/ler essa linha
+  // (com FOR UPDATE dela também) até essa transação commitar ou dar rollback.
+  err = dataSource.Transaction(ctx, func (tx golem.Tx) error {
+    userRepo := repository.Get(tx, UserEntity)
+
+    user, err := userRepo.FindOne(ctx, func (u *User, q *query.Query[User]) {
+      q.Where(op.Eq(&u.ID, 42))
+      q.ForUpdate() // ou q.ForUpdate(query.LockWaitSkipLocked) pra pular linhas já travadas
+    })
+    if err != nil {
+      return err
+    }
+
+    _, err = userRepo.UpdateOne(ctx, func (u *User, upd *query.Update[User]) {
+      upd.Where(op.Eq(&u.ID, user.ID))
+      upd.Set(&u.Name, "atualizado com segurança")
+    })
+    return err
+  })
+  if err != nil {
+    panic(err)
   }
 }
 ```

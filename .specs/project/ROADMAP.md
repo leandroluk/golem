@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M14 - Pessimistic Locking
-**Status:** M1-M13 done, M14 planned
+**Current Milestone:** — (M1-M14 done, no milestone currently planned — see STATE.md's Deferred Ideas / Future Considerations below for candidates)
+**Status:** M1-M14 done
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -288,7 +288,16 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** `query.Query[T]` supports `SELECT ... FOR UPDATE` (and dialect-appropriate variants) for read-then-write concurrency control.
 **Target:** A `.ForUpdate()`-style example on `FindOne`/`FindMany` runs against real tables inside a transaction.
-**Status:** PLANNED
+**Status:** ✅ DONE — see `.specs/features/pessimistic-locking/` (spec, design, tasks all Verified)
+
+### Features
+
+**`query.Query[T]` locking** - DONE
+
+- `.ForUpdate(wait ...query.LockWait)`, `.ForNoKeyUpdate(...)`, `.ForShare(...)`, `.ForKeyShare(...)` — map to Postgres's `SELECT ... FOR {UPDATE|NO KEY UPDATE|SHARE|KEY SHARE} [NOWAIT|SKIP LOCKED]`
+- `Repository[T].FindMany`/`FindOne` reject a locked query outside a real `golem.Tx` (locking outside a transaction is a no-op that looks like it worked)
+- `repository.Aggregate` doesn't support locking — Postgres itself rejects `FOR UPDATE` combined with aggregates/`GROUP BY`
+- Verified against real Postgres with an actual two-transaction blocking test, not just SQL-shape assertions
 
 ---
 

@@ -409,6 +409,14 @@ func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *quer
 		}
 	}
 
+	var lock *stmt.LockClause
+	if q.GetLockStrength() != "" {
+		if _, ok := r.conn.(golem.Tx); !ok {
+			return nil, fmt.Errorf("repository: find many: row locking (ForUpdate/ForShare/...) requires an active transaction (repository.Get(tx, ...)) — locking outside a transaction releases the lock immediately and provides no real concurrency guarantee")
+		}
+		lock = &stmt.LockClause{Strength: string(q.GetLockStrength()), Wait: string(q.GetLockWait())}
+	}
+
 	selPlan := &stmt.Select{
 		Table:   r.meta.TableName,
 		Columns: cols,
@@ -417,6 +425,7 @@ func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *quer
 		Limit:   q.GetLimit(),
 		Offset:  q.GetOffset(),
 		Joins:   stmtJoins,
+		Lock:    lock,
 	}
 
 	sql, args, err := r.conn.Dialect().CompileSelect(selPlan)

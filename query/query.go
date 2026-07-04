@@ -12,6 +12,8 @@ type Query[T any] struct {
 	offset       *int
 	withDeleted  bool
 	joins        []JoinData
+	lockStrength LockStrength
+	lockWait     LockWait
 }
 
 // New builds an empty Query[T]. Used internally by repository.

@@ -522,7 +522,48 @@ func (d *dialect) CompileSelect(s *stmt.Select) (string, []any, error) {
 		argOffset++
 	}
 
+	if s.Lock != nil {
+		sql, err := lockClauseSQL(s.Lock)
+		if err != nil {
+			return "", nil, err
+		}
+		sb.WriteString(sql)
+	}
+
 	return sb.String(), args, nil
+}
+
+// lockClauseSQL builds the trailing `FOR {UPDATE|NO KEY UPDATE|SHARE|KEY
+// SHARE} [NOWAIT|SKIP LOCKED]` row-locking clause.
+func lockClauseSQL(l *stmt.LockClause) (string, error) {
+	var strength string
+	switch l.Strength {
+	case "update":
+		strength = "UPDATE"
+	case "no_key_update":
+		strength = "NO KEY UPDATE"
+	case "share":
+		strength = "SHARE"
+	case "key_share":
+		strength = "KEY SHARE"
+	default:
+		return "", fmt.Errorf("postgres: unsupported lock strength %q", l.Strength)
+	}
+
+	sql := " FOR " + strength
+
+	switch l.Wait {
+	case "":
+		// block (Postgres default) — no suffix
+	case "nowait":
+		sql += " NOWAIT"
+	case "skip_locked":
+		sql += " SKIP LOCKED"
+	default:
+		return "", fmt.Errorf("postgres: unsupported lock wait policy %q", l.Wait)
+	}
+
+	return sql, nil
 }
 
 // CompileDelete compiles a Delete statement plan to Postgres SQL and args.

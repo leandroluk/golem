@@ -129,6 +129,112 @@ func TestBlogExample_FullFlow(t *testing.T) {
 	}
 }
 
+func TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+
+	user, err := repository.Get(dataSource, UserEntity).Insert(ctx, &User{
+		Name:  "Lock User",
+		Email: "lock@email.com",
+	})
+	if err != nil {
+		t.Fatalf("Insert(User) returned error: %v", err)
+	}
+
+	lockedCh := make(chan struct{})
+	releaseCh := make(chan struct{})
+	tx2DoneCh := make(chan error, 1)
+
+	go func() {
+		_ = dataSource.Transaction(ctx, func(tx golem.Tx) error {
+			userRepo := repository.Get(tx, UserEntity)
+			_, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+				q.Where(op.Eq(&u.ID, user.ID))
+				q.ForUpdate()
+			})
+			if err != nil {
+				return err
+			}
+			close(lockedCh)
+			<-releaseCh
+			return nil
+		})
+	}()
+
+	<-lockedCh
+
+	go func() {
+		err := dataSource.Transaction(ctx, func(tx golem.Tx) error {
+			userRepo := repository.Get(tx, UserEntity)
+			_, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+				q.Where(op.Eq(&u.ID, user.ID))
+				q.ForUpdate()
+			})
+			return err
+		})
+		tx2DoneCh <- err
+	}()
+
+	// Give the second transaction time to issue its FOR UPDATE query and
+	// (correctly) block on the row tx1 already holds.
+	time.Sleep(300 * time.Millisecond)
+
+	select {
+	case err := <-tx2DoneCh:
+		t.Fatalf("tx2's FindOne+ForUpdate returned (err=%v) before tx1 released the lock — locking isn't actually blocking", err)
+	default:
+		// still blocked, as expected
+	}
+
+	close(releaseCh) // tx1 returns nil -> commits -> releases the row lock
+
+	select {
+	case err := <-tx2DoneCh:
+		if err != nil {
+			t.Fatalf("tx2's FindOne+ForUpdate returned an error after tx1 released the lock: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("tx2's FindOne+ForUpdate never returned after tx1 committed — lock was never released?")
+	}
+}
+
+func TestBlogExample_ForUpdate_OutsideTransaction_ReturnsError(t *testing.T) {
+	dsn := resolveDSN()
+
+	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
+		o.DSN = dsn
+	}))
+	if err != nil {
+		t.Fatalf("NewDataSource returned error: %v", err)
+	}
+	if err := dataSource.Connect(); err != nil {
+		t.Fatalf("Connect returned error: %v", err)
+	}
+	defer dataSource.Close()
+
+	ctx := context.Background()
+	userRepo := repository.Get(dataSource, UserEntity)
+
+	_, err = userRepo.FindMany(ctx, func(u *User, q *query.Query[User]) {
+		q.ForUpdate()
+	})
+	if err == nil {
+		t.Fatal("expected FindMany+ForUpdate outside a transaction to return an error, got nil")
+	}
+}
+
 type UserPostStats struct {
 	OwnerUserID int64
 	PostCount   int64

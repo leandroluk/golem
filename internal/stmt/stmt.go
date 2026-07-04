@@ -80,6 +80,13 @@ type Projection struct {
 	Alias  string
 }
 
+// LockClause represents a SELECT ... FOR {UPDATE|NO KEY UPDATE|SHARE|KEY
+// SHARE} [NOWAIT|SKIP LOCKED] row-locking clause.
+type LockClause struct {
+	Strength string // "update", "no_key_update", "share", "key_share"
+	Wait     string // "", "nowait", "skip_locked"
+}
+
 // Select represents a SELECT statement plan.
 type Select struct {
 	Table       string
@@ -93,6 +100,7 @@ type Select struct {
 	Offset      *int
 	Count       bool // If true, projects COUNT(*) instead of Columns
 	Joins       []Join
+	Lock        *LockClause // nil means no row locking requested
 }
 
 // Delete represents a DELETE statement plan.
