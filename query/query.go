@@ -93,7 +93,7 @@ type SetClause struct {
 	Value    any
 }
 
-// Update is received by an UpdateOne/UpdateMany criteria callback.
+// Update is received by an Update criteria callback.
 type Update[T any] struct {
 	conditions  []op.Condition
 	sets        []SetClause

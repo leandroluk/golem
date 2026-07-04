@@ -1,11 +1,18 @@
 # State
 
 **Last Updated:** 2026-07-03
-**Current Work:** M1-M14 concluídos com sucesso (ver histórico abaixo) — todo o ROADMAP.md atual está fechado, nenhum milestone "planned" no momento. M14 (Pessimistic Locking, AD-030) entregou `.ForUpdate`/`.ForNoKeyUpdate`/`.ForShare`/`.ForKeyShare` em `query.Query[T]`, com trava exigindo `golem.Tx` real (senão erro, não no-op silencioso), verificado com teste real de bloqueio entre duas transações concorrentes contra Postgres. Ver "Deferred Ideas"/"Future Considerations" pra candidatos de próximos passos (novos adapters, backfill de coverage legado, etc) — nada decidido ainda.
+**Current Work:** M1-M14 concluídos com sucesso (ver histórico abaixo) — todo o ROADMAP.md atual está fechado, nenhum milestone "planned" no momento. M14 (Pessimistic Locking, AD-030) entregou `.ForUpdate`/`.ForNoKeyUpdate`/`.ForShare`/`.ForKeyShare` em `query.Query[T]`, com trava exigindo `golem.Tx` real (senão erro, não no-op silencioso), verificado com teste real de bloqueio entre duas transações concorrentes contra Postgres. Depois do M14, `UpdateOne`/`UpdateMany` foram colapsados num único `Update` (AD-031) — os dois faziam a mesma query, a distinção não tinha valor. Ver "Deferred Ideas"/"Future Considerations" pra candidatos de próximos passos (novos adapters, backfill de coverage legado, etc) — nada decidido ainda.
 
 ---
 
 ## Recent Decisions (Last 60 days)
+
+### AD-031: `UpdateOne`/`UpdateMany` collapsed into one `Update` method — partially supersedes AD-005/AD-014 (2026-07-03)
+
+**Decision:** `Repository[T].UpdateOne` (removed) and `Repository[T].UpdateMany` (renamed to `Update`) built and executed the byte-identical query — same `Where`/`Set` resolution, same `Dialect.Update` call — differing only in post-processing: `UpdateOne` treated 0 affected rows as `golem.ErrNotFound` and returned a single `T`; `UpdateMany` treated 0 rows as fine and returned `[]T`. There is now just `Update(ctx, criteria func(*T, *query.Update[T])) ([]T, error)`, matching the old `UpdateMany` shape (always `[]T`, zero rows is not an error).
+**Reason:** User pointed out the `One`/`Many` split added a naming distinction with no behavioral difference underneath — unlike `Insert` vs `Save*` (AD-005, genuinely different inputs: new entity vs. existing runtime instance vs. no instance/just criteria) or `FindOne` vs `FindMany` (genuinely different semantics: guaranteed-single-match-or-error vs. zero-or-more), `UpdateOne`/`UpdateMany` were the same operation wearing two names.
+**Trade-off:** Callers who want "did this actually match a row" now check `len(result) == 0` themselves instead of getting `golem.ErrNotFound` for free — a one-line cost for removing a redundant method.
+**Impact:** `Update` joins `Insert`/`FindByID`(removed)/`Delete`/`Restore`/`Count`/`Exists` as an AD-014 naming-convention exception (base name unambiguous, no `One`/`Many` needed) — AD-005's core distinction (`Insert*`/`Save*`/`Update*` as three input shapes) and AD-014's `One`/`Many` convention both still stand for every OTHER method; this AD only carves out `Update` as a second exception alongside `Insert`. `SaveOne`/`SaveMany` are unaffected (their arguments genuinely differ: one `*T` vs. variadic `...*T`, unlike `Update`'s identical criteria callback either way). `repository/repository_test.go`'s old `UpdateMany`-shaped tests (previously 0% coverage — see the coverage-gaps Todo) are now `Update`'s tests, at 100%. README.md, ROADMAP.md, PROJECT.md updated to match; `.specs/features/query-builder-and-update/`, `.specs/features/repository-core-crud/`, `.specs/features/hooks/`'s spec/design/tasks docs are left as the historical execution record they are (same precedent as the `FindByID` removal, AD-022 — those docs describe what was built at the time, not living documentation).
 
 ### AD-030: M14 shipped — `query.Query[T]` locking, guarded to require a real `golem.Tx` (2026-07-03)
 
@@ -286,6 +293,6 @@ None.
 - [ ] `OnUpdate` cascade (relation.OnUpdateCascade/SetNull/Restrict) is accepted/stored (AD-027) but not wired to any Repository[T] operation — no operation currently mutates a PK value to trigger it from. Revisit if/when a real use case for mutable PKs shows up.
 - [ ] `Eager(true)` auto-wiring into `FindMany`/`FindOne` (AD-028) — not a bug, a real Go-generics limitation (see design.md). Revisit only if a design is found that doesn't hit it.
 - [ ] `Min`/`Max` aggregates (AD-029) — dropped from M13's scope on purpose (blanket float cast would break non-numeric columns). Revisit with per-column-type-aware casting if a real need comes up.
-- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 60.6%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 87.0%, `repository` 80.0% (`SaveMany`/`UpdateMany` at 0%). No milestone currently planned that depends on this — should be backfilled as standalone follow-up work.
+- [ ] Legacy per-package coverage gaps below 100% (AD-026 applies going forward, not retroactively): `golem` root 52.1%, `driver/postgres` 60.6%, `entity` 75.3% (mostly untested M7 hook Trigger* methods, 0%), `query` 87.0%, `repository` 83.9% (`SaveMany` still at 0% — `Update`, ex-`UpdateMany`, is now 100% per AD-031). No milestone currently planned that depends on this — should be backfilled as standalone follow-up work.
 
 

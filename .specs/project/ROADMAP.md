@@ -130,7 +130,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 ## M5 - Update/Count Builders
 
 **Goal:** Criteria-based updates and counts work without needing an in-memory instance.
-**Target:** `UpdateOne`/`UpdateMany`/`Count`/`Exists` examples in README run against a real table.
+**Target:** `Update`/`Count`/`Exists` examples in README run against a real table.
 **Depends on:** extends `stmt.Update` (M1/M3) with a `Set` clause + full predicate `Where`; `stmt.Select` reused (with a `COUNT(*)` projection mode) for `Count`/`Exists`.
 
 ### Features
@@ -145,7 +145,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **`Repository[T]` wiring** - DONE
 
-- `UpdateOne(ctx, func(t *T, u *query.Update[T])) (T, error)` / `UpdateMany(...) ([]T, error)`
+- `Update(ctx, func(t *T, u *query.Update[T])) ([]T, error)` — no `UpdateOne`/`UpdateMany` split (collapsed, AD-031 in STATE.md — they built the identical query, zero rows affected is not an error)
 - `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` / `Exists(...) (bool, error)`
 
 ---

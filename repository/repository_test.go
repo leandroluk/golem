@@ -498,10 +498,10 @@ func TestRepository_SaveOne_CompositePK_WheresAllPKColumns(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------
-// UpdateOne / UpdateMany
+// Update
 // -----------------------------------------------------------------------
 
-func TestRepository_UpdateOne_Found_PassesWhereAndSetColumns(t *testing.T) {
+func TestRepository_Update_PassesWhereAndSetColumns(t *testing.T) {
 	d := &fakeDialect{
 		updateResult: []map[string]any{
 			{"id": int64(7), "name": "Grace", "email": "new@example.com"},
@@ -510,12 +510,12 @@ func TestRepository_UpdateOne_Found_PassesWhereAndSetColumns(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, testSubjectEntity)
 
-	got, err := repo.UpdateOne(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
+	got, err := repo.Update(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
 		u.Where(op.Eq(&t.ID, int64(7)))
 		u.Set(&t.Email, "new@example.com")
 	})
 	if err != nil {
-		t.Fatalf("UpdateOne: %v", err)
+		t.Fatalf("Update: %v", err)
 	}
 	if len(d.updateCalls) != 1 {
 		t.Fatalf("expected 1 Update call, got %d", len(d.updateCalls))
@@ -530,8 +530,123 @@ func TestRepository_UpdateOne_Found_PassesWhereAndSetColumns(t *testing.T) {
 	if len(call.Sets) != 1 || call.Sets[0].Column != "email" || call.Sets[0].Value != "new@example.com" {
 		t.Errorf("unexpected Sets: %+v", call.Sets)
 	}
-	if got.Email != "new@example.com" {
-		t.Errorf("got.Email = %q", got.Email)
+	if len(got) != 1 || got[0].Email != "new@example.com" {
+		t.Errorf("got = %+v", got)
+	}
+}
+
+func TestRepository_Update_ZeroRowsAffected_IsNotAnError(t *testing.T) {
+	d := &fakeDialect{updateResult: []map[string]any{}}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	got, err := repo.Update(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
+		u.Where(op.Eq(&t.ID, int64(999)))
+		u.Set(&t.Email, "nobody@example.com")
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected 0 results, got %+v", got)
+	}
+}
+
+func TestRepository_Update_MultipleRowsAffected(t *testing.T) {
+	d := &fakeDialect{
+		updateResult: []map[string]any{
+			{"id": int64(1), "name": "Ada", "email": "same@example.com"},
+			{"id": int64(2), "name": "Bob", "email": "same@example.com"},
+		},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	got, err := repo.Update(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
+		u.Where(op.Eq(&t.Email, "old@example.com"))
+		u.Set(&t.Email, "same@example.com")
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(got))
+	}
+}
+
+func TestRepository_Update_BadWhereFieldPtr_ReturnsError(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	var foreign string
+	_, err := repo.Update(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
+		u.Where(op.Eq(&foreign, "x"))
+		u.Set(&t.Email, "y@example.com")
+	})
+	if err == nil {
+		t.Fatal("expected error for a Where field pointer that doesn't belong to the entity, got nil")
+	}
+}
+
+func TestRepository_Update_ScanRowError_Propagates(t *testing.T) {
+	d := &fakeDialect{
+		updateResult: []map[string]any{
+			{"id": int64(1), "name": "Ada", "email": struct{}{}}, // unconvertible to string
+		},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	_, err := repo.Update(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
+		u.Where(op.Eq(&t.ID, int64(1)))
+		u.Set(&t.Email, "x@example.com")
+	})
+	if err == nil {
+		t.Fatal("expected scanRow error for unconvertible column value, got nil")
+	}
+}
+
+func TestRepository_Update_AfterUpdateHookError_Propagates(t *testing.T) {
+	d := &fakeDialect{
+		updateResult: []map[string]any{
+			{"id": int64(1)},
+		},
+	}
+	conn := newFakeConn(t, d)
+
+	hookedEntity := entity.New(func(s *hookedTestSubject, b *entity.Table) {
+		b.TableName("hooked_update")
+		b.Col(&s.ID, golem.BIGINT())
+		b.PrimaryKey(&s.ID)
+	})
+	wantErr := errors.New("boom: after update hook")
+	entity.AddHook(hookedEntity).AfterUpdate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
+		return wantErr
+	})
+
+	repo := Get(conn, hookedEntity)
+	_, err := repo.Update(context.Background(), func(s *hookedTestSubject, u *query.Update[hookedTestSubject]) {
+		u.Where(op.Eq(&s.ID, int64(1)))
+		u.Set(&s.Name, "x")
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected wrapped %v, got %v", wantErr, err)
+	}
+}
+
+func TestRepository_Update_DialectError_Propagates(t *testing.T) {
+	wantErr := errors.New("boom: update")
+	d := &fakeDialect{updateErr: wantErr}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	_, err := repo.Update(context.Background(), func(t *testSubject, u *query.Update[testSubject]) {
+		u.Where(op.Eq(&t.ID, int64(1)))
+		u.Set(&t.Email, "x@example.com")
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected wrapped %v, got %v", wantErr, err)
 	}
 }
 
@@ -737,7 +852,7 @@ func TestRepository_Exists_ReturnsTrue(t *testing.T) {
 	}
 }
 
-func TestRepository_UpdateOne_AppendsSoftDeleteFilterByDefault(t *testing.T) {
+func TestRepository_Update_AppendsSoftDeleteFilterByDefault(t *testing.T) {
 	d := &fakeDialect{
 		updateResult: []map[string]any{
 			{"id": int64(7)},
@@ -746,12 +861,12 @@ func TestRepository_UpdateOne_AppendsSoftDeleteFilterByDefault(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, softDeleteSubjectEntity)
 
-	_, err := repo.UpdateOne(context.Background(), func(t *softDeleteSubject, u *query.Update[softDeleteSubject]) {
+	_, err := repo.Update(context.Background(), func(t *softDeleteSubject, u *query.Update[softDeleteSubject]) {
 		u.Where(op.Eq(&t.ID, int64(7)))
 		u.Set(&t.ID, 7)
 	})
 	if err != nil {
-		t.Fatalf("UpdateOne: %v", err)
+		t.Fatalf("Update: %v", err)
 	}
 
 	if len(d.updateCalls) != 1 {
@@ -768,7 +883,7 @@ func TestRepository_UpdateOne_AppendsSoftDeleteFilterByDefault(t *testing.T) {
 	}
 }
 
-func TestRepository_UpdateOne_WithDeleted_SkipsSoftDeleteFilter(t *testing.T) {
+func TestRepository_Update_WithDeleted_SkipsSoftDeleteFilter(t *testing.T) {
 	d := &fakeDialect{
 		updateResult: []map[string]any{
 			{"id": int64(7)},
@@ -777,13 +892,13 @@ func TestRepository_UpdateOne_WithDeleted_SkipsSoftDeleteFilter(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, softDeleteSubjectEntity)
 
-	_, err := repo.UpdateOne(context.Background(), func(t *softDeleteSubject, u *query.Update[softDeleteSubject]) {
+	_, err := repo.Update(context.Background(), func(t *softDeleteSubject, u *query.Update[softDeleteSubject]) {
 		u.Where(op.Eq(&t.ID, int64(7)))
 		u.Set(&t.ID, 7)
 		u.WithDeleted()
 	})
 	if err != nil {
-		t.Fatalf("UpdateOne: %v", err)
+		t.Fatalf("Update: %v", err)
 	}
 
 	if len(d.updateCalls) != 1 {

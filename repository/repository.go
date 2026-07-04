@@ -574,57 +574,13 @@ func (r *Repository[T]) SaveMany(ctx context.Context, items ...*T) ([]T, error) 
 	return results, nil
 }
 
-// UpdateOne applies WHERE + SET criteria and returns the single updated row.
-// Returns golem.ErrNotFound when no rows are affected.
-func (r *Repository[T]) UpdateOne(ctx context.Context, criteria func(*T, *query.Update[T])) (T, error) {
-	var zero T
-	u := query.NewUpdate[T]()
-	criteria(&zero, u)
-
-	wherePred, err := r.buildWherePredicate(&zero, r.fieldToColumn(), r.meta.TableName, u.Conditions())
-	if err != nil {
-		return zero, err
-	}
-	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, u.IsWithDeleted(), wherePred)
-
-	f2c := r.fieldToColumn()
-	setClauses := make([]stmt.UpdateClause, 0, len(u.Sets()))
-	for _, s := range u.Sets() {
-		fieldName := resolveFieldPtrAny(&zero, s.FieldPtr)
-		if colName, ok := f2c[fieldName]; ok {
-			setClauses = append(setClauses, stmt.UpdateClause{
-				Column: colName,
-				Value:  s.Value,
-			})
-		}
-	}
-
-	updPlan := &stmt.Update{
-		Table: r.meta.TableName,
-		Sets:  setClauses,
-		Where: wherePred,
-	}
-
-	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
-	if err != nil {
-		return zero, fmt.Errorf("repository: update one: %w", err)
-	}
-	if len(rows) == 0 {
-		return zero, golem.ErrNotFound
-	}
-	res, err := r.scanRow(rows[0])
-	if err != nil {
-		return zero, err
-	}
-	if err := r.entity.TriggerAfterUpdate(ctx, &res, r.conn); err != nil {
-		return zero, err
-	}
-	return res, nil
-}
-
-// UpdateMany applies WHERE + SET criteria and returns all affected rows.
-// Zero rows affected is not an error.
-func (r *Repository[T]) UpdateMany(ctx context.Context, criteria func(*T, *query.Update[T])) ([]T, error) {
+// Update applies WHERE + SET criteria and returns every updated row. Zero
+// rows affected is not an error — UpdateOne/UpdateMany used to be separate
+// methods (single-row-with-ErrNotFound vs. multi-row-always-ok), but they
+// built and executed the identical query either way, so the split added a
+// distinction without a real difference. Callers wanting "did this actually
+// match a row" behavior can check len(result) == 0 themselves.
+func (r *Repository[T]) Update(ctx context.Context, criteria func(*T, *query.Update[T])) ([]T, error) {
 	var zero T
 	u := query.NewUpdate[T]()
 	criteria(&zero, u)
@@ -655,7 +611,7 @@ func (r *Repository[T]) UpdateMany(ctx context.Context, criteria func(*T, *query
 
 	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)
 	if err != nil {
-		return nil, fmt.Errorf("repository: update many: %w", err)
+		return nil, fmt.Errorf("repository: update: %w", err)
 	}
 
 	results := make([]T, 0, len(rows))

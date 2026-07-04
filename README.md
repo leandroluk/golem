@@ -311,7 +311,7 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
     // - relation.OnDeleteNoAction (mesmo efeito de OnDeleteDefault a nível golem)
     OnDelete(relation.OnDeleteCascade).
     // aceito e guardado no metadata, mas SEM efeito em runtime nesta versão — chaves primárias nunca
-    // mudam de valor nos exemplos, e OnUpdate ainda não tem um gatilho (SaveOne/UpdateOne) que dispare
+    // mudam de valor nos exemplos, e OnUpdate ainda não tem um gatilho (SaveOne/Update) que dispare
     // esse cascade de verdade. Ver .specs/features/relations/design.md.
     // outras opções são:
     // - relation.OnUpdateRestrict
@@ -661,8 +661,7 @@ func main() {
 > | `InsertMany(ctx, entities ...*T) ([]T, error)` | N registros | insere várias de uma vez |
 > | `SaveOne(ctx, e *T) (T, error)` | 1 registro | persiste de novo uma instância que você já tem em runtime (ex: veio de um `Insert`/`FindOne` anterior), por PK |
 > | `SaveMany(ctx, entities ...*T) ([]T, error)` | N registros | igual `SaveOne`, pra várias instâncias de uma vez |
-> | `UpdateOne(ctx, criteria func(t *T, u *query.Update[T])) (T, error)` | 1 registro | atualiza direto no banco por critério (`Where`+`Set`), sem precisar ter a instância em runtime |
-> | `UpdateMany(ctx, criteria func(t *T, u *query.Update[T])) ([]T, error)` | N registros | igual `UpdateOne`, mas o critério pode casar mais de uma linha |
+> | `Update(ctx, criteria func(t *T, u *query.Update[T])) ([]T, error)` | N registros | atualiza direto no banco por critério (`Where`+`Set`), sem precisar ter a instância em runtime; 0 linhas casadas não é erro — não existe `UpdateOne`/`UpdateMany` separados, os dois faziam exatamente a mesma query |
 > | `Delete(ctx, entities ...*T) error` | — | delete por PK; se a entity tem `DeleteDate`, seta o timestamp (soft delete) em vez de apagar a linha |
 > | `Restore(ctx, entities ...*T) error` | — | desfaz soft delete (limpa `DeleteDate`) por PK; sem `DeleteDate` declarado, é no-op |
 > | `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)` | N registros | critério opcional; sem ele, traz a tabela toda. detalhado na seção Query Builder |
@@ -683,7 +682,7 @@ func main() {
 > Se a entity tem `DeleteDate` (soft delete), toda consulta filtra os deletados por padrão (`WHERE
 > deleted_at IS NULL` implícito) — igual todo ORM com soft delete faz. `.WithDeleted()` desliga esse
 > filtro pra essa consulta. Existe em qualquer builder que tenha `Where` por baixo: `query.Query[T]`
-> (`FindMany`/`FindOne`), `query.Count[T]` (`Count`/`Exists`), `query.Update[T]` (`UpdateOne`/`UpdateMany`)
+> (`FindMany`/`FindOne`), `query.Count[T]` (`Count`/`Exists`), `query.Update[T]` (`Update`)
 > e `query.Join[T]` (dentro de `join.*`). Em entities sem `DeleteDate`, `.WithDeleted()` é um no-op.
 
 ```go
@@ -738,8 +737,10 @@ func main() {
   }
   _ = users
 
-  // UpdateOne: sem instância nenhuma — só Where+Set, atualiza direto no banco
-  updated, err := userRepo.UpdateOne(ctx, func(t *User, u *query.Update[User]) {
+  // Update: sem instância nenhuma — só Where+Set, atualiza direto no banco. Não existe
+  // UpdateOne/UpdateMany separados — o critério pode casar 1 linha ou várias, o método é o mesmo,
+  // e 0 linhas casadas não é erro.
+  updated, err := userRepo.Update(ctx, func(t *User, u *query.Update[User]) {
     u.Where(op.Eq(&t.ID, user.ID))
     u.Set(&t.Name, "John Doe")
     u.Set(&t.Email, "john.doe@email.com")
@@ -750,8 +751,8 @@ func main() {
   }
   _ = updated
 
-  // UpdateMany: mesma ideia, mas o critério pode casar (e atualizar) mais de uma linha
-  users, err = userRepo.UpdateMany(ctx, func(t *User, u *query.Update[User]) {
+  // mesmo método, critério que pode casar (e atualizar) mais de uma linha
+  users, err = userRepo.Update(ctx, func(t *User, u *query.Update[User]) {
     u.Where(op.Eq(&t.Age, 30))
     u.Set(&t.Age, 31)
   })
@@ -1079,7 +1080,7 @@ func main() {
       return err
     }
 
-    _, err = userRepo.UpdateOne(ctx, func (u *User, upd *query.Update[User]) {
+    _, err = userRepo.Update(ctx, func (u *User, upd *query.Update[User]) {
       upd.Where(op.Eq(&u.ID, user.ID))
       upd.Set(&u.Name, "atualizado com segurança")
     })
@@ -1186,7 +1187,7 @@ func main() {
 > conjunto inicial (mais comuns; a lista cresce conforme mais dialetos/casos forem mapeados, sem quebrar
 > o que já existe):
 >
->  - `golem.ErrNotFound`: nenhum registro encontrado (`FindOne`/`UpdateOne` sem match)
+>  - `golem.ErrNotFound`: nenhum registro encontrado (`FindOne`/`SaveOne` sem match — `Update` não dispara isso, 0 linhas casadas não é erro)
 >  - `golem.ErrDuplicateKey`: violação de `Unique` (coluna ou composta)
 >  - `golem.ErrForeignKeyViolation`: violação de `ForeignKey` (aponta pra algo que não existe, ou deleta algo ainda referenciado)
 >
