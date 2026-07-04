@@ -1,3 +1,14 @@
+// Package op provides the comparison/logical predicate builders
+// (Eq/Gt/Gte/Lt/Lte/In/Like/Or/Not) and sort-order builders (Asc/Desc)
+// passed into query.Query[T]/Update[T]/Count[T]/Join[T]/Aggregate[T, R]'s
+// Where/Having/OrderBy methods.
+//
+// Every function here just carries a field pointer (any) plus whatever
+// else the predicate needs (a value, nested sub-conditions) — op itself
+// never resolves the field pointer to a column name or touches any entity
+// metadata; that happens one layer up, in repository, which is the only
+// package with both the entity metadata and the active golem.Dialect
+// needed to do it.
 package op
 
 // Condition represents a predicate node in the query builder. It carries
@@ -70,4 +81,3 @@ func Asc(fieldPtr any) Order {
 func Desc(fieldPtr any) Order {
 	return Order{FieldPtr: fieldPtr, Desc: true}
 }
-

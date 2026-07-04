@@ -29,12 +29,12 @@ package relation
 type CascadeOption string
 
 const (
-	CascadeInsert     CascadeOption = "insert"
-	CascadeUpdate     CascadeOption = "update"
-	CascadeRemove     CascadeOption = "remove"
-	CascadeSoftRemove CascadeOption = "soft-remove"
-	CascadeRecover    CascadeOption = "recover"
-	CascadeAll        CascadeOption = "all"
+	CascadeInsert     CascadeOption = "insert"      // cascade an insert of the related object
+	CascadeUpdate     CascadeOption = "update"      // cascade an update of the related object
+	CascadeRemove     CascadeOption = "remove"      // cascade a hard delete of the related object
+	CascadeSoftRemove CascadeOption = "soft-remove" // cascade a soft delete of the related object
+	CascadeRecover    CascadeOption = "recover"     // cascade a soft-delete restore of the related object
+	CascadeAll        CascadeOption = "all"         // shorthand for all 5 flags above at once
 )
 
 // OnDeleteAction controls what happens to rows referencing the deleted row
@@ -60,6 +60,8 @@ const (
 type OnUpdateAction string
 
 const (
+	// OnUpdateDefault means "do nothing at the golem level" — same
+	// reasoning as OnDeleteDefault, mirrored for the update side.
 	OnUpdateDefault  OnUpdateAction = ""
 	OnUpdateRestrict OnUpdateAction = "restrict"
 	OnUpdateSetNull  OnUpdateAction = "set-null"
@@ -73,9 +75,9 @@ const (
 type DeferrableMode string
 
 const (
-	DeferrableDefault   DeferrableMode = ""
-	DeferrableDeferred  DeferrableMode = "deferred"
-	DeferrableImmediate DeferrableMode = "immediate"
+	DeferrableDefault   DeferrableMode = ""          // no opinion — whatever the DB constraint (if any) defaults to
+	DeferrableDeferred  DeferrableMode = "deferred"  // check at transaction commit, not immediately
+	DeferrableImmediate DeferrableMode = "immediate" // check immediately (the usual DB default)
 )
 
 // OrphanedRowActionMode describes what happens to a previously related child
@@ -86,10 +88,10 @@ const (
 type OrphanedRowActionMode string
 
 const (
-	OrphanedRowActionNullify    OrphanedRowActionMode = "nullify"
-	OrphanedRowActionDelete     OrphanedRowActionMode = "delete"
-	OrphanedRowActionSoftDelete OrphanedRowActionMode = "soft-delete"
-	OrphanedRowActionDisable    OrphanedRowActionMode = "disable"
+	OrphanedRowActionNullify    OrphanedRowActionMode = "nullify"     // clear the relation's FK column
+	OrphanedRowActionDelete     OrphanedRowActionMode = "delete"      // hard-delete the orphaned row
+	OrphanedRowActionSoftDelete OrphanedRowActionMode = "soft-delete" // soft-delete the orphaned row
+	OrphanedRowActionDisable    OrphanedRowActionMode = "disable"     // leave the orphaned row untouched
 )
 
 // ForeignKeyOptions is the fluent options builder passed as entity.Table.
@@ -137,41 +139,63 @@ func (o *ForeignKeyOptions) Cascade(opts ...CascadeOption) *ForeignKeyOptions {
 	return o
 }
 
+// OnDelete sets what happens to referencing rows when the row this
+// ForeignKey points at is deleted. Real runtime behavior — see
+// Repository[T].Delete.
 func (o *ForeignKeyOptions) OnDelete(a OnDeleteAction) *ForeignKeyOptions {
 	o.onDelete = a
 	return o
 }
 
+// OnUpdate sets what happens to referencing rows when the row this
+// ForeignKey points at has its primary key changed. Accepted and stored;
+// not yet wired to any Repository[T] method (see package doc).
 func (o *ForeignKeyOptions) OnUpdate(a OnUpdateAction) *ForeignKeyOptions {
 	o.onUpdate = a
 	return o
 }
 
+// Deferrable sets the DB constraint-timing hint. Accepted and stored,
+// informational only (see package doc).
 func (o *ForeignKeyOptions) Deferrable(m DeferrableMode) *ForeignKeyOptions {
 	o.deferrable = m
 	return o
 }
 
+// CreateForeignKeyConstraints sets whether a DB-level FK constraint would
+// be created for this relation. Accepted and stored, informational only —
+// golem never creates DDL (see package doc).
 func (o *ForeignKeyOptions) CreateForeignKeyConstraints(b bool) *ForeignKeyOptions {
 	o.createForeignKeyConstraints = b
 	return o
 }
 
+// Lazy marks the relation as lazily loaded. Accepted and stored, no
+// separate runtime meaning of its own — it's the default absent Eager (see
+// package doc).
 func (o *ForeignKeyOptions) Lazy(b bool) *ForeignKeyOptions {
 	o.lazy = b
 	return o
 }
 
+// Eager marks the relation for automatic loading. Accepted and stored;
+// wiring it to actually run repository.Preload automatically is M12+
+// territory, not done in this pass (see package doc).
 func (o *ForeignKeyOptions) Eager(b bool) *ForeignKeyOptions {
 	o.eager = b
 	return o
 }
 
+// Persistence sets whether writes to this relation are reflected in the
+// database. Accepted and stored, no runtime effect (see package doc).
 func (o *ForeignKeyOptions) Persistence(b bool) *ForeignKeyOptions {
 	o.persistence = b
 	return o
 }
 
+// OrphanedRowAction sets what happens to a previously related row that's
+// no longer present when a parent's in-memory collection is re-saved.
+// Accepted and stored, no runtime effect (see package doc).
 func (o *ForeignKeyOptions) OrphanedRowAction(m OrphanedRowActionMode) *ForeignKeyOptions {
 	o.orphanedRowAction = m
 	return o
@@ -183,15 +207,31 @@ func (o *ForeignKeyOptions) HasCascade(opt CascadeOption) bool {
 	return o.cascade[opt]
 }
 
+// ResolvedOnDelete returns the configured OnDelete action.
 func (o *ForeignKeyOptions) ResolvedOnDelete() OnDeleteAction { return o.onDelete }
+
+// ResolvedOnUpdate returns the configured OnUpdate action.
 func (o *ForeignKeyOptions) ResolvedOnUpdate() OnUpdateAction { return o.onUpdate }
+
+// ResolvedDeferrable returns the configured Deferrable mode.
 func (o *ForeignKeyOptions) ResolvedDeferrable() DeferrableMode { return o.deferrable }
+
+// ResolvedCreateForeignKeyConstraints returns the configured
+// CreateForeignKeyConstraints flag.
 func (o *ForeignKeyOptions) ResolvedCreateForeignKeyConstraints() bool {
 	return o.createForeignKeyConstraints
 }
-func (o *ForeignKeyOptions) ResolvedLazy() bool        { return o.lazy }
-func (o *ForeignKeyOptions) ResolvedEager() bool       { return o.eager }
+
+// ResolvedLazy returns the configured Lazy flag.
+func (o *ForeignKeyOptions) ResolvedLazy() bool { return o.lazy }
+
+// ResolvedEager returns the configured Eager flag.
+func (o *ForeignKeyOptions) ResolvedEager() bool { return o.eager }
+
+// ResolvedPersistence returns the configured Persistence flag.
 func (o *ForeignKeyOptions) ResolvedPersistence() bool { return o.persistence }
+
+// ResolvedOrphanedRowAction returns the configured OrphanedRowAction mode.
 func (o *ForeignKeyOptions) ResolvedOrphanedRowAction() OrphanedRowActionMode {
 	return o.orphanedRowAction
 }

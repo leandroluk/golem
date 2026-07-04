@@ -157,8 +157,9 @@ func main() {
 
 ### Declaring schemas
 
-> `golem.ColumnType` (`golem.BIGINT()`, `golem.VARCHAR(50)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`,
-> `golem.UUID()`, `golem.JSON()`, etc.) é agnóstico de dialeto — não vira DDL (esse `golem` não gera schema,
+> `golem.ColumnType` (`golem.BIGINT()`, `golem.VARCHAR(50)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.DATETIME()`,
+> `golem.UUID()`, `golem.JSON()`, etc. — conjunto completo: `BOOLEAN`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`,
+> `FLOAT`, `CHAR`, `VARCHAR`, `TEXT`, `DATE`, `DATETIME`, `TIME`, `BLOB`, `UUID`, `JSON`) é agnóstico de dialeto — não vira DDL (esse `golem` não gera schema,
 > ver seção Migrations) nem depende de qual adapter você conectou. Serve só de id semântica pro adapter
 > saber como fazer bind (Go → driver) e scan (driver → Go) daquele valor, já que `database/sql` sozinho
 > não dá conta de tipo exótico (UUID, JSONB, array, ENUM...) de forma consistente entre dialetos. Cada
@@ -260,10 +261,10 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
   // nome da coluna; se omitido, usa o nome do campo na struct (ex: "Name")
   b.Col(&t.Name, golem.VARCHAR(50)).Name("full_name")
   b.Col(&t.Email, golem.VARCHAR(50))
-  b.Col(&t.Age, golem.INT())
-  b.Col(&t.CreatedAt, golem.TIMESTAMPTZ())
-  b.Col(&t.UpdatedAt, golem.TIMESTAMPTZ())
-  b.Col(&t.DeletedAt, golem.TIMESTAMPTZ()).Nullable().Default(nil)
+  b.Col(&t.Age, golem.INTEGER())
+  b.Col(&t.CreatedAt, golem.DATETIME())
+  b.Col(&t.UpdatedAt, golem.DATETIME())
+  b.Col(&t.DeletedAt, golem.DATETIME()).Nullable().Default(nil)
 
   // aceita diversas propriedades
   b.PrimaryKey(&t.ID)
@@ -279,9 +280,9 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
 
 var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   b.Col(&t.ID, golem.BIGINT())
-  b.Col(&t.CreatedAt, golem.TIMESTAMPTZ())
-  b.Col(&t.UpdatedAt, golem.TIMESTAMPTZ())
-  b.Col(&t.DeletedAt, golem.TIMESTAMPTZ()).Nullable().Default(nil)
+  b.Col(&t.CreatedAt, golem.DATETIME())
+  b.Col(&t.UpdatedAt, golem.DATETIME())
+  b.Col(&t.DeletedAt, golem.DATETIME()).Nullable().Default(nil)
   b.Col(&t.OwnerUserID, golem.BIGINT())
   b.Col(&t.Title, golem.VARCHAR(50))
   b.Col(&t.Content, golem.TEXT())
@@ -362,9 +363,9 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
 
 var MessageEntity = entity.New[Message](func(t *Message, b *entity.Table) {
   b.Col(&t.ID, golem.BIGINT())
-  b.Col(&t.CreatedAt, golem.TIMESTAMPTZ())
-  b.Col(&t.UpdatedAt, golem.TIMESTAMPTZ())
-  b.Col(&t.DeletedAt, golem.TIMESTAMPTZ()).Nullable().Default(nil)
+  b.Col(&t.CreatedAt, golem.DATETIME())
+  b.Col(&t.UpdatedAt, golem.DATETIME())
+  b.Col(&t.DeletedAt, golem.DATETIME()).Nullable().Default(nil)
   b.Col(&t.Content, golem.TEXT())
   b.Col(&t.SenderUserID, golem.BIGINT())
   b.Col(&t.PostID, golem.BIGINT())

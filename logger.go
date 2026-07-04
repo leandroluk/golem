@@ -5,6 +5,7 @@ import "fmt"
 // LogLevel represents the severity of a lifecycle log event.
 type LogLevel int
 
+// The four supported log levels, in increasing severity order.
 const (
 	LogLevelDebug LogLevel = iota
 	LogLevelInfo
@@ -66,4 +67,3 @@ func (defaultLogger) Error(msg string, args map[string]any) {
 func DefaultLogger() Logger {
 	return defaultLogger{}
 }
-

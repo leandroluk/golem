@@ -138,7 +138,6 @@ func (u *Update[T]) IsWithDeleted() bool {
 	return u.withDeleted
 }
 
-
 // Count is received by a Count criteria callback.
 type Count[T any] struct {
 	conditions  []op.Condition
@@ -220,23 +219,29 @@ func (j *Join[T]) WithDeleted() *Join[T] {
 	return j
 }
 
+// Ons returns every column-to-column ON pair accumulated so far.
 func (j *Join[T]) Ons() []JoinOn {
 	return j.ons
 }
 
+// Conditions returns every column-to-value filter accumulated so far.
 func (j *Join[T]) Conditions() []op.Condition {
 	return j.conditions
 }
 
+// IsWithDeleted reports whether WithDeleted was called.
 func (j *Join[T]) IsWithDeleted() bool {
 	return j.withDeleted
 }
 
+// AddJoinData registers a resolved join descriptor on the parent query.
+// Called by the join package (Inner/Left/Right/Full), not directly by end
+// users.
 func (q *Query[T]) AddJoinData(jd JoinData) {
 	q.joins = append(q.joins, jd)
 }
 
+// Joins returns every join descriptor registered so far.
 func (q *Query[T]) Joins() []JoinData {
 	return q.joins
 }
-

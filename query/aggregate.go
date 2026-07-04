@@ -89,11 +89,13 @@ func (a *Aggregate[T, R]) OrderBy(orders ...op.Order) *Aggregate[T, R] {
 	return a
 }
 
+// Limit constrains the maximum number of grouped rows returned.
 func (a *Aggregate[T, R]) Limit(n int) *Aggregate[T, R] {
 	a.limit = &n
 	return a
 }
 
+// Offset skips the first n grouped rows.
 func (a *Aggregate[T, R]) Offset(n int) *Aggregate[T, R] {
 	a.offset = &n
 	return a
@@ -105,14 +107,42 @@ func (a *Aggregate[T, R]) WithDeleted() *Aggregate[T, R] {
 	return a
 }
 
-func (a *Aggregate[T, R]) GroupByMappings() []AggMapping    { return a.groupBy }
-func (a *Aggregate[T, R]) SumMappings() []AggMapping        { return a.sums }
-func (a *Aggregate[T, R]) AvgMappings() []AggMapping        { return a.avgs }
-func (a *Aggregate[T, R]) CountMappings() []AggMapping      { return a.counts }
-func (a *Aggregate[T, R]) CountAllFields() []any            { return a.countAlls }
-func (a *Aggregate[T, R]) Conditions() []op.Condition       { return a.conditions }
+// GroupByMappings returns every GroupBy source/dest field pointer pair
+// accumulated so far.
+func (a *Aggregate[T, R]) GroupByMappings() []AggMapping { return a.groupBy }
+
+// SumMappings returns every Sum source/dest field pointer pair accumulated
+// so far.
+func (a *Aggregate[T, R]) SumMappings() []AggMapping { return a.sums }
+
+// AvgMappings returns every Avg source/dest field pointer pair accumulated
+// so far.
+func (a *Aggregate[T, R]) AvgMappings() []AggMapping { return a.avgs }
+
+// CountMappings returns every Count source/dest field pointer pair
+// accumulated so far.
+func (a *Aggregate[T, R]) CountMappings() []AggMapping { return a.counts }
+
+// CountAllFields returns every CountAll dest field pointer accumulated so
+// far.
+func (a *Aggregate[T, R]) CountAllFields() []any { return a.countAlls }
+
+// Conditions returns every pre-aggregation Where condition accumulated so
+// far.
+func (a *Aggregate[T, R]) Conditions() []op.Condition { return a.conditions }
+
+// HavingConditions returns every post-aggregation Having condition
+// accumulated so far.
 func (a *Aggregate[T, R]) HavingConditions() []op.Condition { return a.having }
-func (a *Aggregate[T, R]) OrderByFields() []op.Order        { return a.orderBy }
-func (a *Aggregate[T, R]) GetLimit() *int                   { return a.limit }
-func (a *Aggregate[T, R]) GetOffset() *int                  { return a.offset }
-func (a *Aggregate[T, R]) IsWithDeleted() bool              { return a.withDeleted }
+
+// OrderByFields returns every sort order accumulated so far.
+func (a *Aggregate[T, R]) OrderByFields() []op.Order { return a.orderBy }
+
+// GetLimit returns the requested row limit, or nil if unset.
+func (a *Aggregate[T, R]) GetLimit() *int { return a.limit }
+
+// GetOffset returns the requested row offset, or nil if unset.
+func (a *Aggregate[T, R]) GetOffset() *int { return a.offset }
+
+// IsWithDeleted reports whether WithDeleted was called.
+func (a *Aggregate[T, R]) IsWithDeleted() bool { return a.withDeleted }

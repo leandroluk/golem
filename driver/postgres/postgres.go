@@ -1,3 +1,12 @@
+// Package postgres is golem's Postgres adapter — it implements
+// golem.Dialect (value bind/scan, statement compilation/execution) on top
+// of github.com/jackc/pgx/v5, and golem.Connector (via postgres.New) so a
+// golem.DataSource can connect to a real Postgres instance.
+//
+// Nothing in the rest of golem imports this package — a *golem.DataSource
+// only ever holds the golem.Dialect/golem.Connector interfaces, so this
+// adapter is the only place a Postgres-specific (or, for a future adapter,
+// MySQL/MSSQL/Oracle-specific) dependency is allowed to live.
 package postgres
 
 import "github.com/leandroluk/golem"
@@ -26,4 +35,3 @@ func New(configure func(*Options)) golem.Option {
 	configure(opts)
 	return golem.WithConnector(&connector{opts: opts})
 }
-

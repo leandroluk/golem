@@ -52,28 +52,27 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Entities can be declared and their metadata (columns, keys, indexes) inspected — no persistence yet.
 **Target:** `entity.New[User](func(t *User, b *entity.Table) {...})` builds valid metadata for all documented `entity.Table` methods.
-**Status:** ✅ DONE — `entity.Table` completo: `Col` (com `Nullable`/`Default`/`DefaultFunc`), `PrimaryKey`, `ForeignKey`, `TableName`/`SchemaName`, `Unique`, `Index` (com `*entity.Index`), `CreateDate`/`UpdateDate`/`DeleteDate`. `golem.ColumnType` completo: `BIGINT`, `INT`, `VARCHAR`, `TEXT`, `BOOLEAN`, `TIMESTAMPTZ`, `UUID`, `JSON`. Pacote `index` criado. `entity.Column` completo.
+**Status:** ✅ DONE — `entity.Table` completo: `Col` (com `Nullable`/`Default`/`DefaultFunc`), `PrimaryKey`, `ForeignKey` (com o chain completo de `relation.ForeignKeyOptions`, ver M11), `TableName`/`SchemaName`, `Unique`, `Index` (com `*entity.Index`), `CreateDate`/`UpdateDate`/`DeleteDate`. `golem.ColumnType` completo: `BOOLEAN`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `FLOAT`, `CHAR`, `VARCHAR`, `TEXT`, `DATE`, `DATETIME`, `TIME`, `BLOB`, `UUID`, `JSON`. Pacote `index` criado. `entity.Column` completo. (Itens antes listados como DEFERRED/AD-021 abaixo foram todos construídos em passes posteriores — texto de escopo original preservado como registro histórico do que M2 cobria no dia em que essa spec foi escrita; ver `.specs/project/STATE.md` pelas ADs de cada item.)
 
 ### Features
 
-**`entity.Table` (table scope)** - PARTIALLY DONE
+**`entity.Table` (table scope)** - DONE
 
 - `TableName`, `SchemaName` (defaults: struct name, current connection schema) — DONE
 - `PrimaryKey(fieldPtrs ...any)` (composite-capable) — DONE
-- `Unique(fieldPtrs ...any)` (composite-capable, separate from `Col`) — DEFERRED (AD-021)
-- `Index(fieldPtrs ...any) *entity.Index` (`.Name`, `.Unique`) — DEFERRED (AD-021)
+- `Unique(fieldPtrs ...any)` (composite-capable, separate from `Col`) — DONE
+- `Index(fieldPtrs ...any) *entity.Index` (`.Name`, `.Unique`) — DONE
 
-**`golem.ColumnType` set** - PARTIALLY DONE
+**`golem.ColumnType` set** - DONE
 
-- `golem.BIGINT()`, `golem.VARCHAR(length)`, `golem.TEXT()` — DONE
-- `golem.INT()`, `golem.BOOLEAN()`, `golem.TIMESTAMPTZ()`, `golem.UUID()`, `golem.JSON()` — DEFERRED, not needed by the driving example yet
+- `golem.BOOLEAN()`, `golem.SMALLINT()`, `golem.INTEGER()`, `golem.BIGINT()`, `golem.DECIMAL(precision, scale)`, `golem.FLOAT(precision)`, `golem.CHAR(length)`, `golem.VARCHAR(length)`, `golem.TEXT()`, `golem.DATE()`, `golem.DATETIME()`, `golem.TIME()`, `golem.BLOB()`, `golem.UUID()`, `golem.JSON()`
 
-**`entity.Table` (column scope) + `entity.Column`** - PARTIALLY DONE
+**`entity.Table` (column scope) + `entity.Column`** - DONE
 
 - `Col(fieldPtr any, type golem.ColumnType) *entity.Column` — DONE
-- `entity.Column`: `.Name` — DONE; `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))` — DEFERRED (AD-021)
-- `CreateDate`/`UpdateDate`/`DeleteDate` — DEFERRED (AD-021, no soft-delete filtering yet either)
-- `ForeignKey(fieldPtr any, target *entity.Entity[T])` two-arg form — DONE; `opts ...*relation.ForeignKeyOptions` full chain (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`) — DEFERRED (AD-021)
+- `entity.Column`: `.Name`, `.Nullable`, `.Default(value any)`, `.DefaultFunc(func() (any, error))` — DONE
+- `CreateDate`/`UpdateDate`/`DeleteDate` (soft-delete filtering wired into every `Where`-capable builder, see M4/M5) — DONE
+- `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)` — DONE, full `relation.ForeignKeyOptions` chain (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`) — see M11 for which options have real runtime effect vs. metadata-only
 
 ---
 
@@ -89,15 +88,16 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 - `repository.Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T]`, `T` inferred from `e`
 
-**Write paths** - PARTIALLY DONE
+**Write paths** - DONE
 
-- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — DONE, via `Dialect.Insert` (direct SQL, not `stmt.Insert` — AD-020); zero-valued fields are omitted so DB-side defaults (e.g. `BIGSERIAL`) apply
-- `SaveOne(ctx, *T) (T, error)` / `SaveMany(ctx, ...*T) ([]T, error)` — DEFERRED (AD-021)
-- `Delete(ctx, ...*T) error` / `Restore(ctx, ...*T) error` — DEFERRED (AD-021, no `DeleteDate` support yet)
+- `Insert(ctx, *T) (T, error)` / `InsertMany(ctx, ...*T) ([]T, error)` — via `Dialect.Insert`; zero-valued fields are omitted so DB-side defaults (e.g. `BIGSERIAL`) apply
+- `SaveOne(ctx, *T) (T, error)` / `SaveMany(ctx, ...*T) ([]T, error)` — re-persists an existing runtime instance by PK (composite-PK capable)
+- `Delete(ctx, ...*T) error` / `Restore(ctx, ...*T) error` — soft-deletes (sets `DeleteDate`) when the entity has one, hard-deletes otherwise; also runs `OnDelete` cascade (M11)
 
-**Read paths (PK only)** - PARTIALLY DONE
+**Read paths** - DONE
 
-- `FindByID(ctx, id any) (T, error)` — DONE for single-column PK only (composite-PK `FindByID` deferred, AD-021), via `Dialect.FindByID` (direct SQL); no soft-delete filtering yet (no `DeleteDate` support)
+- No dedicated `FindByID` — removed (AD-022), superseded by `FindOne(ctx, func(t *T, q *query.Query[T]) { q.Where(op.Eq(&t.ID, id)) })`, which works for composite PKs too
+- Soft-delete filtering (`WHERE deletedAtCol IS NULL`) applied by default on every `Where`-capable read, `.WithDeleted()` opts out
 
 ---
 
