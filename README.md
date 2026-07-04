@@ -6,10 +6,10 @@
 
 <div align="center">
   <a href="https://github.com/leandroluk/golem/actions">
-    <img src="https://github.com/leandroluk/golem/actions/workflows/ci.yml/badge.svg?branch=main" alt="Build Status" />
+    <img src="https://github.com/leandroluk/golem/actions/workflows/ci.yml/badge.svg?branch=master" alt="Build Status" />
   </a>
   <a href="https://codecov.io/gh/leandroluk/golem">
-    <img src="https://img.shields.io/codecov/c/github/leandroluk/golem/main.svg" alt="Coverage Status" />
+    <img src="https://img.shields.io/codecov/c/github/leandroluk/golem/master.svg" alt="Coverage Status" />
   </a>
   <a href="https://goreportcard.com/report/github.com/leandroluk/golem">
     <img src="https://goreportcard.com/badge/github.com/leandroluk/golem" alt="Go Report Card" />
