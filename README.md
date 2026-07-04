@@ -335,69 +335,21 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   b.PrimaryKey(&t.ID)
   // índice secundário: acelera queries que filtram por OwnerUserID (ex: "posts de um usuário")
   b.Index(&t.OwnerUserID)
-  // o terceiro parametro é opcional
-  // AVISO: Cascade/Persistence/OrphanedRowAction/CreateForeignKeyConstraints/Deferrable são aceitos e
-  // guardados no metadata da entity (b.ForeignKey nunca ignora silenciosamente um valor passado), mas
-  // NÃO têm efeito em runtime nesta versão — golem nunca gera DDL (sem migrations, ver AD-012) e
-  // entities nunca têm um campo navegacional pra relação anexada em memória (ver AD-001/AD-024), que é
-  // o que essas opções cascateariam no TypeORM. Só OnDelete tem comportamento real hoje (ver abaixo);
-  // Eager passa a ter efeito quando Preload/Eager Loading (M12) existir. Detalhes:
-  // .specs/features/relations/design.md
+  // o terceiro parâmetro é opcional. ForeignKeyOptions só tem OnDelete — é a única opção com
+  // efeito real dado como golem é feito: sem DDL (sem migrations, ver AD-012) e sem campo
+  // navegacional pra relação anexada em memória (ver AD-001/AD-024), Cascade/Persistence/
+  // OrphanedRowAction/CreateForeignKeyConstraints/Deferrable/Lazy/Eager/OnUpdate nunca teriam
+  // onde pendurar comportamento de verdade — cortados em vez de ficarem só aceitos e ignorados
+  // (ver AD-032 em .specs/project/STATE.md)
   b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().
-    // em caso de criação de um usuário todos os posts deste usuário serão criados
-    // outras opções disponíveis: CascadeInsert, CascadeUpdate, CascadeRemove, CascadeSoftRemove, CascadeRecover
-    Cascade(relation.CascadeAll).
-    // em caso de deleção de um usuário todos os posts deste usuário serão deletados.
-    // real: Repository[T].Delete aplica isso de verdade (consulta um registro global de FKs)
+    // em caso de deleção de um usuário, os posts dele são deletados de verdade
+    // (Repository[T].Delete consulta um registro global de FKs e aplica isso)
     // outras opções são:
     // - relation.OnDeleteDefault (não faz nada a nível golem; se existir uma constraint real no banco fora do golem, vale o que ela disser)
     // - relation.OnDeleteRestrict (bloqueia o delete com golem.ErrForeignKeyViolation se existir post referenciando)
     // - relation.OnDeleteSetNull
     // - relation.OnDeleteNoAction (mesmo efeito de OnDeleteDefault a nível golem)
-    OnDelete(relation.OnDeleteCascade).
-    // aceito e guardado no metadata, mas SEM efeito em runtime nesta versão — chaves primárias nunca
-    // mudam de valor nos exemplos, e OnUpdate ainda não tem um gatilho (SaveOne/Update) que dispare
-    // esse cascade de verdade. Ver .specs/features/relations/design.md.
-    // outras opções são:
-    // - relation.OnUpdateRestrict
-    // - relation.OnUpdateSetNull
-    // - relation.OnUpdateCascade
-    // - relation.OnUpdateNoAction
-    OnUpdate(relation.OnUpdateDefault).
-    // indica se constraints de chave estrangeira podem ser adiadas
-    // outras opções são:
-    // - relation.DeferrableDeferred
-    // - relation.DeferrableImmediate
-    Deferrable(relation.DeferrableDefault).
-    // indica se constraints de chave estrangeira serão criadas para colunas de junção
-    // pode ser usado apenas em relações many-to-one e owner one-to-one
-    // por padrão é true
-    CreateForeignKeyConstraints(true).
-    // Define se esta relação será preguiçosa. Note: relações preguiçosas são promessas. Quando você as chama elas
-    // retornam uma promessa que resolve o resultado da relação então. Se o tipo da sua propriedade for assíncrona
-    // (awaitable) então esta relação é definida como preguiçosa automaticamente.
-    Lazy(true).
-    // Define se esta relação será ansiosa. Relações ansiosas são sempre carregadas automaticamente quando a entidade
-    // proprietária da relação é carregada usando os métodos find*. Só usando o QueryBuilder impede o carregamento de
-    // relações ansiosas. A flag eager não pode ser definida de ambos os lados da relação - você pode eager load apenas
-    // um lado da relação.
-    Eager(true).
-    // Indica se a persistência é habilitada para a relação. Por padrão está habilitada, mas se você quiser evitar que
-    // qualquer alteração na relação seja refletida no banco de dados, você pode desabilitá-la. Se estiver desabilitada,
-    // você só pode alterar uma relação do lado inverso de uma relação ou usando a funcionalidade do construtor de
-    // consultas de relação. Isso é útil para otimização de desempenho, pois desabilitar evita múltiplas consultas extras
-    // durante o salvamento da entidade.
-    Persistence(true).
-    // Quando um pai é salvo (com cascata, mas) sem uma linha filha que ainda existe no banco de dados, isso controlará o que
-    // deve acontecer com eles. O delete removerá essas linhas do banco de dados. O nullify removerá a chave de relação. O
-    // disable manterá a relação intacta. A remoção do item relacionado só é possível através de seu próprio repositório.
-    // outras opções são:
-    // - relation.OrphanedRowActionNullify
-    // - relation.OrphanedRowActionDelete
-    // - relation.OrphanedRowActionSoftDelete
-    // - relation.OrphanedRowActionDisable
-    OrphanedRowAction(relation.OrphanedRowActionNullify)
-  )
+    OnDelete(relation.OnDeleteCascade))
 
   // declara campos especiais, ou seja campo de criação data/hora e edição data/hora
   b.CreateDate(&t.CreatedAt)
@@ -941,11 +893,10 @@ func main() {
 > aceita o mesmo `func(j *J, q *query.Query[J])` de `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
 > sempre combinado (AND) com o filtro de junção que o `Preload` já monta sozinho.
 >
-> `ForeignKeyOptions.Eager(true)` é aceito e guardado no metadata da entity (ver seção "Declaring
-> schemas"), mas **não** dispara `Preload` automaticamente dentro de `FindMany`/`FindOne` nesta versão —
-> não há como devolver dados de tipos diferentes (`J` varia por FK) escondido atrás da assinatura fixa
-> `([]T, error)` sem reflection pesada ou quebrar a API. Chame `repository.Preload` explicitamente.
-> Detalhes: `.specs/features/preload-eager-loading/design.md`.
+> Não existe uma flag tipo `Eager(true)` que dispara `Preload` automaticamente dentro de
+> `FindMany`/`FindOne` — não há como devolver dados de tipos diferentes (`J` varia por FK) escondido
+> atrás da assinatura fixa `([]T, error)` sem reflection pesada ou quebrar a API. Chame
+> `repository.Preload` explicitamente sempre. Detalhes: `.specs/features/preload-eager-loading/design.md`.
 
 ```go
 package ex

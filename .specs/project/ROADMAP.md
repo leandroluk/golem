@@ -232,17 +232,17 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ## M11 - Relations (`ForeignKeyOptions` + Cascade)
 
-**Goal:** `entity.Table.ForeignKey` accepts the full `relation.ForeignKeyOptions` chain documented in README.md (`Cascade`, `OnDelete`, `OnUpdate`, `Deferrable`, `CreateForeignKeyConstraints`, `Lazy`, `Eager`, `Persistence`, `OrphanedRowAction`), and the options that have a runtime meaning (not just DDL/documentation) actually change `Repository[T]` write behavior.
-**Target:** The `Post`/`User` example in README's Schema Declaration section (with the full options chain) compiles and its `OnDelete` cascade behavior is exercised against real Postgres.
-**Status:** ✅ DONE — see `.specs/features/relations/` (spec, design, tasks all Verified)
+**Goal:** `entity.Table.ForeignKey` accepts a `relation.ForeignKeyOptions` chain, and the options actually change `Repository[T]` write behavior (not just DDL/documentation).
+**Target:** The `Post`/`User` example in README's Schema Declaration section compiles and its `OnDelete` cascade behavior is exercised against real Postgres.
+**Status:** ✅ DONE — see `.specs/features/relations/` (spec, design, tasks all Verified; note: originally shipped with a 9-option chain, later trimmed to just `OnDelete` — see AD-032 in STATE.md; the spec/design/tasks docs describe the original 9-option shape as historical record, this ROADMAP section reflects the current, trimmed one)
 
 ### Features
 
 **`relation` package** - DONE
 
-- `relation.NewForeignKeyOptions()` fluent builder: `.Cascade(...)`, `.OnDelete(...)`, `.OnUpdate(...)`, `.Deferrable(...)`, `.CreateForeignKeyConstraints(bool)`, `.Lazy(bool)`, `.Eager(bool)`, `.Persistence(bool)`, `.OrphanedRowAction(...)` — 100% test coverage
-- `entity.Table.ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions)` — 3rd arg variadic, backward-compatible with the existing 2-arg form. Also fixes a pre-existing bug: `target` was previously never even type-asserted/read
-- Since migrations/DDL are permanently out of scope (AD-012) and entities never carry a navigational relation field (AD-001/AD-024), only `OnDelete` has real runtime effect in this pass — `Cascade*`/`Persistence`/`OrphanedRowAction`/`CreateForeignKeyConstraints`/`Deferrable` are accepted and stored (never silently dropped) but have no runtime behavior; `Eager` is stored, wired to real preloading in M12; `OnUpdate` is stored, not yet wired to any operation (no PK-mutating operation exists) — see `.specs/features/relations/design.md` for the full reasoning (AD-027 in STATE.md)
+- `relation.NewForeignKeyOptions()` builder: `.OnDelete(...)` only — 100% test coverage
+- `entity.Table.ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions)` — 3rd arg variadic, backward-compatible with the existing 2-arg form. Also fixed a pre-existing bug: `target` was previously never even type-asserted/read
+- `Cascade`/`OnUpdate`/`Deferrable`/`CreateForeignKeyConstraints`/`Lazy`/`Eager`/`Persistence`/`OrphanedRowAction` were built in M11's first pass, then removed (AD-032): none of them ever had a path to real runtime effect given golem's architecture (no DDL generation, ever — AD-012; no navigational relation field, ever — AD-001/AD-024; `Eager` specifically decided to stay manual-only — AD-028) — kept only as long as there was some chance one might get wired up later, and once M12/M13 shipped without needing any of them, keeping them "accepted but silently inert" was assessed as a footgun (an API surface that looks like it does something but doesn't) rather than a placeholder worth its confusion cost
 
 **FK registry + cascade** - DONE
 

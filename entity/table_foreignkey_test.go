@@ -56,8 +56,8 @@ func TestTable_ForeignKey_ResolvesTargetTableAndColumn(t *testing.T) {
 	if fk.Options == nil {
 		t.Fatal("Options is nil, want a default *relation.ForeignKeyOptions")
 	}
-	if !fk.Options.ResolvedCreateForeignKeyConstraints() {
-		t.Error("default Options.CreateForeignKeyConstraints = false, want true")
+	if fk.Options.ResolvedOnDelete() != relation.OnDeleteDefault {
+		t.Errorf("default Options.OnDelete = %q, want %q", fk.Options.ResolvedOnDelete(), relation.OnDeleteDefault)
 	}
 }
 
