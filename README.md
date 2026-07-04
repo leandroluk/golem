@@ -1,37 +1,51 @@
-# golem
+<div align="center">
+  <img src="docs/assets/banner.png" alt="Golem - Type Safe ORM for Go" />
+</div>
 
-<img align="right" width="180px" src="https://raw.githubusercontent.com/leandroluk/golem/refs/heads/master/.assets/golem.png">
+<br/>
 
-[![Build Status](https://github.com/leandroluk/golem/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/leandroluk/golem/actions)  
-[![Coverage Status](https://img.shields.io/codecov/c/github/leandroluk/golem/main.svg)](https://codecov.io/gh/leandroluk/golem)  
-[![Go Report Card](https://goreportcard.com/badge/github.com/leandroluk/golem)](https://goreportcard.com/report/github.com/leandroluk/golem)  
-[![Go Doc](https://godoc.org/github.com/leandroluk/golem?status.svg)](https://pkg.go.dev/github.com/leandroluk/golem)  
-[![Release](https://img.shields.io/github/release/leandroluk/golem.svg?style=flat-square)](https://github.com/leandroluk/golem/releases)  
+<div align="center">
+  <a href="https://github.com/leandroluk/golem/actions">
+    <img src="https://github.com/leandroluk/golem/actions/workflows/ci.yml/badge.svg?branch=main" alt="Build Status" />
+  </a>
+  <a href="https://codecov.io/gh/leandroluk/golem">
+    <img src="https://img.shields.io/codecov/c/github/leandroluk/golem/main.svg" alt="Coverage Status" />
+  </a>
+  <a href="https://goreportcard.com/report/github.com/leandroluk/golem">
+    <img src="https://goreportcard.com/badge/github.com/leandroluk/golem" alt="Go Report Card" />
+  </a>
+  <a href="https://pkg.go.dev/github.com/leandroluk/golem">
+    <img src="https://pkg.go.dev/badge/github.com/leandroluk/golem.svg" alt="Go Doc" />
+  </a>
+  <a href="https://github.com/leandroluk/golem/releases">
+    <img src="https://img.shields.io/github/release/leandroluk/golem.svg?style=flat-square" alt="Release" />
+  </a>
+</div>
 
 ---
 
 ## Contents
-- [golem](#golem)
-  - [Contents](#contents)
-  - [Getting started](#getting-started)
-  - [Implementation Status](#implementation-status)
-  - [About the Project](#about-the-project)
-  - [Documentation](#documentation)
-    - [Connecting to Postgres](#connecting-to-postgres)
-    - [Declaring schemas](#declaring-schemas)
-    - [Many-to-many relations (junction entity)](#many-to-many-relations-junction-entity)
-    - [Repository (CRUD)](#repository-crud)
-    - [Query Builder](#query-builder)
-    - [Joins](#joins)
-    - [Preload / Eager Loading](#preload--eager-loading)
-    - [Aggregations](#aggregations)
-    - [Pessimistic Locking](#pessimistic-locking)
-    - [Raw SQL (escape hatch)](#raw-sql-escape-hatch)
-    - [Errors](#errors)
-    - [Migrations](#migrations)
-    - [Custom logger](#custom-logger)
-  - [Contributors](#contributors)
-  - [License](#license)
+- [Contents](#contents)
+- [Getting started](#getting-started)
+- [Implementation Status](#implementation-status)
+- [Next Steps](#next-steps)
+- [About the Project](#about-the-project)
+- [Documentation](#documentation)
+  - [Connecting to Postgres](#connecting-to-postgres)
+  - [Declaring schemas](#declaring-schemas)
+  - [Many-to-many relations (junction entity)](#many-to-many-relations-junction-entity)
+  - [Repository (CRUD)](#repository-crud)
+  - [Query Builder](#query-builder)
+  - [Joins](#joins)
+  - [Preload / Eager Loading](#preload--eager-loading)
+  - [Aggregations](#aggregations)
+  - [Pessimistic Locking](#pessimistic-locking)
+  - [Raw SQL (escape hatch)](#raw-sql-escape-hatch)
+  - [Errors](#errors)
+  - [Migrations](#migrations)
+  - [Custom logger](#custom-logger)
+- [Contributors](#contributors)
+- [License](#license)
 
 ---
 
@@ -84,6 +98,36 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M14 - Pessimistic Locking
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
+
+---
+
+## Next Steps
+
+M1-M14 (everything above) targets Postgres only. `golem.ColumnType`/`golem.Dialect` were designed
+dialect-agnostic from day one (AD-015 in `.specs/project/STATE.md`) specifically so adding another
+database is "write a new `driver/*` package," not "redesign the core." Candidates, roughly by effort
+(closer to ANSI SQL/Postgres semantics = less work):
+
+- **MySQL / MariaDB** — moderate effort; no native `RETURNING` (`Insert`/`Update` need a follow-up
+  `SELECT` after write instead of Postgres's one-round-trip `RETURNING *`, see AD-016)
+- **SQLite** — moderate effort; embedded, no real concurrent-write story (relevant for M14 locking)
+- **CockroachDB** — low effort; wire-compatible with Postgres, could likely reuse `driver/postgres`
+  almost as-is (own SQL dialect quirks — pagination, some type mapping — still need checking)
+- **SQL Server (MSSQL)** — higher effort; `OUTPUT` instead of `RETURNING`, `OFFSET/FETCH` pagination,
+  different quoting (`[bracket]` instead of `"double quotes"`)
+- **Oracle** — higher effort; `RETURNING INTO`, identifier length limits (30 bytes pre-12.2, 128 from
+  12.2+ — needs a validate-or-truncate decision at entity-registration time)
+- **IBM Db2** — higher effort, least common target; similar shape to Oracle/MSSQL
+- **OLAP-oriented (Snowflake, BigQuery, Redshift, ClickHouse)** — different enough to need real
+  design work before starting: no real transactions in the OLTP sense golem assumes (M8), often no
+  traditional PK/FK enforcement, pagination/type systems diverge more (e.g. BigQuery's `STRUCT`/
+  `ARRAY`, ClickHouse's table engines). Treat as a separate design pass, not a drop-in `driver/*`
+  like the OLTP ones above.
+
+`INSIGHT.md` (repo root) is the type-mapping reference this list draws from — it already covers
+Postgres/MySQL/MSSQL/Oracle/SQLite/Db2/Snowflake column types, DDL equivalences (auto-increment,
+upsert, pagination, indexes), and full-text-search query patterns per dialect. Extend it with
+BigQuery/Redshift/ClickHouse columns before starting any of the OLAP adapters.
 
 ---
 
@@ -1288,5 +1332,3 @@ Thanks to all the people who contribute! [[Contribute](CONTRIBUTING.md)]
 
 ## License
 MIT License – see [LICENSE](LICENSE) file for details.
-
-
