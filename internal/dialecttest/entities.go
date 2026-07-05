@@ -90,8 +90,12 @@ var parentEntity = entity.New(func(t *Parent, b *entity.Table) {
 // repository/repository_test.go's cascade_child_delete/_setnull/_restrict
 // pattern.
 type Child struct {
-	ID       int64
-	ParentID int64
+	ID int64
+	// ParentID is *int64 (not int64) so SetNull's real result — the column
+	// going NULL after the parent is deleted — round-trips through
+	// FindOne as a nil pointer, instead of needing raw dialect-specific SQL
+	// to observe it.
+	ParentID *int64
 	Name     string
 }
 

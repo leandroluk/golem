@@ -23,7 +23,7 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		if err != nil {
 			t.Fatalf("Insert parent: %v", err)
 		}
-		child, err := childRepo.Insert(ctx, &Child{ParentID: parent.ID, Name: "cascade-child"})
+		child, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "cascade-child"})
 		if err != nil {
 			t.Fatalf("Insert child: %v", err)
 		}
@@ -51,7 +51,7 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		if err != nil {
 			t.Fatalf("Insert parent: %v", err)
 		}
-		child, err := childRepo.Insert(ctx, &Child{ParentID: parent.ID, Name: "setnull-child"})
+		child, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "setnull-child"})
 		if err != nil {
 			t.Fatalf("Insert child: %v", err)
 		}
@@ -60,22 +60,14 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 			t.Fatalf("Delete parent: %v", err)
 		}
 
-		// Query the raw column instead of scanning into Child.ParentID
-		// (int64, not nullable) — the point here is proving the database
-		// column itself became NULL, not round-tripping it through Go.
-		res, err := ds.Exec(ctx, "SELECT parent_id FROM conf_setnull_child WHERE id = $1", child.ID)
+		found, err := childRepo.FindOne(ctx, func(c *Child, q *query.Query[Child]) {
+			q.Where(op.Eq(&c.ID, child.ID))
+		})
 		if err != nil {
-			t.Fatalf("raw select: %v", err)
+			t.Fatalf("FindOne child: %v", err)
 		}
-		if !res.Next() {
-			t.Fatal("expected 1 row")
-		}
-		row, err := res.Scan()
-		if err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		if row["parent_id"] != nil {
-			t.Errorf("parent_id = %v, want NULL after parent delete", row["parent_id"])
+		if found.ParentID != nil {
+			t.Errorf("ParentID = %v, want nil after parent delete", *found.ParentID)
 		}
 	})
 
@@ -87,7 +79,7 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		if err != nil {
 			t.Fatalf("Insert parent: %v", err)
 		}
-		if _, err := childRepo.Insert(ctx, &Child{ParentID: parent.ID, Name: "restrict-child"}); err != nil {
+		if _, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "restrict-child"}); err != nil {
 			t.Fatalf("Insert child: %v", err)
 		}
 

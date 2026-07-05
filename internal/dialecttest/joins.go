@@ -22,7 +22,7 @@ func runJoins(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema)
 	if err != nil {
 		t.Fatalf("Insert parent: %v", err)
 	}
-	if _, err := childRepo.Insert(ctx, &Child{ParentID: parent.ID, Name: "join-child"}); err != nil {
+	if _, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "join-child"}); err != nil {
 		t.Fatalf("Insert child: %v", err)
 	}
 

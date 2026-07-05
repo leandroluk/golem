@@ -21,7 +21,10 @@ func runBindScanRoundTrip(t *testing.T, ctx context.Context, ds *golem.DataSourc
 
 	born := time.Date(2020, 6, 15, 0, 0, 0, 0, time.UTC)
 	seen := time.Date(2020, 6, 15, 10, 30, 0, 0, time.UTC)
-	duration := time.Date(0, 1, 1, 8, 15, 0, 0, time.UTC)
+	// A fixed non-zero reference date: some drivers (go-sql-driver/mysql)
+	// reject year 0/1 outright when binding a time.Time for a TIME column,
+	// even though only the time-of-day part is ever stored.
+	duration := time.Date(2000, 1, 1, 8, 15, 0, 0, time.UTC)
 
 	in := &Widget{
 		Name:     "widget-1",
@@ -92,16 +95,21 @@ func runBindScanRoundTrip(t *testing.T, ctx context.Context, ds *golem.DataSourc
 func runCRUD(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema) {
 	repo := repository.Get(ds, widgetEntity)
 
-	// UID/Meta are populated even though this group isn't testing UUID/JSON
-	// handling itself (BindScanRoundTrip does that): SaveOne below
-	// re-persists every column including zero values (unlike Insert), and
-	// Go's zero value for string ("") isn't valid UUID/JSON syntax — unlike
-	// NULL, which is what a zero value would need to become to be
-	// skippable here.
+	// Every field is populated, even ones this group isn't specifically
+	// testing (BindScanRoundTrip covers that): SaveOne below re-persists
+	// every column including zero values (unlike Insert), and several
+	// column kinds reject Go's zero value outright where NULL would
+	// otherwise be fine — "" isn't valid UUID/JSON syntax, and Go's zero
+	// time.Time (year 1) is before MySQL's minimum representable DATE/
+	// DATETIME/TIME year.
 	w, err := repo.Insert(ctx, &Widget{
 		Name: "crud-1", Category: "tools", Score: 1,
-		UID:  "00000000-0000-0000-0000-000000000001",
-		Meta: "{}",
+		Born:     time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC),
+		Seen:     time.Date(2020, 1, 1, 12, 0, 0, 0, time.UTC),
+		Duration: time.Date(2000, 1, 1, 9, 0, 0, 0, time.UTC),
+		Data:     []byte{0x01},
+		UID:      "00000000-0000-0000-0000-000000000001",
+		Meta:     "{}",
 	})
 	if err != nil {
 		t.Fatalf("Insert: %v", err)

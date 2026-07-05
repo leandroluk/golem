@@ -25,7 +25,8 @@ func runConflictDetection(t *testing.T, ctx context.Context, ds *golem.DataSourc
 
 	t.Run("ErrForeignKeyViolation", func(t *testing.T) {
 		repo := repository.Get(ds, restrictChildEntity)
-		_, err := repo.Insert(ctx, &Child{ParentID: -1, Name: "conflict-bad-fk"})
+		badParentID := int64(-1)
+		_, err := repo.Insert(ctx, &Child{ParentID: &badParentID, Name: "conflict-bad-fk"})
 		if !errors.Is(err, golem.ErrForeignKeyViolation) {
 			t.Fatalf("Insert with non-existent ParentID: err = %v, want errors.Is(err, golem.ErrForeignKeyViolation)", err)
 		}

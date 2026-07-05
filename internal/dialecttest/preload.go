@@ -20,8 +20,8 @@ func runPreload(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		t.Fatalf("Insert parent: %v", err)
 	}
 	if _, err := childRepo.InsertMany(ctx,
-		&Child{ParentID: parent.ID, Name: "preload-child-1"},
-		&Child{ParentID: parent.ID, Name: "preload-child-2"},
+		&Child{ParentID: &parent.ID, Name: "preload-child-1"},
+		&Child{ParentID: &parent.ID, Name: "preload-child-2"},
 	); err != nil {
 		t.Fatalf("InsertMany child: %v", err)
 	}
