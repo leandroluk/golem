@@ -25,6 +25,10 @@
     ".env*": "shellscript"
   },
   "git.inputValidation": false,
+  "go.buildTags": "integration",
+  "gopls": {
+    "build.buildFlags": ["-tags=integration"]
+  },
   "[dockercompose]": {
     "editor.formatOnSave": false,
     "editor.insertSpaces": true,
