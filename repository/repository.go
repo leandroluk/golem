@@ -186,6 +186,19 @@ func (r *Repository[T]) applySoftDeleteFilter(tableName string, deleteDateField 
 	}
 }
 
+// numericToBool reports whether rawVal is an integer kind, and if so its
+// "!= 0" boolean value — the common "boolean stored as a small integer"
+// database convention (MySQL TINYINT(1), SQLite INTEGER, ...).
+func numericToBool(rawVal reflect.Value) (b bool, ok bool) {
+	switch rawVal.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rawVal.Int() != 0, true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return rawVal.Uint() != 0, true
+	}
+	return false, false
+}
+
 // assignFieldValue writes raw onto field, converting between Go types when
 // they aren't identical but one is convertible to the other (e.g. int32 ->
 // int64). A no-op if field is invalid/unsettable, or raw itself is invalid
@@ -203,12 +216,32 @@ func assignFieldValue(field reflect.Value, raw any, colName, fieldName string) e
 		field.Set(rawVal)
 		return nil
 	}
+	// A boolean-shaped column stored as a small integer (MySQL TINYINT(1),
+	// SQLite INTEGER, ...) arrives as an int64/etc, not bool. Go's
+	// reflect.ConvertibleTo never allows numeric->bool (unlike Postgres,
+	// where the driver already reports a native bool for a BOOLEAN column),
+	// so this needs its own explicit rule instead of falling through to the
+	// generic ConvertibleTo check below.
+	if field.Kind() == reflect.Bool {
+		if b, ok := numericToBool(rawVal); ok {
+			field.SetBool(b)
+			return nil
+		}
+	}
 	// A nullable field (*X) reading back a non-NULL row still arrives as a
 	// bare X (or something convertible to X), never *X — the column being
 	// NOT NULL for this particular row doesn't change the field's declared
 	// type. Wrap it in a new *X instead of failing.
 	if field.Kind() == reflect.Pointer {
 		elemType := field.Type().Elem()
+		if elemType.Kind() == reflect.Bool {
+			if b, ok := numericToBool(rawVal); ok {
+				ptr := reflect.New(elemType)
+				ptr.Elem().SetBool(b)
+				field.Set(ptr)
+				return nil
+			}
+		}
 		if rawVal.Type() == elemType || rawVal.Type().ConvertibleTo(elemType) {
 			ptr := reflect.New(elemType)
 			if rawVal.Type() != elemType {
@@ -266,9 +299,10 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	}
 
 	insPlan := &stmt.Insert{
-		Table:   r.meta.TableName,
-		Columns: columns,
-		Values:  values,
+		Table:      r.meta.TableName,
+		Columns:    columns,
+		Values:     values,
+		PrimaryKey: r.meta.PrimaryKey,
 	}
 
 	row, err := r.conn.Dialect().Insert(ctx, r.conn, insPlan)
@@ -619,9 +653,10 @@ func (r *Repository[T]) Update(ctx context.Context, criteria func(*T, *query.Upd
 	}
 
 	updPlan := &stmt.Update{
-		Table: r.meta.TableName,
-		Sets:  setClauses,
-		Where: wherePred,
+		Table:      r.meta.TableName,
+		Sets:       setClauses,
+		Where:      wherePred,
+		PrimaryKey: r.meta.PrimaryKey,
 	}
 
 	rows, err := r.conn.Dialect().Update(ctx, r.conn, updPlan)

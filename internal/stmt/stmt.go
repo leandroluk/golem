@@ -114,6 +114,16 @@ type Insert struct {
 	Table   string
 	Columns []string
 	Values  []driver.Value
+
+	// PrimaryKey lists the entity's primary key column names, in declared
+	// order. Dialects with a single-round-trip RETURNING (Postgres) can
+	// ignore this entirely. Dialects without one (MySQL) need it to build a
+	// follow-up SELECT after the INSERT: for each PrimaryKey column already
+	// present in Columns (composite/explicit PK), reuse that bound value;
+	// for the one PrimaryKey column NOT in Columns (the common case — a
+	// single auto-increment PK, omitted because Repository[T].Insert skips
+	// zero-value fields), use the driver's last-insert-id equivalent.
+	PrimaryKey []string
 }
 
 // UpdateClause represents a single SET column = value clause.
@@ -127,4 +137,16 @@ type Update struct {
 	Table string
 	Sets  []UpdateClause
 	Where Predicate
+
+	// PrimaryKey lists the entity's primary key column names. Dialects with
+	// a single-round-trip RETURNING (Postgres) can ignore this entirely.
+	// Dialects without one (MySQL) need it because Where's matching rows
+	// can no longer be re-selected by Where verbatim after Sets has been
+	// applied, if Sets happens to modify a column Where also filters on
+	// (e.g. `Set(&t.Category, "hardware")` after `Where(op.Eq(&t.Category,
+	// "tools"))`) — re-running Where post-update would then match zero
+	// rows. Dialects without RETURNING should instead capture PrimaryKey's
+	// values (via a SELECT using Where) before running the UPDATE, then
+	// read the updated rows back by primary key.
+	PrimaryKey []string
 }

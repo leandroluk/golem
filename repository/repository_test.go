@@ -2573,6 +2573,72 @@ func TestAssignFieldValue_PointerField_IncompatibleRaw_ReturnsError(t *testing.T
 	}
 }
 
+func TestAssignFieldValue_BoolField_NumericRaw(t *testing.T) {
+	var s struct {
+		Active bool
+	}
+	v := reflect.ValueOf(&s).Elem().FieldByName("Active")
+	if err := assignFieldValue(v, int64(1), "active", "Active"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !s.Active {
+		t.Fatal("expected Active = true for a non-zero int64")
+	}
+
+	if err := assignFieldValue(v, int64(0), "active", "Active"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.Active {
+		t.Fatal("expected Active = false for a zero int64")
+	}
+
+	if err := assignFieldValue(v, uint8(1), "active", "Active"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !s.Active {
+		t.Fatal("expected Active = true for a non-zero uint8")
+	}
+}
+
+func TestAssignFieldValue_PointerBoolField_NumericRaw(t *testing.T) {
+	var s struct {
+		Active *bool
+	}
+	v := reflect.ValueOf(&s).Elem().FieldByName("Active")
+	if err := assignFieldValue(v, int64(1), "active", "Active"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.Active == nil || !*s.Active {
+		t.Fatalf("Active = %v, want a pointer to true", s.Active)
+	}
+}
+
+func TestNumericToBool(t *testing.T) {
+	cases := []struct {
+		raw    any
+		wantB  bool
+		wantOK bool
+	}{
+		{int(1), true, true},
+		{int8(0), false, true},
+		{int16(1), true, true},
+		{int32(0), false, true},
+		{int64(1), true, true},
+		{uint(0), false, true},
+		{uint8(1), true, true},
+		{uint16(0), false, true},
+		{uint32(1), true, true},
+		{uint64(0), false, true},
+		{"not numeric", false, false},
+	}
+	for _, tc := range cases {
+		b, ok := numericToBool(reflect.ValueOf(tc.raw))
+		if ok != tc.wantOK || (ok && b != tc.wantB) {
+			t.Errorf("numericToBool(%v) = (%v, %v), want (%v, %v)", tc.raw, b, ok, tc.wantB, tc.wantOK)
+		}
+	}
+}
+
 func TestRepository_FindMany_TopLevelWhereError(t *testing.T) {
 	d := &fakeDialect{}
 	conn := newFakeConn(t, d)
