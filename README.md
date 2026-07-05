@@ -11,9 +11,6 @@
   <a href="https://codecov.io/gh/leandroluk/golem">
     <img src="https://img.shields.io/codecov/c/github/leandroluk/golem/master.svg" alt="Coverage Status" />
   </a>
-  <a href="https://goreportcard.com/report/github.com/leandroluk/golem">
-    <img src="https://goreportcard.com/badge/github.com/leandroluk/golem" alt="Go Report Card" />
-  </a>
   <a href="https://pkg.go.dev/github.com/leandroluk/golem">
     <img src="https://pkg.go.dev/badge/github.com/leandroluk/golem.svg" alt="Go Doc" />
   </a>

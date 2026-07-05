@@ -7,6 +7,13 @@
 
 ## Recent Decisions (Last 60 days)
 
+### AD-033: Versioning stays on major `0` forever; `0.x.y` simulates major.minor.patch (2026-07-05)
+
+**Decision:** Git tags/GitHub releases for this repo will never cross `v1.0.0`. The version scheme is `0.MAJOR.MINOR` (e.g. `0.1.0` → `0.2.0` for a breaking/feature bump, `0.1.1` for a patch) — the leading `0` is permanently fixed, and what would normally be "major" and "minor" both live inside the digits after it.
+**Reason:** User flagged that Go's module system requires any module reaching major version 2+ to carry a `/v2`, `/v3`, ... suffix on its import path (`golang.org/x/mod`'s Semantic Import Versioning rule). That would force `import "github.com/leandroluk/golem"` to become `github.com/leandroluk/golem/v2` on the first breaking change past `v1`, breaking every consumer's import path — considered worse than never reaching a "1.0" milestone at all. Modules on `v0.x.y` are exempt from this rule (Go treats all of `0.x.y` as pre-1.0/unstable, no path suffix ever required), so staying under `v1` sidesteps the problem permanently.
+**Trade-off:** The repo can never signal "stable v1.0 API" via the version number the way most libraries do — `0.x.y` conventionally reads as "still unstable" to outside consumers, even once the API is de facto stable. Accepted: avoiding the `/v2` import-path churn (for every future consumer, forever) outweighs the cosmetic signal of crossing `v1`.
+**Impact:** First GitHub release cut as `v0.1.0`. Any future release automation (changelog generation, `gh release create`, etc.) must never bump past major `0` — treat the first digit after `0.` as the de facto major version and the second as minor/patch combined, or split further (`0.1.2` = major 1, patch 2) if finer granularity is needed later. See `PROJECT.md`'s Constraints section for the permanent version of this rule.
+
 ### AD-032: `relation.ForeignKeyOptions` trimmed from 9 options to just `OnDelete` (2026-07-04)
 
 **Decision:** Removed `Cascade`/`OnUpdate`/`Deferrable`/`CreateForeignKeyConstraints`/`Lazy`/`Eager`/`Persistence`/`OrphanedRowAction` from `relation.ForeignKeyOptions` — along with their backing types (`CascadeOption`, `OnUpdateAction`, `DeferrableMode`, `OrphanedRowActionMode`) and every `Resolved*` getter for them. Only `OnDelete`/`OnDeleteAction` remain.

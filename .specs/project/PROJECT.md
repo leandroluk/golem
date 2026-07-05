@@ -49,6 +49,7 @@
 
 - Zero dependencies in the core package, heavy use of generics, convention-over-configuration defaults
 - Every new builder method must justify why it can't be expressed with an existing one (avoid API surface growth) — see `STATE.md` for the pattern of rejected alternatives (`Manager`, `ManyToMany`/`JoinTable`, two-phase `entity.New()+Define()`)
+- Releases stay on major version `0` forever — never cut a `v1.0.0` or higher. Go's module system requires any `v2+` module to carry a `/v2`, `/v3`, ... suffix on its import path (`github.com/leandroluk/golem/v2`), which would force every consumer to change their import on any future breaking change. Staying on `0.x.y` keeps `github.com/leandroluk/golem` as the import path permanently. Breaking changes bump the minor (`0.MAJOR.MINOR` in spirit, `0.x.y` in `go.mod`/tag syntax) instead of the major; see AD-033.
 
 ## Provenance
 
