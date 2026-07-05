@@ -119,3 +119,59 @@ func TestCount_Chainable(t *testing.T) {
 	}
 }
 
+func TestJoin_ChainableMethods(t *testing.T) {
+	j := NewJoin[someType]()
+	if j == nil {
+		t.Fatal("NewJoin() = nil")
+	}
+
+	var a, b int
+	ret := j.On(&a, &b).Where(op.Eq(&a, 1)).WithDeleted()
+
+	if ret != j {
+		t.Fatalf("chaining returned different pointer")
+	}
+	if len(j.Ons()) != 1 {
+		t.Fatalf("Ons() len = %d, want 1", len(j.Ons()))
+	}
+	if j.Ons()[0].LeftField != &a || j.Ons()[0].RightField != &b {
+		t.Errorf("Ons()[0] = %+v, want LeftField=&a RightField=&b", j.Ons()[0])
+	}
+	if len(j.Conditions()) != 1 {
+		t.Fatalf("Conditions() len = %d, want 1", len(j.Conditions()))
+	}
+	if !j.IsWithDeleted() {
+		t.Error("expected IsWithDeleted to be true")
+	}
+}
+
+func TestJoin_Defaults(t *testing.T) {
+	j := NewJoin[someType]()
+	if len(j.Ons()) != 0 {
+		t.Errorf("Ons() len = %d, want 0", len(j.Ons()))
+	}
+	if len(j.Conditions()) != 0 {
+		t.Errorf("Conditions() len = %d, want 0", len(j.Conditions()))
+	}
+	if j.IsWithDeleted() {
+		t.Error("expected IsWithDeleted to be false by default")
+	}
+}
+
+func TestQuery_AddJoinData_And_Joins(t *testing.T) {
+	q := New[someType]()
+	if len(q.Joins()) != 0 {
+		t.Fatalf("Joins() len = %d, want 0", len(q.Joins()))
+	}
+
+	jd := JoinData{Type: "inner", TableName: "others"}
+	q.AddJoinData(jd)
+
+	joins := q.Joins()
+	if len(joins) != 1 {
+		t.Fatalf("Joins() len = %d, want 1", len(joins))
+	}
+	if joins[0].Type != "inner" || joins[0].TableName != "others" {
+		t.Errorf("Joins()[0] = %+v, want Type=inner TableName=others", joins[0])
+	}
+}
