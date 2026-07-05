@@ -303,19 +303,37 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ## M15 - Cross-Dialect Conformance Suite
 
-**Goal:** Extract `driver/postgres`'s integration-test behavior contracts (bind/scan round-trip, CRUD, joins, soft delete, cascade, aggregates, locking, conflict detection) into a reusable, dialect-agnostic harness — so every adapter from M16 onward is verified against the identical guarantees instead of hand-copied ad hoc tests per adapter.
-**Target:** A `driver/dialecttest`-style package exposes a single conformance entrypoint; `driver/postgres`'s existing integration tests are refactored to call it with no behavior change (same assertions, same real-Postgres runs), proving the harness is complete before any second adapter depends on it.
-**Status:** PLANNED — do this first; every adapter below assumes it exists.
+**Goal:** Extract cross-cutting behavior contracts (bind/scan round-trip, CRUD, joins, soft delete, cascade, aggregates, locking, conflict detection) into a reusable, dialect-agnostic harness — so every adapter from M16 onward is verified against the identical guarantees instead of hand-copied ad hoc tests per adapter.
+**Target:** `internal/dialecttest` exposes a single conformance entrypoint (`Run`); `driver/postgres` calls it from a new `conformance_integration_test.go`.
+**Status:** ✅ DONE — `task test-integration` passes: `TestPostgres_Conformance` green against real Postgres, `.examples/postgres-minimal-blog`'s pre-existing suite unaffected. Along the way, the harness immediately found and fixed 3 real bugs in `driver/postgres`/`repository` that no prior test (unit or integration) had exercised — see AD-037.
 
 ### Features
 
-**Conformance harness** - PLANNED
+**Conformance harness** (`internal/dialecttest`) - DONE
 
-- Bind/Scan round-trip for every `golem.ColumnType` kind
-- CRUD (`Insert`/`SaveOne`/`SaveMany`/`FindOne`/`FindMany`/`Delete`/`Restore`) + `Where`/`Join`/`OrderBy`/`Limit`/`Offset`
-- Soft delete filter, cascade delete/set-null/restrict (M11)
-- Aggregates (M13) and pessimistic locking (M14) — a dialect can declare a case unsupported (e.g. no `NO KEY UPDATE` equivalent) and the harness skips it instead of failing
-- `IsConflict`/upsert-path detection
+- `Run(t, schema, caps, opts ...golem.Option)` — builds a uniquely-named `*DataSource` (`t.Name()`, per AD-035), runs `schema`'s DDL once, dispatches to 9 subtest groups
+- Own fixed logical schema (`Widget`/`Deleted`/`Parent`/`CascadeChild`/`SetNullChild`/`RestrictChild`, table-prefixed `conf_*`) — no dependency on `.examples/postgres-minimal-blog`'s entities; each adapter supplies its own dialect-correct `CREATE TEMPORARY TABLE` DDL for that fixed shape (harness never generates DDL, see AD-012)
+- Bind/Scan round-trip for every `golem.ColumnType` kind (`BindScanRoundTrip` group)
+- CRUD (`Insert`/`InsertMany`/`SaveOne`/`Update`/`FindOne`/`FindMany`/`Count`/`Exists`/`Delete`) + `Where`/`OrderBy`/`Limit`/`Offset` (`CRUD` group)
+- Soft delete filter + `.WithDeleted()`/`Restore` (`SoftDelete` group, M12); cascade delete/set-null/restrict (`Cascade` group, M11, one physical child table per mode)
+- `join.Inner` (`Joins` group, M6); `repository.Preload` (`Preload` group, M12); `repository.Aggregate` (`Aggregates` group, M13)
+- Pessimistic locking (`Locking` group, M14) — `Capabilities.Locking` lets a dialect mark any strength/wait mode unsupported; the harness `t.Skip`s exactly that subtest instead of failing or silently omitting it
+- `golem.ErrDuplicateKey`/`golem.ErrForeignKeyViolation` via `errors.Is` (`ConflictDetection` group, M10)
+
+**`driver/postgres` as first caller** - DONE
+
+- New `driver/postgres/conformance_integration_test.go` (own `//go:build integration` tag): `postgresConformanceSchema` (6 `CREATE TEMPORARY TABLE` statements) + `postgresCapabilities` (every field `true`) + `TestPostgres_Conformance` calling `dialecttest.Run`
+- No changes to `.examples/postgres-minimal-blog` (stays a hand-written narrative example) or `driver/postgres/connector_integration_test.go` (adapter-specific connection plumbing, out of scope per spec.md)
+
+**3 real bugs found and fixed** (AD-037) - DONE
+
+- `pgtype.Numeric`/`pgtype.Time`/`[16]byte`/JSON object-or-array pgx-native types leaking past the `Dialect` boundary into `repository`'s generic row-scanning, breaking any plain (non-aggregate) read of a `DECIMAL`/`TIME`/`UUID`/`JSON` column — fixed with a new `normalizeRow`/`normalizeRows` step in `driver/postgres/dialect.go`
+- `repository.assignFieldValue` couldn't scan a non-NULL raw value into a nullable (`*X`) Go field — affects any `*time.Time`/similar nullable field on a row where that column happens to be non-NULL; fixed by wrapping the value in a new `*X` when `X` matches/converts, instead of only handling the identical/`ConvertibleTo` cases
+
+**Todo (not blocking this milestone, but real gaps to close before M16+)**:
+- [ ] CI doesn't run `task test-integration` / any integration tests at all yet (`.github/workflows/ci.yml` only runs `-short` unit tests) — wiring that in means this conformance proof (and every future adapter's) runs on every push, not just whoever's machine happens to have Docker that day
+
+Full spec/design/tasks: `.specs/features/cross-dialect-conformance-suite/`.
 
 ---
 
