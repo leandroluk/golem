@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"math/big"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/pashagolub/pgxmock/v4"
@@ -555,6 +557,18 @@ func TestScan_DECIMAL_Float32Raw(t *testing.T) {
 	}
 	if dest != float64(float32(1.5)) {
 		t.Fatalf("Scan(DECIMAL, float32(1.5)) dest = %f, want %f", dest, float64(float32(1.5)))
+	}
+}
+
+func TestScan_DECIMAL_PgtypeNumericRaw(t *testing.T) {
+	d := dialect{}
+	var dest float64
+	n := pgtype.Numeric{Int: big.NewInt(1999), Exp: -2, Valid: true}
+	if err := d.Scan(golem.DECIMAL(10, 2), n, &dest); err != nil {
+		t.Fatalf("Scan(DECIMAL, pgtype.Numeric) error = %v", err)
+	}
+	if dest != 19.99 {
+		t.Fatalf("Scan(DECIMAL, pgtype.Numeric{1999e-2}) dest = %v, want 19.99", dest)
 	}
 }
 
@@ -1292,6 +1306,19 @@ func TestDialect_Query_Error(t *testing.T) {
 	}
 }
 
+func TestDialect_Query_CollectRowsError(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	d := &dialect{pool: mock}
+
+	mock.ExpectQuery("SELECT 1").WillReturnRows(pgxmock.NewRows([]string{"id"}).RowError(0, errors.New("row scan error")).AddRow(1))
+
+	_, err := d.Query(context.Background(), nil, "SELECT 1", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestDialect_Exec(t *testing.T) {
 	mock, _ := pgxmock.NewPool()
 	defer mock.Close()
@@ -1735,5 +1762,91 @@ func TestDialect_IsConflict_PgErrorWrongClass(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "42601"} // syntax error, class 42, not 23
 	if d.IsConflict(pgErr) {
 		t.Fatal("expected false for a non-class-23 PgError")
+	}
+}
+
+// -----------------------------------------------------------------------
+// normalizeRow / normalizeRows
+// -----------------------------------------------------------------------
+
+func TestNormalizeRow_Numeric(t *testing.T) {
+	row := map[string]any{"price": pgtype.Numeric{Int: big.NewInt(1999), Exp: -2, Valid: true}}
+	normalizeRow(row)
+	if row["price"] != 19.99 {
+		t.Fatalf("price = %v, want 19.99", row["price"])
+	}
+}
+
+func TestNormalizeRow_Time(t *testing.T) {
+	row := map[string]any{"duration": pgtype.Time{Microseconds: 29700000000, Valid: true}}
+	normalizeRow(row)
+	got, ok := row["duration"].(time.Time)
+	if !ok {
+		t.Fatalf("duration = %T, want time.Time", row["duration"])
+	}
+	want := time.Date(0, 1, 1, 8, 15, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("duration = %v, want %v", got, want)
+	}
+}
+
+func TestNormalizeRow_Time_Invalid_LeftUntouched(t *testing.T) {
+	raw := pgtype.Time{Valid: false}
+	row := map[string]any{"duration": raw}
+	normalizeRow(row)
+	if row["duration"] != raw {
+		t.Fatalf("expected invalid pgtype.Time to be left untouched, got %v", row["duration"])
+	}
+}
+
+func TestNormalizeRow_UUID(t *testing.T) {
+	row := map[string]any{"uid": [16]byte{0x12, 0x3e, 0x45, 0x67, 0xe8, 0x9b, 0x12, 0xd3, 0xa4, 0x56, 0x42, 0x66, 0x14, 0x17, 0x40, 0x00}}
+	normalizeRow(row)
+	if row["uid"] != "123e4567-e89b-12d3-a456-426614174000" {
+		t.Fatalf("uid = %v, want 123e4567-e89b-12d3-a456-426614174000", row["uid"])
+	}
+}
+
+func TestNormalizeRow_JSONObject(t *testing.T) {
+	row := map[string]any{"meta": map[string]any{"key": "value"}}
+	normalizeRow(row)
+	if row["meta"] != `{"key":"value"}` {
+		t.Fatalf("meta = %v, want {\"key\":\"value\"}", row["meta"])
+	}
+}
+
+func TestNormalizeRow_JSONArray(t *testing.T) {
+	row := map[string]any{"meta": []any{"a", "b"}}
+	normalizeRow(row)
+	if row["meta"] != `["a","b"]` {
+		t.Fatalf("meta = %v, want [\"a\",\"b\"]", row["meta"])
+	}
+}
+
+func TestNormalizeRow_JSONMarshalError_LeftUntouched(t *testing.T) {
+	unmarshalable := map[string]any{"bad": make(chan int)}
+	row := map[string]any{"meta": unmarshalable}
+	normalizeRow(row)
+	if v, ok := row["meta"].(map[string]any); !ok || &v == nil {
+		t.Fatalf("expected meta to be left as the original map on marshal error, got %#v", row["meta"])
+	}
+}
+
+func TestNormalizeRow_UnrecognizedType_LeftUntouched(t *testing.T) {
+	row := map[string]any{"name": "Ada"}
+	normalizeRow(row)
+	if row["name"] != "Ada" {
+		t.Fatalf("name = %v, want Ada (untouched)", row["name"])
+	}
+}
+
+func TestNormalizeRows(t *testing.T) {
+	rows := []map[string]any{
+		{"price": pgtype.Numeric{Int: big.NewInt(100), Exp: 0, Valid: true}},
+		{"price": pgtype.Numeric{Int: big.NewInt(200), Exp: 0, Valid: true}},
+	}
+	normalizeRows(rows)
+	if rows[0]["price"] != float64(100) || rows[1]["price"] != float64(200) {
+		t.Fatalf("normalizeRows did not normalize every row: %+v", rows)
 	}
 }

@@ -203,6 +203,22 @@ func assignFieldValue(field reflect.Value, raw any, colName, fieldName string) e
 		field.Set(rawVal)
 		return nil
 	}
+	// A nullable field (*X) reading back a non-NULL row still arrives as a
+	// bare X (or something convertible to X), never *X — the column being
+	// NOT NULL for this particular row doesn't change the field's declared
+	// type. Wrap it in a new *X instead of failing.
+	if field.Kind() == reflect.Pointer {
+		elemType := field.Type().Elem()
+		if rawVal.Type() == elemType || rawVal.Type().ConvertibleTo(elemType) {
+			ptr := reflect.New(elemType)
+			if rawVal.Type() != elemType {
+				rawVal = rawVal.Convert(elemType)
+			}
+			ptr.Elem().Set(rawVal)
+			field.Set(ptr)
+			return nil
+		}
+	}
 	if rawVal.Type().ConvertibleTo(field.Type()) {
 		field.Set(rawVal.Convert(field.Type()))
 		return nil

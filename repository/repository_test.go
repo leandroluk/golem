@@ -2535,6 +2535,44 @@ func TestAssignFieldValue_ConvertibleType_Success(t *testing.T) {
 	}
 }
 
+func TestAssignFieldValue_PointerField_ExactElemType_WrapsInPointer(t *testing.T) {
+	var s struct {
+		DeletedAt *time.Time
+	}
+	now := time.Now()
+	v := reflect.ValueOf(&s).Elem().FieldByName("DeletedAt")
+	if err := assignFieldValue(v, now, "deleted_at", "DeletedAt"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.DeletedAt == nil || !s.DeletedAt.Equal(now) {
+		t.Fatalf("DeletedAt = %v, want a pointer wrapping %v", s.DeletedAt, now)
+	}
+}
+
+func TestAssignFieldValue_PointerField_ConvertibleElemType_WrapsInPointer(t *testing.T) {
+	var s struct {
+		Count *int64
+	}
+	v := reflect.ValueOf(&s).Elem().FieldByName("Count")
+	if err := assignFieldValue(v, int32(7), "count", "Count"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.Count == nil || *s.Count != 7 {
+		t.Fatalf("Count = %v, want a pointer to 7", s.Count)
+	}
+}
+
+func TestAssignFieldValue_PointerField_IncompatibleRaw_ReturnsError(t *testing.T) {
+	var s struct {
+		Count *int64
+	}
+	v := reflect.ValueOf(&s).Elem().FieldByName("Count")
+	err := assignFieldValue(v, "not an int", "count", "Count")
+	if err == nil {
+		t.Fatal("expected error for a raw value inconvertible to *int64's element type")
+	}
+}
+
 func TestRepository_FindMany_TopLevelWhereError(t *testing.T) {
 	d := &fakeDialect{}
 	conn := newFakeConn(t, d)

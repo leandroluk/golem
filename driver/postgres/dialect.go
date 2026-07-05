@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/stmt"
 )
@@ -160,6 +162,15 @@ func (dialect) Scan(t golem.ColumnType, raw any, dest any) error {
 			*d = v
 		case float32:
 			*d = float64(v)
+		case pgtype.Numeric:
+			// A plain (non-CAST) NUMERIC/DECIMAL column comes back from pgx
+			// as pgtype.Numeric, not float64 — unlike SUM/AVG, which
+			// aggregateSQLFunc already casts to DOUBLE PRECISION.
+			f8, err := v.Float64Value()
+			if err != nil {
+				return fmt.Errorf("postgres: scan %s: %w", t.Kind(), err)
+			}
+			*d = f8.Float64
 		default:
 			return fmt.Errorf("postgres: scan %s: unsupported raw type %T", t.Kind(), raw)
 		}
@@ -612,7 +623,7 @@ func (d *dialect) Insert(ctx context.Context, conn golem.Conn, s *stmt.Insert) (
 	if err != nil {
 		return nil, fmt.Errorf("postgres: insert: %w", mapError(err))
 	}
-	return row, nil
+	return normalizeRow(row), nil
 }
 
 // Update executes an UPDATE statement and returns all updated rows.
@@ -653,7 +664,7 @@ func (d *dialect) Update(ctx context.Context, conn golem.Conn, s *stmt.Update) (
 	if err != nil {
 		return nil, fmt.Errorf("postgres: update: %w", mapError(err))
 	}
-	return results, nil
+	return normalizeRows(results), nil
 }
 
 // Query executes a raw compiled SELECT query statement.
@@ -662,7 +673,11 @@ func (d *dialect) Query(ctx context.Context, conn golem.Conn, sql string, args [
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return pgx.CollectRows(rows, pgx.RowToMap)
+	results, err := pgx.CollectRows(rows, pgx.RowToMap)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return normalizeRows(results), nil
 }
 
 // Exec executes a raw compiled command query (command executing, no rows returned).
@@ -688,7 +703,55 @@ func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args
 		return nil, 0, mapError(err)
 	}
 
-	return results, rows.CommandTag().RowsAffected(), nil
+	return normalizeRows(results), rows.CommandTag().RowsAffected(), nil
+}
+
+// normalizeRows/normalizeRow convert pgx-native wrapper types that
+// pgx.RowToMap decodes by default (and that reflect.ConvertibleTo can't
+// bridge to golem's expected plain Go types) into the plain type the rest
+// of golem (repository.assignFieldValue) actually understands. This keeps
+// pgx-specific types from ever leaking past the Dialect boundary.
+func normalizeRows(rows []map[string]any) []map[string]any {
+	for _, row := range rows {
+		normalizeRow(row)
+	}
+	return rows
+}
+
+func normalizeRow(row map[string]any) map[string]any {
+	for col, v := range row {
+		switch n := v.(type) {
+		case pgtype.Numeric:
+			// A plain (non-CAST) NUMERIC/DECIMAL column comes back from pgx
+			// as pgtype.Numeric, not float64 — unlike SUM/AVG, which
+			// aggregateSQLFunc already casts to DOUBLE PRECISION.
+			if f8, err := n.Float64Value(); err == nil {
+				row[col] = f8.Float64
+			}
+		case pgtype.Time:
+			// A TIME column comes back as pgtype.Time (microseconds since
+			// midnight, since it can represent 24:00:00 — time.Time can't),
+			// not time.Time. golem's "time" ColumnType kind is always bound
+			// as time.Time (see Bind's "date"/"datetime"/"time" case), so
+			// normalize back to that same representation.
+			if n.Valid {
+				row[col] = time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(n.Microseconds) * time.Microsecond)
+			}
+		case [16]byte:
+			// A UUID column comes back as its raw [16]byte form, not the
+			// string form Bind's "uuid" case sends (and assignFieldValue's
+			// reflect.ConvertibleTo can't bridge a fixed-size array to string).
+			row[col] = fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", n[0:4], n[4:6], n[6:8], n[8:10], n[10:16])
+		case map[string]any, []any:
+			// A JSON/JSONB column with an object or array root decodes
+			// structurally, not as the string form Bind's "json" case
+			// sends. Marshal back to that same representation.
+			if b, err := json.Marshal(n); err == nil {
+				row[col] = string(b)
+			}
+		}
+	}
+	return row
 }
 
 // mapError wraps err with the matching golem sentinel (ErrDuplicateKey,
