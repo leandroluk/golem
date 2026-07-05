@@ -9,7 +9,22 @@
 // MySQL/MSSQL/Oracle-specific) dependency is allowed to live.
 package postgres
 
-import "github.com/leandroluk/golem"
+
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/leandroluk/golem"
+)
+
+type pgxPoolIface interface {
+	Ping(ctx context.Context) error
+	Close()
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
 
 // Options configures a Postgres connection. Either DSN or the discrete
 // fields (Host, Port, User, Password, Database, SSLMode) may be provided.

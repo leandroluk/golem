@@ -162,6 +162,143 @@ func TestResolveDSN_NeitherSet(t *testing.T) {
 	}
 }
 
+func TestResolveDSN_BothSet_OverrideUser_NoExistingUserInfo(t *testing.T) {
+	// DSN has no userinfo at all -> u.User == nil branch, then o.User
+	// override sets a user with no password.
+	in := "postgres://dbhost:5432/mydb"
+	o := &Options{DSN: in, User: "carol"}
+
+	got, err := resolveDSN(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	u := parseForAssert(t, got)
+	if u.User.Username() != "carol" {
+		t.Errorf("user = %q, want carol", u.User.Username())
+	}
+	if _, ok := u.User.Password(); ok {
+		t.Error("expected no password set")
+	}
+}
+
+func TestResolveDSN_BothSet_OverridePassword_PreservesUser(t *testing.T) {
+	in := "postgres://alice:secret@dbhost:5432/mydb"
+	o := &Options{DSN: in, Password: "newpass"}
+
+	got, err := resolveDSN(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	u := parseForAssert(t, got)
+	if u.User.Username() != "alice" {
+		t.Errorf("user = %q, want alice (preserved)", u.User.Username())
+	}
+	if pw, _ := u.User.Password(); pw != "newpass" {
+		t.Errorf("password = %q, want newpass (overridden)", pw)
+	}
+}
+
+func TestResolveDSN_BothSet_NoUserOrPassword_ClearsUserInfo(t *testing.T) {
+	// DSN has no userinfo and o doesn't set User/Password -> u.User stays nil.
+	in := "postgres://dbhost:5432/mydb"
+	o := &Options{DSN: in, Host: "newhost"}
+
+	got, err := resolveDSN(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	u := parseForAssert(t, got)
+	if u.User != nil {
+		t.Errorf("User = %v, want nil", u.User)
+	}
+	if u.Hostname() != "newhost" {
+		t.Errorf("host = %q, want newhost", u.Hostname())
+	}
+}
+
+func TestResolveDSN_BothSet_OverridePort(t *testing.T) {
+	in := "postgres://alice:secret@dbhost:5432/mydb"
+	o := &Options{DSN: in, Port: 9999}
+
+	got, err := resolveDSN(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	u := parseForAssert(t, got)
+	if u.Port() != "9999" {
+		t.Errorf("port = %q, want 9999", u.Port())
+	}
+}
+
+func TestResolveDSN_BothSet_NoPort_NoOverride(t *testing.T) {
+	// DSN has no port and o.Port == 0 -> host has no ":port" suffix.
+	in := "postgres://alice:secret@dbhost/mydb"
+	o := &Options{DSN: in, Database: "newdb"}
+
+	got, err := resolveDSN(o)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	u := parseForAssert(t, got)
+	if u.Port() != "" {
+		t.Errorf("port = %q, want empty", u.Port())
+	}
+	if u.Hostname() != "dbhost" {
+		t.Errorf("host = %q, want dbhost", u.Hostname())
+	}
+}
+
+func TestBuildDSN_UserOnly_NoPassword(t *testing.T) {
+	got := buildDSN(&Options{User: "dave", Host: "h"})
+	u := parseForAssert(t, got)
+	if u.User.Username() != "dave" {
+		t.Errorf("user = %q, want dave", u.User.Username())
+	}
+	if _, ok := u.User.Password(); ok {
+		t.Error("expected no password set")
+	}
+}
+
+func TestBuildDSN_NoUser(t *testing.T) {
+	got := buildDSN(&Options{Host: "h"})
+	u := parseForAssert(t, got)
+	if u.User != nil {
+		t.Errorf("User = %v, want nil", u.User)
+	}
+}
+
+func TestBuildDSN_NoPort(t *testing.T) {
+	got := buildDSN(&Options{Host: "h"})
+	u := parseForAssert(t, got)
+	if u.Port() != "" {
+		t.Errorf("port = %q, want empty", u.Port())
+	}
+	if u.Hostname() != "h" {
+		t.Errorf("host = %q, want h", u.Hostname())
+	}
+}
+
+func TestBuildDSN_NoDatabase(t *testing.T) {
+	got := buildDSN(&Options{Host: "h"})
+	u := parseForAssert(t, got)
+	if u.Path != "" {
+		t.Errorf("path = %q, want empty", u.Path)
+	}
+}
+
+func TestBuildDSN_NoSSLMode(t *testing.T) {
+	got := buildDSN(&Options{Host: "h"})
+	u := parseForAssert(t, got)
+	if u.Query().Get("sslmode") != "" {
+		t.Errorf("sslmode = %q, want empty", u.Query().Get("sslmode"))
+	}
+}
+
 func TestResolveDSN_MalformedDSN(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -177,4 +314,3 @@ func TestResolveDSN_MalformedDSN(t *testing.T) {
 		t.Fatal("expected a descriptive (non-empty) error message")
 	}
 }
-

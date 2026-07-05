@@ -8,13 +8,17 @@ import (
 	"github.com/leandroluk/golem"
 )
 
+var newPgxPool = func(ctx context.Context, dsn string) (pgxPoolIface, error) {
+	return pgxpool.New(ctx, dsn)
+}
+
 // connector is the postgres.Connector implementation returned by New. It
 // resolves the DSN, opens a pgxpool.Pool, and forces a real round-trip via
 // Ping so connection failures surface immediately from Connect() rather than
 // on first query.
 type connector struct {
 	opts *Options
-	pool *pgxpool.Pool
+	pool pgxPoolIface
 }
 
 var _ golem.Connector = (*connector)(nil)
@@ -34,7 +38,7 @@ func (c *connector) Connect() (golem.Dialect, error) {
 	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := newPgxPool(ctx, dsn)
 	if err != nil {
 		c.log(golem.LogLevelError, "connect failed", map[string]any{"error": err.Error()})
 		return nil, fmt.Errorf("postgres: connect: %w", err)

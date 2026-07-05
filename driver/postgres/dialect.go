@@ -11,14 +11,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/stmt"
 )
 
 // dialect is the Postgres implementation of golem.Dialect.
 type dialect struct {
-	pool *pgxpool.Pool
+	pool pgxPoolIface
 }
 
 var _ golem.Dialect = (*dialect)(nil)
