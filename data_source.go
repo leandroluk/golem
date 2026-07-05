@@ -3,6 +3,7 @@ package golem
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // DataSource owns the connect/close lifecycle for one logical database
@@ -19,9 +20,20 @@ var _ Conn = (*DataSource)(nil)
 
 func (*DataSource) isConn() { return }
 
-// NewDataSource builds a DataSource from the given options. Returns an error
-// if no Connector was supplied via any option (e.g. postgres.New(...) is
-// required — there is no usable DataSource without one).
+// dataSourceRegistry holds every live DataSource by name, so GetDataSource
+// can look one up from anywhere without the caller threading it through
+// manually. Registered by NewDataSource, deregistered by Close.
+var (
+	dataSourceRegistryMu sync.RWMutex
+	dataSourceRegistry   = map[string]*DataSource{}
+)
+
+// NewDataSource builds a DataSource from the given options and registers it
+// under its name (see DataSourceName; defaults to "default") for later
+// retrieval via GetDataSource. Returns an error if no Connector was supplied
+// via any option (e.g. postgres.New(...) is required — there is no usable
+// DataSource without one), or if a DataSource is already registered under
+// the same name.
 func NewDataSource(opts ...Option) (*DataSource, error) {
 	cfg := &dataSourceConfig{name: "default"}
 	for _, opt := range opts {
@@ -30,7 +42,35 @@ func NewDataSource(opts ...Option) (*DataSource, error) {
 	if cfg.connector == nil {
 		return nil, fmt.Errorf("golem: no connector configured (pass e.g. postgres.New(...) to NewDataSource)")
 	}
-	return &DataSource{name: cfg.name, connector: cfg.connector}, nil
+
+	dataSourceRegistryMu.Lock()
+	defer dataSourceRegistryMu.Unlock()
+	if _, exists := dataSourceRegistry[cfg.name]; exists {
+		return nil, fmt.Errorf("golem: a DataSource named %q is already registered", cfg.name)
+	}
+	ds := &DataSource{name: cfg.name, connector: cfg.connector}
+	dataSourceRegistry[cfg.name] = ds
+	return ds, nil
+}
+
+// GetDataSource returns the DataSource registered under name (defaults to
+// "default" when omitted; optionalName only ever uses its first element,
+// the usual Go idiom for a single optional argument). Returns
+// ErrDataSourceNotFound wrapped with the name if no DataSource was ever
+// created with that name via NewDataSource, or if it was already Close()'d.
+func GetDataSource(optionalName ...string) (*DataSource, error) {
+	name := "default"
+	if len(optionalName) > 0 {
+		name = optionalName[0]
+	}
+
+	dataSourceRegistryMu.RLock()
+	defer dataSourceRegistryMu.RUnlock()
+	ds, ok := dataSourceRegistry[name]
+	if !ok {
+		return nil, fmt.Errorf("golem: %w: %q", ErrDataSourceNotFound, name)
+	}
+	return ds, nil
 }
 
 // Name returns the DataSource's configured name.
@@ -57,9 +97,18 @@ func (ds *DataSource) Connect() error {
 	return nil
 }
 
-// Close releases the connection via the configured Connector. Safe no-op if
-// never connected. Idempotent if called twice.
+// Close releases the connection via the configured Connector and deregisters
+// ds from GetDataSource's registry (freeing its name for reuse by a future
+// NewDataSource call). Deregistration always happens, even if ds was never
+// connected; the underlying Connector.Close() call is a safe no-op in that
+// case. Idempotent if called twice.
 func (ds *DataSource) Close() error {
+	dataSourceRegistryMu.Lock()
+	if dataSourceRegistry[ds.name] == ds {
+		delete(dataSourceRegistry, ds.name)
+	}
+	dataSourceRegistryMu.Unlock()
+
 	if !ds.connected {
 		return nil
 	}

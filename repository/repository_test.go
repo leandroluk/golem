@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +19,11 @@ import (
 	"github.com/leandroluk/golem/query"
 	"github.com/leandroluk/golem/relation"
 )
+
+// dataSourceNameCounter guarantees every newConnWithDialect call gets a
+// unique golem.DataSource name, even across repeated calls within the same
+// test (golem.NewDataSource now errors on a duplicate name).
+var dataSourceNameCounter atomic.Int64
 
 // -----------------------------------------------------------------------
 // Test-only entity: a minimal single-PK subject with a DB-generated ID.
@@ -209,10 +216,12 @@ var _ golem.Connector = (*anyDialectConnector)(nil)
 
 func newConnWithDialect(t *testing.T, d golem.Dialect) golem.Conn {
 	t.Helper()
-	ds, err := golem.NewDataSource(golem.WithConnector(&anyDialectConnector{dialect: d}))
+	name := fmt.Sprintf("%s-%d", t.Name(), dataSourceNameCounter.Add(1))
+	ds, err := golem.NewDataSource(golem.WithConnector(&anyDialectConnector{dialect: d}), golem.DataSourceName(name))
 	if err != nil {
 		t.Fatalf("golem.NewDataSource: %v", err)
 	}
+	t.Cleanup(func() { ds.Close() })
 	if err := ds.Connect(); err != nil {
 		t.Fatalf("ds.Connect: %v", err)
 	}
@@ -1100,10 +1109,11 @@ func TestRepository_Insert_HookErrorRollsBack(t *testing.T) {
 func TestDataSource_Transaction_CommitOnSuccess(t *testing.T) {
 	d := &fakeDialect{}
 	connector := &anyDialectConnector{dialect: d}
-	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	ds, err := golem.NewDataSource(golem.WithConnector(connector), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource: %v", err)
 	}
+	defer ds.Close()
 	_ = ds.Connect()
 
 	var usedTx golem.Tx
@@ -1127,10 +1137,11 @@ func TestDataSource_Transaction_CommitOnSuccess(t *testing.T) {
 func TestDataSource_Transaction_RollbackOnError(t *testing.T) {
 	d := &fakeDialect{}
 	connector := &anyDialectConnector{dialect: d}
-	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	ds, err := golem.NewDataSource(golem.WithConnector(connector), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource: %v", err)
 	}
+	defer ds.Close()
 	_ = ds.Connect()
 
 	var usedTx golem.Tx
@@ -1155,10 +1166,11 @@ func TestDataSource_Transaction_RollbackOnError(t *testing.T) {
 func TestDataSource_Transaction_RollbackOnPanic(t *testing.T) {
 	d := &fakeDialect{}
 	connector := &anyDialectConnector{dialect: d}
-	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	ds, err := golem.NewDataSource(golem.WithConnector(connector), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource: %v", err)
 	}
+	defer ds.Close()
 	_ = ds.Connect()
 
 	var usedTx golem.Tx
@@ -1189,10 +1201,11 @@ func TestDataSource_Exec_RawExecution(t *testing.T) {
 		{"id": int64(2), "name": "Bob"},
 	}
 	connector := &anyDialectConnector{dialect: d}
-	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	ds, err := golem.NewDataSource(golem.WithConnector(connector), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource: %v", err)
 	}
+	defer ds.Close()
 	_ = ds.Connect()
 
 	res, err := ds.Exec(context.Background(), "SELECT * FROM users WHERE active = $1", true)
@@ -1228,10 +1241,11 @@ func TestRepository_Exec_RawExecution(t *testing.T) {
 		{"id": int64(10), "name": "Subject A"},
 	}
 	connector := &anyDialectConnector{dialect: d}
-	ds, err := golem.NewDataSource(golem.WithConnector(connector))
+	ds, err := golem.NewDataSource(golem.WithConnector(connector), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource: %v", err)
 	}
+	defer ds.Close()
 	_ = ds.Connect()
 
 	repo := Get(ds, testSubjectEntity)

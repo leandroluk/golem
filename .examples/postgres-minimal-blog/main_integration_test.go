@@ -25,7 +25,7 @@ func TestBlogExample_FullFlow(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker(t *testi
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestBlogExample_ForUpdate_OutsideTransaction_ReturnsError(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestBlogExample_Aggregate_PostCountPerUser(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestBlogExample_Preload_LoadsPostsPerUser(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -354,7 +354,7 @@ func TestBlogExample_CascadeDeleteUser_DeletesTheirPosts(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestBlogExample_TypedErrors(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -490,7 +490,7 @@ func TestBlogExample_DeleteCountAndExists(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -592,7 +592,7 @@ func TestBlogExample_Transactions(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -685,7 +685,7 @@ func TestBlogExample_RawExec(t *testing.T) {
 
 	dataSource, err := golem.NewDataSource(postgres.New(func(o *postgres.Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}

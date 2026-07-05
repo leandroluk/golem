@@ -64,7 +64,7 @@ func TestConnector_ConnectAndClose_Success(t *testing.T) {
 
 	ds, err := golem.NewDataSource(New(func(o *Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -83,10 +83,11 @@ func TestConnector_Connect_UnreachableHost(t *testing.T) {
 
 	ds, err := golem.NewDataSource(New(func(o *Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
+	defer ds.Close()
 
 	err = ds.Connect()
 	if err == nil {
@@ -103,10 +104,11 @@ func TestConnector_Connect_BadCredentials(t *testing.T) {
 
 	ds, err := golem.NewDataSource(New(func(o *Options) {
 		o.DSN = dsn
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
+	defer ds.Close()
 
 	err = ds.Connect()
 	if err == nil {
@@ -126,7 +128,7 @@ func TestConnector_LoggingEnabled_SpyReceivesEntries(t *testing.T) {
 		o.DSN = dsn
 		o.Logging = true
 		o.Logger = spy
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
@@ -151,7 +153,7 @@ func TestConnector_LoggingDisabled_SpyReceivesNoEntries(t *testing.T) {
 		o.DSN = dsn
 		o.Logger = spy
 		// o.Logging left at zero value (false)
-	}))
+	}), golem.DataSourceName(t.Name()))
 	if err != nil {
 		t.Fatalf("NewDataSource returned error: %v", err)
 	}
