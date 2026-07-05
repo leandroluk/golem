@@ -565,4 +565,3 @@ func TestEntity_Triggers_HookRegistered_RunsIt(t *testing.T) {
 		}
 	}
 }
-

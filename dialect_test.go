@@ -79,4 +79,3 @@ func TestFakeDialect_Scan(t *testing.T) {
 		t.Fatalf("Scan returned error: %v", err)
 	}
 }
-

@@ -167,4 +167,3 @@ func TestConnector_LoggingDisabled_SpyReceivesNoEntries(t *testing.T) {
 		t.Fatalf("expected spy logger to receive 0 entries when Logging is disabled, got %d", got)
 	}
 }
-

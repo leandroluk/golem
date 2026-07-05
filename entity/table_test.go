@@ -226,7 +226,6 @@ func TestTable_ForeignKey_UncolledField_FallsBackToLowercasedFieldName(t *testin
 	}
 }
 
-
 // -----------------------------------------------------------------------
 // ForeignKey target resolution (moved here from table_foreignkey_test.go —
 // all tests for table.go's methods live in table_test.go)

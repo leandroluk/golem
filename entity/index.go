@@ -27,4 +27,3 @@ func (b *Index) ResolvedName() string {
 func (b *Index) IsUnique() bool {
 	return b.unique
 }
-

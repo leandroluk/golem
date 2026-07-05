@@ -102,4 +102,3 @@ func Full[T, J any](q *query.Query[T], target *entity.Entity[J], fn func(j *J, q
 		FieldToColumn:   f2c,
 	})
 }
-

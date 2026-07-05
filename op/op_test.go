@@ -95,4 +95,3 @@ func TestSorting(t *testing.T) {
 		t.Errorf("Desc Order mismatch: %+v", desc)
 	}
 }
-

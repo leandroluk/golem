@@ -743,6 +743,3 @@ func TestBlogExample_RawExec(t *testing.T) {
 		t.Errorf("unexpected mapped users: %+v", users)
 	}
 }
-
-
-

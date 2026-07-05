@@ -81,4 +81,3 @@ func (c *connector) log(level golem.LogLevel, msg string, args map[string]any) {
 		logger.Info(msg, args)
 	}
 }
-

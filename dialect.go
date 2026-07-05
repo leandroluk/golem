@@ -43,4 +43,3 @@ type Dialect interface {
 	// Begin starts a new transaction on the database.
 	Begin(ctx context.Context, conn Conn) (TxConn, error)
 }
-

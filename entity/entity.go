@@ -182,4 +182,3 @@ func (e *Entity[T]) TriggerOnConflictDelete(ctx context.Context, i *T, conn gole
 	}
 	return nil
 }
-

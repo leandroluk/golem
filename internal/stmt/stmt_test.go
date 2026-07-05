@@ -52,4 +52,3 @@ func TestAggregateComparison_ImplementsPredicate(t *testing.T) {
 		t.Fatalf("expected AggregateComparison, got %T", p)
 	}
 }
-

@@ -9,7 +9,6 @@
 // MySQL/MSSQL/Oracle-specific) dependency is allowed to live.
 package postgres
 
-
 import (
 	"context"
 

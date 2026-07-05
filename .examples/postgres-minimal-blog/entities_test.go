@@ -152,4 +152,3 @@ func TestPostToCategoryEntity_Describe(t *testing.T) {
 		t.Fatalf("expected ForeignKeys for both PostID and CategoryID, got %+v", meta.ForeignKeys)
 	}
 }
-

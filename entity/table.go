@@ -46,16 +46,16 @@ type pendingForeignKey struct {
 type Table struct {
 	zero any // *T, same instance New created
 
-	setTableName    func(string)
-	setSchemaName   func(string)
-	setPrimaryKey   func([]string)
-	setForeignKey   func([]ForeignKeyMeta)
-	setColumns      func([]ColumnMeta)
-	setUniques      func([][]string)
-	setIndexes      func([]IndexMeta)
-	setCreateDate   func(string)
-	setUpdateDate   func(string)
-	setDeleteDate   func(string)
+	setTableName  func(string)
+	setSchemaName func(string)
+	setPrimaryKey func([]string)
+	setForeignKey func([]ForeignKeyMeta)
+	setColumns    func([]ColumnMeta)
+	setUniques    func([][]string)
+	setIndexes    func([]IndexMeta)
+	setCreateDate func(string)
+	setUpdateDate func(string)
+	setDeleteDate func(string)
 
 	getTableName func() string
 
@@ -328,4 +328,3 @@ func (b *Table) finalize() {
 		b.setDeleteDate(b.pendingDeleteDate)
 	}
 }
-

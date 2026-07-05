@@ -55,4 +55,3 @@ func (b *Column) ResolvedDefault() (any, bool) {
 func (b *Column) ResolvedDefaultFunc() func() (any, error) {
 	return b.defaultFunc
 }
-

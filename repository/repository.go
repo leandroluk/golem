@@ -186,7 +186,6 @@ func (r *Repository[T]) applySoftDeleteFilter(tableName string, deleteDateField 
 	}
 }
 
-
 // assignFieldValue writes raw onto field, converting between Go types when
 // they aren't identical but one is convertible to the other (e.g. int32 ->
 // int64). A no-op if field is invalid/unsettable, or raw itself is invalid
@@ -1034,4 +1033,3 @@ func (r *Repository[T]) Exec(ctx context.Context, sql string, args ...any) ([]T,
 	}
 	return results, nil
 }
-

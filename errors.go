@@ -11,4 +11,3 @@ var ErrDuplicateKey = errors.New("golem: duplicate key")
 // ErrForeignKeyViolation indicates a write violated a foreign key constraint
 // (referenced row missing, or deleting a row still referenced elsewhere).
 var ErrForeignKeyViolation = errors.New("golem: foreign key violation")
-
