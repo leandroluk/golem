@@ -102,24 +102,21 @@ See `.specs/project/ROADMAP.md` for the full milestone breakdown.
 
 M1-M14 (everything above) targets Postgres only. `golem.ColumnType`/`golem.Dialect` were designed
 dialect-agnostic from day one (AD-015 in `.specs/project/STATE.md`) specifically so adding another
-database is "write a new `driver/*` package," not "redesign the core." Candidates, roughly by effort
-(closer to ANSI SQL/Postgres semantics = less work):
+database is "write a new `driver/*` package," not "redesign the core." `.specs/project/ROADMAP.md`
+now has concrete planned milestones for every database in [INSIGHT.md](INSIGHT.md), in this order:
 
-- **MySQL / MariaDB** — moderate effort; no native `RETURNING` (`Insert`/`Update` need a follow-up
-  `SELECT` after write instead of Postgres's one-round-trip `RETURNING *`, see AD-016)
-- **SQLite** — moderate effort; embedded, no real concurrent-write story (relevant for M14 locking)
-- **CockroachDB** — low effort; wire-compatible with Postgres, could likely reuse `driver/postgres`
-  almost as-is (own SQL dialect quirks — pagination, some type mapping — still need checking)
-- **SQL Server (MSSQL)** — higher effort; `OUTPUT` instead of `RETURNING`, `OFFSET/FETCH` pagination,
-  different quoting (`[bracket]` instead of `"double quotes"`)
-- **Oracle** — higher effort; `RETURNING INTO`, identifier length limits (30 bytes pre-12.2, 128 from
-  12.2+ — needs a validate-or-truncate decision at entity-registration time)
-- **IBM Db2** — higher effort, least common target; similar shape to Oracle/MSSQL
-- **OLAP-oriented (Snowflake, BigQuery, Redshift, ClickHouse)** — different enough to need real
-  design work before starting: no real transactions in the OLTP sense golem assumes (M8), often no
-  traditional PK/FK enforcement, pagination/type systems diverge more (e.g. BigQuery's `STRUCT`/
-  `ARRAY`, ClickHouse's table engines). Treat as a separate design pass, not a drop-in `driver/*`
-  like the OLTP ones above.
+- **M15** — a cross-dialect conformance test suite, extracted from `driver/postgres`'s own
+  integration tests, that every adapter below must pass
+- **M16** MySQL / MariaDB, **M17** SQLite, **M18** SQL Server (MSSQL), **M19** Oracle, **M20** IBM Db2
+  — roughly ordered by effort (closer to ANSI SQL/Postgres semantics = less work)
+- **M21** Snowflake (OLAP) — explicitly reduced scope; no row locking, no `CHECK` constraints, and
+  cascade-delete semantics that may not even be wanted for an analytical schema
+
+None of M15-M21 has started yet (see AD-034 in `.specs/project/STATE.md` for the full reasoning).
+CockroachDB, BigQuery, Redshift, and ClickHouse aren't in INSIGHT.md's comparison table and aren't
+currently planned — CockroachDB is Postgres-wire-compatible and could likely reuse `driver/postgres`
+with light changes; the OLAP-analytics ones (BigQuery/Redshift/ClickHouse) diverge enough (no real
+OLTP transactions, `STRUCT`/`ARRAY` types, table-engine concepts) to need their own design pass first.
 
 `INSIGHT.md` (repo root) is the type-mapping reference this list draws from — it already covers
 Postgres/MySQL/MSSQL/Oracle/SQLite/Db2/Snowflake column types, DDL equivalences (auto-increment,

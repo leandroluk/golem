@@ -301,9 +301,125 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 ---
 
+## M15 - Cross-Dialect Conformance Suite
+
+**Goal:** Extract `driver/postgres`'s integration-test behavior contracts (bind/scan round-trip, CRUD, joins, soft delete, cascade, aggregates, locking, conflict detection) into a reusable, dialect-agnostic harness — so every adapter from M16 onward is verified against the identical guarantees instead of hand-copied ad hoc tests per adapter.
+**Target:** A `driver/dialecttest`-style package exposes a single conformance entrypoint; `driver/postgres`'s existing integration tests are refactored to call it with no behavior change (same assertions, same real-Postgres runs), proving the harness is complete before any second adapter depends on it.
+**Status:** PLANNED — do this first; every adapter below assumes it exists.
+
+### Features
+
+**Conformance harness** - PLANNED
+
+- Bind/Scan round-trip for every `golem.ColumnType` kind
+- CRUD (`Insert`/`SaveOne`/`SaveMany`/`FindOne`/`FindMany`/`Delete`/`Restore`) + `Where`/`Join`/`OrderBy`/`Limit`/`Offset`
+- Soft delete filter, cascade delete/set-null/restrict (M11)
+- Aggregates (M13) and pessimistic locking (M14) — a dialect can declare a case unsupported (e.g. no `NO KEY UPDATE` equivalent) and the harness skips it instead of failing
+- `IsConflict`/upsert-path detection
+
+---
+
+## M16 - MySQL/MariaDB Adapter
+
+**Goal:** `driver/mysql` implements `golem.Dialect`/`golem.Connector` for MySQL 8+/MariaDB, passing the M15 conformance suite.
+**Target:** `.examples/postgres-minimal-blog`'s equivalent running against a MySQL container in CI, same as the Postgres example runs today.
+**Status:** PLANNED
+
+### Features
+
+**`driver/mysql`** - PLANNED
+
+- Bind/Scan per INSIGHT.md's type table (`TINYINT(1)` for BOOLEAN, `CHAR(36)` for UUID — no native UUID type)
+- `Insert`/`Update` as two-round-trip `Execute` (no `RETURNING`; needs `INSERT` + `LAST_INSERT_ID()` or a follow-up `SELECT` by PK — AD-016's asymmetric contract exists exactly for this)
+- `INSERT ... ON DUPLICATE KEY UPDATE` for upsert; `IsConflict` maps MySQL error 1062
+- Locking: `FOR UPDATE`/`FOR SHARE` supported (MySQL 8+ also has `NOWAIT`/`SKIP LOCKED`); no `NO KEY UPDATE`/`KEY SHARE` equivalent — reject those two strengths explicitly rather than silently degrading
+- `LIMIT x OFFSET y` pagination, same shape as Postgres
+
+---
+
+## M17 - SQLite Adapter
+
+**Goal:** `driver/sqlite` — embedded/serverless, no Docker service needed for its own tests (the one adapter genuinely different from every other in this list).
+**Target:** Conformance suite green against an in-memory/temp-file database, no `docker-compose` dependency.
+**Status:** PLANNED
+
+### Features
+
+**`driver/sqlite`** - PLANNED
+
+- Every `ColumnType` kind maps onto one of SQLite's 5 storage classes (mostly INTEGER/TEXT/REAL/BLOB) — dynamic typing means Bind/Scan carry more of the correctness burden here than in any other adapter
+- `INSERT ... ON CONFLICT ... DO UPDATE SET` for upsert (same syntax family as Postgres)
+- No real row-level locking (SQLite locks the whole database file) — every lock strength either maps to a database-level lock or is rejected; this is where M14's "locking works or errors, never silently no-ops" guarantee gets exercised hardest
+- `AUTOINCREMENT` only means anything combined with `INTEGER PRIMARY KEY` — confirm this composes with existing `entity.PrimaryKey` metadata before assuming it's a drop-in
+
+---
+
+## M18 - SQL Server (MSSQL) Adapter
+
+**Goal:** `driver/mssql` passing conformance.
+**Status:** PLANNED
+
+### Features
+
+**`driver/mssql`** - PLANNED
+
+- `OFFSET y ROWS FETCH NEXT x ROWS ONLY` pagination (different clause shape than `LIMIT`/`OFFSET`)
+- `MERGE INTO ...` for upsert (no native `ON CONFLICT`)
+- Locking via table hints (`WITH (UPDLOCK, ROWLOCK)`) instead of `FOR UPDATE` — `stmt.LockClause`'s `Strength`/`Wait` need an MSSQL-specific translation table; `NOWAIT` maps to a statement-level hint, not a per-row clause
+- `OUTPUT INSERTED.*` in place of `RETURNING` for the insert/update round-trip
+
+---
+
+## M19 - Oracle Adapter
+
+**Goal:** `driver/oracle` passing conformance.
+**Status:** PLANNED
+
+### Features
+
+**`driver/oracle`** - PLANNED
+
+- Resolve the identifier-length question already flagged in STATE.md's Deferred Ideas (30 bytes pre-12.2, 128 from 12.2+: validate/truncate at entity-registration time vs. let the driver error surface as-is) — decide before this milestone starts, not during
+- Decide minimum supported Oracle version up front: `OFFSET`/`FETCH` pagination needs 12c+; earlier versions need `ROWNUM`-based emulation, a materially different `CompileSelect` path
+- `MERGE INTO` for upsert; `RAW(16)`/`VARCHAR2(36)` for UUID (no native UUID type)
+- `FOR UPDATE NOWAIT`/`SKIP LOCKED` supported, same shape as Postgres
+
+---
+
+## M20 - IBM Db2 Adapter
+
+**Goal:** `driver/db2` passing conformance.
+**Status:** PLANNED
+
+### Features
+
+**`driver/db2`** - PLANNED
+
+- `MERGE INTO` for upsert; `OFFSET`/`FETCH` pagination
+- `CHAR(16) FOR BIT DATA` for UUID (no native UUID type)
+- `FOR UPDATE WITH RS`/`WITH RR` locking clauses — another `stmt.LockClause` translation table, distinct from MSSQL's and Oracle's
+
+---
+
+## M21 - Snowflake (OLAP) Adapter — reduced scope
+
+**Goal:** `driver/snowflake` passing a deliberately narrower conformance subset — this is the one adapter whose target workload (analytical/OLAP) doesn't fit every M1-M14 guarantee, so scope is explicitly smaller than every prior adapter, not a gap to close later.
+**Status:** PLANNED
+
+### Features
+
+**`driver/snowflake`** - PLANNED
+
+- No row-level locking at all (OLAP has no `SELECT ... FOR UPDATE` equivalent) — this adapter rejects every lock strength unconditionally; M14's `golem.Tx` guard already assumes a dialect *can* lock, so this is the first real test of a dialect that flatly can't
+- No `CHECK` constraint support (per INSIGHT.md) — degrade gracefully rather than emit invalid DDL, if/when `entity.Table` grows a `CHECK` equivalent
+- `MERGE INTO` for upsert; `VARIANT` for JSON; `TIMESTAMP_NTZ` for DATETIME
+- Do not inherit M11's cascade-delete assumptions uncritically — OLAP schemas commonly skip FK constraints entirely for load performance; confirm a real use case wants cascade support here before building it
+
+---
+
 ## Future Considerations
 
-- Additional adapters beyond Postgres — MySQL/SQLite are moderate effort (closer to ANSI SQL); MSSQL/Oracle are higher effort (syntax diverges more, see AD-015 in STATE.md). Oracle specifically needs an identifier-length decision (historically 30 bytes pre-12.2, 128 from 12.2+) — validate/truncate at entity-registration time vs. let the driver error surface as-is, TBD when that adapter is actually built
 - Configurable transaction isolation level on `dataSource.Transaction` (v1 ships with driver/DB default only, see M8)
+- M16-M21's exact order is a starting proposal (impact/effort: MySQL and SQLite first, MSSQL/Oracle/Db2 progressively higher effort, Snowflake last and reduced-scope) — re-order freely if a real consumer needs a specific adapter sooner; see AD-034 in STATE.md
 
 
