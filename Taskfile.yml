@@ -20,11 +20,12 @@ tasks:
       - go test ./... -short
 
   coverage:
-    desc: Run unit tests with coverage (matches .github/actions/go-ci), writes coverage.txt + coverage.html
+    desc: Run unit tests with coverage (matches .github/actions/go-ci), writes .coverage/coverage.txt + .coverage/coverage.html
     cmds:
-      - go test ./... -short -coverpkg=./... -coverprofile=coverage.txt -covermode=atomic
-      - go tool cover -html=coverage.txt -o coverage.html
-      - go tool cover -func=coverage.txt
+      - mkdir -p .coverage
+      - go test ./... -short -coverpkg=./... -coverprofile=.coverage/coverage.txt -covermode=atomic
+      - go tool cover -html=.coverage/coverage.txt -o .coverage/coverage.html
+      - go tool cover -func=.coverage/coverage.txt
 
   test-integration:
     desc: Spin up Postgres, run integration tests, tear down (always)

@@ -1,5 +1,5 @@
 .env
-coverage.txt
-coverage.html
+.coverage/
 __debug_bin.exe
 *.exe
+*.log

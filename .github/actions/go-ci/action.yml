@@ -96,31 +96,35 @@ runs:
     # Unit tests only (no Docker/Postgres service available in this matrix),
     # matching Taskfile.yml's "test" task. -coverpkg=./... attributes
     # coverage across every package, not just the one under test, so the
-    # merged coverage.txt reflects true whole-repo coverage.
+    # merged .coverage/coverage.txt reflects true whole-repo coverage.
     - name: test with coverage (bash)
       if: inputs.os-tag != 'windows'
       shell: bash
-      run: go test ./... -short -coverpkg=./... -coverprofile="coverage.txt" -covermode=atomic
+      run: |
+        mkdir -p .coverage
+        go test ./... -short -coverpkg=./... -coverprofile=".coverage/coverage.txt" -covermode=atomic
 
     - name: test with coverage (windows)
       if: inputs.os-tag == 'windows'
       shell: pwsh
-      run: go test ./... -short -coverpkg=./... -coverprofile="coverage.txt" -covermode=atomic
+      run: |
+        New-Item -ItemType Directory -Force .coverage | Out-Null
+        go test ./... -short -coverpkg=./... -coverprofile=".coverage/coverage.txt" -covermode=atomic
 
     # -------- artifacts --------
     - name: Upload coverage artifact
-      if: ${{ hashFiles('coverage.txt') != '' }}
+      if: ${{ hashFiles('.coverage/coverage.txt') != '' }}
       uses: actions/upload-artifact@v4
       with:
         name: coverage-${{ inputs.os-tag }}-go${{ inputs.go-tag }}
-        path: coverage.txt
+        path: .coverage/coverage.txt
 
     # -------- codecov --------
     - name: Upload to Codecov
-      if: ${{ inputs.codecov == 'true' && hashFiles('coverage.txt') != '' }}
+      if: ${{ inputs.codecov == 'true' && hashFiles('.coverage/coverage.txt') != '' }}
       uses: codecov/codecov-action@v4
       with:
-        files: coverage.txt
+        files: .coverage/coverage.txt
         flags: ${{ inputs.os-tag }}-go${{ inputs.go-tag }}
         fail_ci_if_error: true
         token: ${{ inputs.codecov_token }}
