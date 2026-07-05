@@ -94,7 +94,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M13 - Aggregations
 - [x] M14 - Pessimistic Locking
 - [x] M15 - Cross-Dialect Conformance Suite
-- [ ] M16 - MySQL / MariaDB Adapter
+- [x] M16 - MySQL / MariaDB Adapter
 - [ ] M17 - SQLite Adapter
 - [ ] M18 - SQL Server (MSSQL) Adapter
 - [ ] M19 - Oracle Adapter
@@ -114,12 +114,14 @@ now has concrete planned milestones for every database in [INSIGHT.md](INSIGHT.m
 
 - **M15** ✅ — `internal/dialecttest`, a cross-dialect conformance test suite every adapter below
   must pass; `driver/postgres` is its first caller, verified against real Postgres
-- **M16** MySQL / MariaDB, **M17** SQLite, **M18** SQL Server (MSSQL), **M19** Oracle, **M20** IBM Db2
-  — roughly ordered by effort (closer to ANSI SQL/Postgres semantics = less work)
+- **M16** ✅ — `driver/mysql` (MySQL 8+ primary, MariaDB best-effort), verified against real MySQL
+- **M17** SQLite, **M18** SQL Server (MSSQL), **M19** Oracle, **M20** IBM Db2 — roughly ordered by
+  effort (closer to ANSI SQL/Postgres semantics = less work)
 - **M21** Snowflake (OLAP) — explicitly reduced scope; no row locking, no `CHECK` constraints, and
   cascade-delete semantics that may not even be wanted for an analytical schema
 
-M16-M21 haven't started yet (see AD-034/AD-036/AD-037 in `.specs/project/STATE.md` for the full reasoning).
+M17-M21 haven't started yet (see AD-034/AD-036/AD-037/AD-038/AD-039 in `.specs/project/STATE.md`
+for the full reasoning, including 2 core gaps M16 found and fixed along the way).
 CockroachDB, BigQuery, Redshift, and ClickHouse aren't in INSIGHT.md's comparison table and aren't
 currently planned — CockroachDB is Postgres-wire-compatible and could likely reuse `driver/postgres`
 with light changes; the OLAP-analytics ones (BigQuery/Redshift/ClickHouse) diverge enough (no real

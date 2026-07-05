@@ -340,18 +340,26 @@ Full spec/design/tasks: `.specs/features/cross-dialect-conformance-suite/`.
 ## M16 - MySQL/MariaDB Adapter
 
 **Goal:** `driver/mysql` implements `golem.Dialect`/`golem.Connector` for MySQL 8+/MariaDB, passing the M15 conformance suite.
-**Target:** `.examples/postgres-minimal-blog`'s equivalent running against a MySQL container in CI, same as the Postgres example runs today.
-**Status:** PLANNED
+**Target:** `driver/mysql/conformance_integration_test.go` calling `internal/dialecttest.Run`, verified against a real MySQL 8 container.
+**Status:** ✅ DONE — `task test-integration` passes: `TestMySQL_Conformance` green against real MySQL 8, Postgres's own suite unaffected. Found and fixed 2 real core gaps and a MySQL-specific row-normalization requirement along the way — see AD-038/AD-039 in STATE.md.
 
 ### Features
 
-**`driver/mysql`** - PLANNED
+**`driver/mysql`** (`github.com/go-sql-driver/mysql` + `database/sql`) - DONE
 
-- Bind/Scan per INSIGHT.md's type table (`TINYINT(1)` for BOOLEAN, `CHAR(36)` for UUID — no native UUID type)
-- `Insert`/`Update` as two-round-trip `Execute` (no `RETURNING`; needs `INSERT` + `LAST_INSERT_ID()` or a follow-up `SELECT` by PK — AD-016's asymmetric contract exists exactly for this)
-- `INSERT ... ON DUPLICATE KEY UPDATE` for upsert; `IsConflict` maps MySQL error 1062
-- Locking: `FOR UPDATE`/`FOR SHARE` supported (MySQL 8+ also has `NOWAIT`/`SKIP LOCKED`); no `NO KEY UPDATE`/`KEY SHARE` equivalent — reject those two strengths explicitly rather than silently degrading
-- `LIMIT x OFFSET y` pagination, same shape as Postgres
+- Bind/Scan per INSIGHT.md's type table (`TINYINT(1)` for BOOLEAN, `CHAR(36)` for UUID — no native UUID type); `Bind`/`Scan` remain unit-tested directly but are dead code in the real path, same as `driver/postgres` (AD-037)
+- `Insert`/`Update` as multi-round-trip `Execute` (no `RETURNING`) — `Insert` resolves primary key values from `stmt.Insert.PrimaryKey` (new field, AD-038) + `LastInsertId()`, then reads the row back by PK; `Update` captures matching primary keys *before* running the `UPDATE` (via the new `stmt.Update.PrimaryKey`), since re-running the original `WHERE` afterward can't work when `Sets` modifies a column `Where` itself filters on
+- `driver/mysql/dialect.go`'s `normalizeCell` (column-type-aware, using `rows.ColumnTypes()`) converts `[]byte` DECIMAL text to `float64` and `[]byte` TIME text to `time.Time` — MySQL's driver returns many different column types as the same ambiguous `[]byte` Go type, unlike Postgres's self-describing `pgtype.*` wrapper types (AD-039)
+- `INSERT ... ON DUPLICATE KEY UPDATE`-shaped upsert path; `IsConflict`/`mapError` map MySQL errors 1062 (duplicate key), 1451/1452 (FK violation)
+- Locking: `FOR UPDATE`/`FOR SHARE` supported (MySQL 8.0.1+ also `NOWAIT`/`SKIP LOCKED`); no `NO KEY UPDATE`/`KEY SHARE` equivalent — `lockClauseSQL`'s `default:` case errors on those two strengths, same pattern as Postgres's own unsupported-value handling
+- `LIMIT ? OFFSET ?` pagination (same shape as Postgres, `?` placeholders instead of `$N`); backtick identifier quoting
+
+**Docker/Taskfile wiring** - DONE
+
+- `.docker/docker-compose.test.yml` gained a `mysql` service (port 53306); `Taskfile.yml`'s `test-integration` gained `GOLEM_MYSQL_TEST_DSN`
+- `driver/mysql`'s conformance schema uses `CREATE TABLE IF NOT EXISTS` rather than `CREATE TEMPORARY TABLE` — MySQL doesn't support `FOREIGN KEY` constraints on temporary tables at all, and `ConflictDetection`'s `ErrForeignKeyViolation` case needs a real constraint to violate
+
+Full spec/design/tasks: `.specs/features/mysql-adapter/`.
 
 ---
 
