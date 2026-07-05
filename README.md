@@ -93,6 +93,13 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M12 - Preload / Eager Loading
 - [x] M13 - Aggregations
 - [x] M14 - Pessimistic Locking
+- [ ] M15 - Cross-Dialect Conformance Suite
+- [ ] M16 - MySQL / MariaDB Adapter
+- [ ] M17 - SQLite Adapter
+- [ ] M18 - SQL Server (MSSQL) Adapter
+- [ ] M19 - Oracle Adapter
+- [ ] M20 - IBM Db2 Adapter
+- [ ] M21 - Snowflake (OLAP) Adapter — reduced scope
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
 
@@ -152,21 +159,23 @@ history of design decisions (AD-001 through AD-017).
 package ex
 
 import (
+  "fmt"
+
   "github.com/leandroluk/golem"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
 func main() {
-  // iniciando uma instância de DataSource nomeada
+  // starts a named DataSource instance
   dataSource, err := golem.NewDataSource(
-    // se não for passada então sempre será "default"
+    // defaults to "default" if not passed
     golem.DataSourceName("example"),
-    // passa o conector, obrigatoriamente prcisa ter um conector
+    // the connector is required — no usable DataSource without one
     postgres.New(func (o *postgres.Options) {
-      // conecta usando o DSN
+      // connect using a DSN
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
 
-      // conecta usando propriedades separadas
+      // or connect using discrete properties
       o.Host = "localhost"
       o.Port = 5432
       o.User = "postgres"
@@ -174,74 +183,88 @@ func main() {
       o.Database = "db"
       o.SSLMode = "disable"
 
-      // define se deve ou não logar as queries sendo executadas
+      // whether executed queries get logged
       o.Logging = true
     }),
   )
-
+  if err != nil {
+    panic("could not build data source: " + err.Error())
+  }
   defer dataSource.Close()
 
-  if err := dataSource.Connect(); err != nil{
-    panic("impossivel conectar ao banco"+err.Error())
+  if err := dataSource.Connect(); err != nil {
+    panic("could not connect to database: " + err.Error())
   }
 
-  fmt.Println("conectado ao banco de dados")
+  fmt.Println("connected to database")
 
   // ...
 }
 ```
 
-> **Nota**: Se passar ambos (DSN + propriedades) então propriedades tem prioridade
+> **Note**: if both DSN and discrete properties are set, each non-zero discrete property overrides only its
+> corresponding part of the DSN — see `driver/postgres/dsn.go`'s `resolveDSN` for the exact precedence rules.
+
+> **Retrieving a `*DataSource` from elsewhere** — `NewDataSource` registers the instance under its name (see
+> above), so any other part of your program can fetch it back without threading a reference through manually:
+>
+> ```go
+> ds, err := golem.GetDataSource("example") // or golem.GetDataSource() for the "default"-named one
+> if err != nil {
+>   panic(err) // golem.ErrDataSourceNotFound if that name was never created, or was already Close()'d
+> }
+> ```
 
 ### Declaring schemas
 
 > `golem.ColumnType` (`golem.BIGINT()`, `golem.VARCHAR(50)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.DATETIME()`,
-> `golem.UUID()`, `golem.JSON()`, etc. — conjunto completo: `BOOLEAN`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`,
-> `FLOAT`, `CHAR`, `VARCHAR`, `TEXT`, `DATE`, `DATETIME`, `TIME`, `BLOB`, `UUID`, `JSON`) é agnóstico de dialeto — não vira DDL (esse `golem` não gera schema,
-> ver seção Migrations) nem depende de qual adapter você conectou. Serve só de id semântica pro adapter
-> saber como fazer bind (Go → driver) e scan (driver → Go) daquele valor, já que `database/sql` sozinho
-> não dá conta de tipo exótico (UUID, JSONB, array, ENUM...) de forma consistente entre dialetos. Cada
-> adapter (`postgres`, e no futuro `mysql`/`mssql`/etc.) implementa esse contrato:
+> `golem.UUID()`, `golem.JSON()`, etc. — full set: `BOOLEAN`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`,
+> `FLOAT`, `CHAR`, `VARCHAR`, `TEXT`, `DATE`, `DATETIME`, `TIME`, `BLOB`, `UUID`, `JSON`) is dialect-agnostic —
+> it doesn't turn into DDL (this `golem` doesn't generate schema, see the Migrations section) and doesn't
+> depend on which adapter you connected. It's only a semantic id so the adapter knows how to bind (Go →
+> driver) and scan (driver → Go) that value, since `database/sql` alone can't handle exotic types (UUID,
+> JSONB, array, ENUM...) consistently across dialects. Each adapter (`postgres`, and in the future
+> `mysql`/`mssql`/etc.) implements this contract:
 >
 >  type Dialect interface {
 >    Bind(t golem.ColumnType, value any) (driver.Value, error)
 >    Scan(t golem.ColumnType, raw any, dest any) error
 >  }
 >
-> Isso mantém a entity 100% portável entre dialetos — só o `DataSource`/adapter escolhido em runtime
-> decide o dialeto de verdade, a declaração da entity nunca muda.
+> This keeps the entity 100% portable across dialects — only the `DataSource`/adapter chosen at runtime
+> decides the actual dialect; the entity declaration never changes.
 
-`entity.Table` (recebido dentro do callback de `entity.New`) expõe:
+`entity.Table` (received inside `entity.New`'s callback) exposes:
 
-escopo:
-  tabela:
-    - `TableName(name string)`: nome da tabela; padrão = nome da struct (ex: `User` -> `"user"`)
-    - `SchemaName(name string)`: schema da tabela; padrão = schema selecionado atualmente na conexão
-    - `PrimaryKey(fieldPtrs ...any)`: chave primária; aceita 1+ campos (composta)
-    - `Unique(fieldPtrs ...any)`: constraint `UNIQUE`; aceita 1+ campos (composta) — igual `PrimaryKey`/`ForeignKey`, fica fora do `Col` porque unicidade pode envolver mais de uma coluna
-    - `Index(fieldPtrs ...any) *entity.Index`: índice secundário sobre 1+ campos
-  coluna:
-    - `Col(fieldPtr any, type golem.ColumnType) *entity.Column`: mapeia um campo da struct pra uma coluna com tipo explícito
-    - `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)`: chave estrangeira apontando pra PK de outra entity
-    - `CreateDate(fieldPtr any) *entity.Column`: marca o campo como "criado em"; preenchido sozinho com o timestamp do insert
-    - `UpdateDate(fieldPtr any) *entity.Column`: marca o campo como "atualizado em"; preenchido sozinho com o timestamp de cada update
-    - `DeleteDate(fieldPtr any) *entity.Column`: marca o campo como "soft delete em" (presença de valor = registro deletado); `Delete`/`Restore` do `Repository[T]` e todo critério com `Where` passam a filtrar deletados por padrão — ver `.WithDeleted()` na seção Query Builder
+scope:
+  table:
+    - `TableName(name string)`: table name; defaults to the struct name (e.g. `User` -> `"user"`)
+    - `SchemaName(name string)`: table schema; defaults to whichever schema is currently selected on the connection
+    - `PrimaryKey(fieldPtrs ...any)`: primary key; accepts 1+ fields (composite)
+    - `Unique(fieldPtrs ...any)`: `UNIQUE` constraint; accepts 1+ fields (composite) — like `PrimaryKey`/`ForeignKey`, lives outside `Col` because uniqueness can span more than one column
+    - `Index(fieldPtrs ...any) *entity.Index`: secondary index over 1+ fields
+  column:
+    - `Col(fieldPtr any, type golem.ColumnType) *entity.Column`: maps a struct field to a column with an explicit type
+    - `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)`: foreign key pointing at another entity's PK
+    - `CreateDate(fieldPtr any) *entity.Column`: marks the field as "created at"; filled in automatically with the insert's timestamp
+    - `UpdateDate(fieldPtr any) *entity.Column`: marks the field as "updated at"; filled in automatically with each update's timestamp
+    - `DeleteDate(fieldPtr any) *entity.Column`: marks the field as "soft-deleted at" (a non-nil value means the row is deleted); `Repository[T]`'s `Delete`/`Restore` and every `Where`-capable criteria start filtering deleted rows by default — see `.WithDeleted()` in the Query Builder section
 
-`*entity.Column` (retorno de `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) encadeia:
+`*entity.Column` (returned by `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) chains:
 
-- `.Name(name string)`: nome da coluna; padrão = nome do campo na struct
-- `.Nullable()`: permite `NULL`
-- `.Default(value any)`: valor (ou expressão do dialeto) default, vira DDL/constraint no banco
-- `.DefaultFunc(fn func() (any, error))`: como `.Default()`, mas o valor é calculado em código (Go) na
-  hora do insert em vez de virar expressão no banco — útil pra UUID, slug, valor derivado de outro campo
-  etc. só é usado quando o campo estiver zerado; error retornado cancela o insert. (`CreateDate`/
-  `UpdateDate` já preenchem o timestamp da operação sozinhos — sem precisar de um `.AutoNow()` à parte,
-  já que não faz sentido marcar um campo como "data de criação" e não querer isso)
+- `.Name(name string)`: column name; defaults to the struct field's name
+- `.Nullable()`: allows `NULL`
+- `.Default(value any)`: default value (or dialect expression), becomes DDL/constraint in the database
+- `.DefaultFunc(fn func() (any, error))`: like `.Default()`, but the value is computed in Go code at
+  insert time instead of becoming a database expression — useful for UUIDs, slugs, a value derived from
+  another field, etc. Only used when the field is still zero-valued; a returned error cancels the insert.
+  (`CreateDate`/`UpdateDate` already fill in the operation's timestamp on their own — no separate
+  `.AutoNow()` needed, since marking a field as "created at" and not wanting that would make no sense)
 
-`*entity.Index` (retorno de `Index`) encadeia:
+`*entity.Index` (returned by `Index`) chains:
 
-- `.Name(name string)`: nome do índice; padrão = gerado (`idx_<tabela>_<colunas>`)
-- `.Unique()`: índice único
+- `.Name(name string)`: index name; defaults to a generated one (`idx_<table>_<columns>`)
+- `.Unique()`: unique index
 
 ```go
 package ex
@@ -288,15 +311,15 @@ type Message struct {
 }
 
 var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
-  // nome da tabela; se omitido, usa o nome da struct (ex: "User")
+  // table name; if omitted, uses the struct name (e.g. "User")
   b.TableName("users")
-  // schema da tabela; se omitido, usa o schema selecionado atualmente na conexão
-  // (ex: o "search_path" do postgres, ou o schema default do conector)
+  // table schema; if omitted, uses whichever schema is currently selected on
+  // the connection (e.g. Postgres's "search_path", or the connector's default schema)
   b.SchemaName("public")
 
-  // mapea as colunas no banco de dados com os seus tipos explicitos
+  // maps the columns in the database with their explicit types
   b.Col(&t.ID, golem.BIGINT())
-  // nome da coluna; se omitido, usa o nome do campo na struct (ex: "Name")
+  // column name; if omitted, uses the struct field's name (e.g. "Name")
   b.Col(&t.Name, golem.VARCHAR(50)).Name("full_name")
   b.Col(&t.Email, golem.VARCHAR(50))
   b.Col(&t.Age, golem.INTEGER())
@@ -304,12 +327,12 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
   b.Col(&t.UpdatedAt, golem.DATETIME())
   b.Col(&t.DeletedAt, golem.DATETIME()).Nullable().Default(nil)
 
-  // aceita diversas propriedades
+  // accepts several properties
   b.PrimaryKey(&t.ID)
-  // fica fora do Col porque pode ser uma combinação de campos (unique composta)
+  // lives outside Col because it may be a combination of fields (composite unique)
   b.Unique(&t.Email)
 
-  // declara campos especiais, ou seja campo de criação data/hora e edição data/hora
+  // declares special fields, i.e. created-at/updated-at timestamp fields
   b.CreateDate(&t.CreatedAt)
   b.UpdateDate(&t.UpdatedAt)
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
@@ -327,25 +350,25 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   b.Col(&t.Published, golem.BOOLEAN())
 
   b.PrimaryKey(&t.ID)
-  // índice secundário: acelera queries que filtram por OwnerUserID (ex: "posts de um usuário")
+  // secondary index: speeds up queries filtering by OwnerUserID (e.g. "a user's posts")
   b.Index(&t.OwnerUserID)
-  // o terceiro parâmetro é opcional. ForeignKeyOptions só tem OnDelete — é a única opção com
-  // efeito real dado como golem é feito: sem DDL (sem migrations, ver AD-012) e sem campo
-  // navegacional pra relação anexada em memória (ver AD-001/AD-024), Cascade/Persistence/
-  // OrphanedRowAction/CreateForeignKeyConstraints/Deferrable/Lazy/Eager/OnUpdate nunca teriam
-  // onde pendurar comportamento de verdade — cortados em vez de ficarem só aceitos e ignorados
-  // (ver AD-032 em .specs/project/STATE.md)
+  // the third parameter is optional. ForeignKeyOptions only has OnDelete — it's the only
+  // option with real effect given how golem is built: with no DDL (no migrations, see
+  // AD-012) and no navigational field for an in-memory attached relation (see AD-001/
+  // AD-024), Cascade/Persistence/OrphanedRowAction/CreateForeignKeyConstraints/Deferrable/
+  // Lazy/Eager/OnUpdate would never have real behavior to hang off of — cut instead of
+  // being merely accepted and ignored (see AD-032 in .specs/project/STATE.md)
   b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().
-    // em caso de deleção de um usuário, os posts dele são deletados de verdade
-    // (Repository[T].Delete consulta um registro global de FKs e aplica isso)
-    // outras opções são:
-    // - relation.OnDeleteDefault (não faz nada a nível golem; se existir uma constraint real no banco fora do golem, vale o que ela disser)
-    // - relation.OnDeleteRestrict (bloqueia o delete com golem.ErrForeignKeyViolation se existir post referenciando)
+    // when a user is deleted, their posts are actually deleted too
+    // (Repository[T].Delete consults a global FK registry and applies this)
+    // other options are:
+    // - relation.OnDeleteDefault (does nothing at the golem level; if a real DB constraint exists outside golem, it decides)
+    // - relation.OnDeleteRestrict (blocks the delete with golem.ErrForeignKeyViolation if a referencing post exists)
     // - relation.OnDeleteSetNull
-    // - relation.OnDeleteNoAction (mesmo efeito de OnDeleteDefault a nível golem)
+    // - relation.OnDeleteNoAction (same effect as OnDeleteDefault at the golem level)
     OnDelete(relation.OnDeleteCascade))
 
-  // declara campos especiais, ou seja campo de criação data/hora e edição data/hora
+  // declares special fields, i.e. created-at/updated-at timestamp fields
   b.CreateDate(&t.CreatedAt)
   b.UpdateDate(&t.UpdatedAt)
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
@@ -369,41 +392,42 @@ var MessageEntity = entity.New[Message](func(t *Message, b *entity.Table) {
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
 })
 
-// entity.AddHook(Entity) retorna um builder encadeável (mesmo estilo de ForeignKeyOptions/JoinTable):
-// cada método fixa um hook slot, sem precisar de tipo wrapper por hook (nada de BeforeCreateHook,
-// AfterCreateHook etc). slots disponíveis, todos com a mesma assinatura
+// entity.AddHook(Entity) returns a chainable builder (same style as ForeignKeyOptions/JoinTable):
+// each method fixes one hook slot, with no need for a wrapper type per hook (no BeforeCreateHook,
+// AfterCreateHook, etc). Available slots, all sharing the same signature
 // func(ctx context.Context, i *T, conn golem.Conn) error:
 //  - (Before|After|OnConflict)Create
 //  - (Before|After|OnConflict)Update
 //  - (Before|After|OnConflict)Delete
 //
-// todos os hooks devem retornar um error, e se um error for retornado a operação será cancelada.
-// todos rodam dentro da mesma transaction da operação que disparou (conn), então um error de qualquer
-// um deles reverte tudo — incluindo o próprio insert/update/delete que disparou o hook.
+// every hook must return an error, and a returned error cancels the operation.
+// all of them run inside the same transaction as the operation that triggered them (conn), so an
+// error from any one of them rolls back everything — including the very insert/update/delete that
+// triggered the hook.
 
 var _ = entity.AddHook(UserEntity).
-  // exemplo de hook antes de criar um usuário:
+  // example hook before creating a user:
   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
-    fmt.Println("antes de criar usuário ", i.Name)
+    fmt.Println("before creating user ", i.Name)
     return nil
   }).
-  // exemplo de side-query dentro do hook, na mesma transaction (conn) que criou o usuário:
+  // example side-query inside the hook, in the same transaction (conn) that created the user:
   AfterCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
     repo := repository.Get(conn, UserEntity)
     count, err := repo.Count(ctx)
-    fmt.Println("total de usuários agora:", count)
+    fmt.Println("total users now:", count)
     return err
   })
 
 /**
- * Nota: se o mesmo hook for chamado 2 vezes então deve disparar um panic informando o slot, Ex:
+ * Note: registering the same hook slot twice triggers a panic naming the slot, e.g:
  * entity.AddHook(UserEntity).
  *   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
- *     fmt.Println("antes de criar usuário ", i.Name)
+ *     fmt.Println("before creating user ", i.Name)
  *     return nil
  *   }).
  *   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
- *     fmt.Println("antes de criar usuário ", i.Name)
+ *     fmt.Println("before creating user ", i.Name)
  *     return nil
  *   })
  */
@@ -425,10 +449,10 @@ func main() {
 
 ### Many-to-many relations (junction entity)
 
-> Inspirado em https://typeorm.io/docs/relations/relations, mas sem o conceito de `@JoinTable`/`@JoinColumn`:
-> a tabela de junção é sempre uma entity comum, com duas foreign keys. Isso é literalmente o que o
-> banco de dados faz por baixo dos panos, então não faz sentido esconder isso atrás de uma API paralela
-> (`ManyToMany` + `JoinTable`) — `ForeignKey` já resolve o caso.
+> Inspired by https://typeorm.io/docs/relations/relations, but without the `@JoinTable`/`@JoinColumn`
+> concept: the junction table is always a plain entity, with two foreign keys. That's literally what the
+> database does under the hood, so hiding it behind a parallel API (`ManyToMany` + `JoinTable`) makes no
+> sense — `ForeignKey` already covers this case.
 
 ```go
 package ex
@@ -453,7 +477,7 @@ type Question struct {
   Text  string
 }
 
-// tabela de junção: nenhum conceito novo, é uma entity comum com duas foreign keys
+// junction table: no new concept, just a plain entity with two foreign keys
 type QuestionToCategory struct {
   QuestionID int64
   CategoryID int64
@@ -474,13 +498,13 @@ var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Table) {
   b.PrimaryKey(&t.ID)
 })
 
-// como QuestionToCategory referencia QuestionEntity/CategoryEntity mas nenhuma delas referencia
-// QuestionToCategory de volta, não existe ciclo de inicialização — dá pra passar as entities direto
+// since QuestionToCategory references QuestionEntity/CategoryEntity but neither of them references
+// QuestionToCategory back, there's no initialization cycle — the entities can be passed in directly
 var QuestionToCategoryEntity = entity.New[QuestionToCategory](func(t *QuestionToCategory, b *entity.Table) {
   b.Col(&t.QuestionID, golem.BIGINT())
   b.Col(&t.CategoryID, golem.BIGINT())
 
-  // chave primária composta
+  // composite primary key
   b.PrimaryKey(&t.QuestionID, &t.CategoryID)
 
   b.ForeignKey(&t.QuestionID, QuestionEntity)
@@ -499,13 +523,13 @@ func main() {
   }
   defer dataSource.Close()
 
-  // sem cascade automático de coleção: cada entity é inserida explicitamente, e a junção é só mais um
-  // insert normal — nada de mágica de "salvar o grafo inteiro" por baixo dos panos. tudo dentro de
-  // uma única transaction pra não deixar a question "órfã" se a junção falhar
+  // no automatic collection cascade: each entity is inserted explicitly, and the junction row is
+  // just another normal insert — no "save the whole graph" magic under the hood. everything runs
+  // inside a single transaction so the question is never left "orphaned" if the junction insert fails
   ctx := context.Background()
 
-  // repository.Get só precisa da conexão (golem.Tx aqui, *golem.DataSource fora de transaction) —
-  // ambos implementam golem.Conn
+  // repository.Get only needs the connection (golem.Tx here, *golem.DataSource outside a transaction) —
+  // both implement golem.Conn
   err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
     categories, err := repository.Get(tx, CategoryEntity).InsertMany(ctx,
       &Category{Name: "ORMs"},
@@ -516,8 +540,8 @@ func main() {
     }
 
     question, err := repository.Get(tx, QuestionEntity).Insert(ctx, &Question{
-      Title: "Como perguntar sobre o golem?",
-      Text:  "Onde posso tirar dúvidas relacionadas ao golem?",
+      Title: "How do I ask about golem?",
+      Text:  "Where can I get golem-related questions answered?",
     })
     if err != nil {
       return err
@@ -535,20 +559,20 @@ func main() {
 }
 ```
 
-> **Nota**: pra carregar `question.Categories` como coleção pronta (tipo eager/lazy loading do TypeORM),
-> a ideia é resolver isso depois via helper de query (`Preload`/`With` sobre `QuestionToCategoryEntity`),
-> não como um novo tipo de relação. Mantém a API de relações só com `ForeignKey` (one-to-many/many-to-one/
-> one-to-one), que é o que existe de fato no banco.
+> **Note**: to load `question.Categories` as a ready-made collection (like TypeORM's eager/lazy loading),
+> the idea is to solve that later via a query helper (`Preload`/`With` over `QuestionToCategoryEntity`),
+> not as a new relation type. This keeps the relations API to just `ForeignKey` (one-to-many/many-to-one/
+> one-to-one), which is what actually exists in the database.
 
 ### Repository (CRUD)
 
-> Sem `Manager` genérico: só existe `Repository[T]`, sempre amarrado a uma entity só (equivalente ao
-> `dataSource.getRepository(User)` do TypeORM, sem o `dataSource.manager` paralelo). Transaction vira
-> responsabilidade do `DataSource`.
+> No generic `Manager`: only `Repository[T]` exists, always bound to a single entity (equivalent to
+> TypeORM's `dataSource.getRepository(User)`, without a parallel `dataSource.manager`). Transactions are
+> the `DataSource`'s responsibility.
 >
-> `repository.Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T]` recebe uma `golem.Conn` —
-> interface implementada tanto por `*golem.DataSource` quanto por `golem.Tx`. Sem transaction, passa o
-> `dataSource`; dentro de uma, passa a `tx` — o repository nem sabe (nem precisa saber) qual dos dois é.
+> `repository.Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T]` takes a `golem.Conn` —
+> an interface implemented by both `*golem.DataSource` and `golem.Tx`. Outside a transaction, pass the
+> `dataSource`; inside one, pass the `tx` — the repository doesn't know (and doesn't need to know) which one it is.
 
 ```go
 package ex
@@ -578,24 +602,24 @@ func main() {
 
   ctx := context.Background()
 
-  // repository.Get[T] infere T pelo tipo de UserEntity (*entity.Entity[User]), não precisa escrever
-  // repository.Get[User](...). dataSource implementa golem.Conn, então roda no pool dele
+  // repository.Get[T] infers T from UserEntity's type (*entity.Entity[User]), no need to write
+  // repository.Get[User](...). dataSource implements golem.Conn, so it runs on its pool
   users := repository.Get(dataSource, UserEntity)
 
-  // Insert: sempre 1 entity nova, retorna com a PK preenchida
+  // Insert: always 1 new entity, returned with its PK filled in
   user, err := users.Insert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
   if err != nil {
     panic(err)
   }
 
-  // SaveOne: já tenho a instância em runtime (veio do Insert acima) — persiste de novo por PK
+  // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK
   user.Age = 31
   user, err = users.SaveOne(ctx, &user)
   if err != nil {
     panic(err)
   }
 
-  // busca por chave primária: FindOne + op.Eq (não existe FindByID dedicado, ver AD-022)
+  // lookup by primary key: FindOne + op.Eq (no dedicated FindByID, see AD-022)
   found, err := users.FindOne(ctx, func(t *User, q *query.Query[User]) {
     q.Where(op.Eq(&t.ID, user.ID))
   })
@@ -603,37 +627,37 @@ func main() {
     panic(err)
   }
 
-  // Find/FindOne recebem critérios — detalhado na seção "Query Builder" mais abaixo
-  admins, err := users.FindMany(ctx /*, critérios aqui */)
+  // Find/FindOne take criteria — detailed in the "Query Builder" section below
+  admins, err := users.FindMany(ctx /*, criteria here */)
   if err != nil {
     panic(err)
   }
 
-  // Count/Exists recebem um critério próprio (query.Count[T], só Where) — detalhado na seção "Query
-  // Builder" mais abaixo; sem argumento nenhum, contam/checam a tabela toda
+  // Count/Exists take their own criteria type (query.Count[T], Where only) — detailed in the "Query
+  // Builder" section below; with no argument at all, they count/check the whole table
   total, err := users.Count(ctx)
   if err != nil {
     panic(err)
   }
-  fmt.Println("total de usuários:", total)
+  fmt.Println("total users:", total)
 
-  // User tem DeleteDate declarado, então isso é soft delete (seta DeletedAt), não apaga a linha
+  // User has DeleteDate declared, so this is a soft delete (sets DeletedAt), not a row deletion
   if err := users.Delete(ctx, &found); err != nil {
     panic(err)
   }
 
-  // Restore desfaz: limpa DeletedAt de novo
+  // Restore undoes it: clears DeletedAt again
   if err := users.Restore(ctx, &found); err != nil {
     panic(err)
   }
 
-  // Transaction fica no DataSource, não no Repository. dentro do callback, tx (que também implementa
-  // golem.Conn) substitui o dataSource na hora de montar o repository.Get
+  // Transactions live on DataSource, not on Repository. Inside the callback, tx (which also
+  // implements golem.Conn) replaces dataSource when building repository.Get
   err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
-    if _, err := repository.Get(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "primeiro post"}); err != nil {
+    if _, err := repository.Get(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "first post"}); err != nil {
       return err
     }
-    _, err := repository.Get(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "primeira mensagem"})
+    _, err := repository.Get(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "first message"})
     return err
   })
   if err != nil {
@@ -644,37 +668,37 @@ func main() {
 }
 ```
 
-> **Referência rápida** — métodos de `Repository[T]`:
+> **Quick reference** — `Repository[T]` methods:
 >
-> | Método | Retorno | Descrição |
+> | Method | Returns | Description |
 > | :- | :- | :- |
-> | `Insert(ctx, e *T) (T, error)` | 1 registro | insere 1 entity nova, retorna com a PK preenchida |
-> | `InsertMany(ctx, entities ...*T) ([]T, error)` | N registros | insere várias de uma vez |
-> | `SaveOne(ctx, e *T) (T, error)` | 1 registro | persiste de novo uma instância que você já tem em runtime (ex: veio de um `Insert`/`FindOne` anterior), por PK |
-> | `SaveMany(ctx, entities ...*T) ([]T, error)` | N registros | igual `SaveOne`, pra várias instâncias de uma vez |
-> | `Update(ctx, criteria func(t *T, u *query.Update[T])) ([]T, error)` | N registros | atualiza direto no banco por critério (`Where`+`Set`), sem precisar ter a instância em runtime; 0 linhas casadas não é erro — não existe `UpdateOne`/`UpdateMany` separados, os dois faziam exatamente a mesma query |
-> | `Delete(ctx, entities ...*T) error` | — | delete por PK; se a entity tem `DeleteDate`, seta o timestamp (soft delete) em vez de apagar a linha |
-> | `Restore(ctx, entities ...*T) error` | — | desfaz soft delete (limpa `DeleteDate`) por PK; sem `DeleteDate` declarado, é no-op |
-> | `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)` | N registros | critério opcional; sem ele, traz a tabela toda. detalhado na seção Query Builder |
-> | `FindOne(ctx, criteria ...func(t *T, q *query.Query[T])) (T, error)` | 1 registro | igual `FindMany`, limita 1 |
-> | `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` | contagem | critério opcional (só `Where`); sem ele, conta a tabela toda |
-> | `Exists(ctx, criteria ...func(t *T, c *query.Count[T])) (bool, error)` | bool | atalho pra `Count > 0` sem trazer linha, mesmo critério de `Count` |
+> | `Insert(ctx, e *T) (T, error)` | 1 row | inserts 1 new entity, returned with its PK filled in |
+> | `InsertMany(ctx, entities ...*T) ([]T, error)` | N rows | inserts several at once |
+> | `SaveOne(ctx, e *T) (T, error)` | 1 row | re-persists a runtime instance you already have (e.g. from a previous `Insert`/`FindOne`), by PK |
+> | `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once |
+> | `Update(ctx, criteria func(t *T, u *query.Update[T])) ([]T, error)` | N rows | updates directly in the database by criteria (`Where`+`Set`), no runtime instance needed; 0 matched rows is not an error — there's no separate `UpdateOne`/`UpdateMany`, both did exactly the same query |
+> | `Delete(ctx, entities ...*T) error` | — | delete by PK; if the entity has `DeleteDate`, sets the timestamp (soft delete) instead of removing the row |
+> | `Restore(ctx, entities ...*T) error` | — | undoes a soft delete (clears `DeleteDate`) by PK; a no-op if `DeleteDate` isn't declared |
+> | `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)` | N rows | optional criteria; without one, brings back the whole table. Detailed in the Query Builder section |
+> | `FindOne(ctx, criteria ...func(t *T, q *query.Query[T])) (T, error)` | 1 row | same as `FindMany`, capped to 1 |
+> | `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` | count | optional criteria (`Where` only); without one, counts the whole table |
+> | `Exists(ctx, criteria ...func(t *T, c *query.Count[T])) (bool, error)` | bool | shortcut for `Count > 0` without fetching a row, same criteria as `Count` |
 >
-> `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})` abre a transaction; qualquer
-> `repository.Get(tx, Entity)` criado dentro do callback roda nela (`tx` implementa `golem.Conn`, igual
-> `dataSource`). Se o callback retornar error, a transaction é revertida por inteiro.
+> `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})` opens the transaction; any
+> `repository.Get(tx, Entity)` created inside the callback runs on it (`tx` implements `golem.Conn`, just
+> like `dataSource`). If the callback returns an error, the whole transaction is rolled back.
 
 ### Query Builder
 
-> Critérios via closure declarativa: o callback recebe `t *T` (mesmo field pointer de `Col`/`ForeignKey`/
-> `PrimaryKey`) e `q *query.Query[T]`. Condições em `Where` são variádicas com semântica AND. Ordem das
-> chamadas dentro do callback não importa — a query só é montada quando o callback termina.
+> Criteria via a declarative closure: the callback receives `t *T` (the same field pointer as `Col`/
+> `ForeignKey`/`PrimaryKey`) and `q *query.Query[T]`. `Where` conditions are variadic with AND semantics.
+> Call order inside the callback doesn't matter — the query is only built once the callback returns.
 >
-> Se a entity tem `DeleteDate` (soft delete), toda consulta filtra os deletados por padrão (`WHERE
-> deleted_at IS NULL` implícito) — igual todo ORM com soft delete faz. `.WithDeleted()` desliga esse
-> filtro pra essa consulta. Existe em qualquer builder que tenha `Where` por baixo: `query.Query[T]`
+> If the entity has `DeleteDate` (soft delete), every query filters out deleted rows by default (an
+> implicit `WHERE deleted_at IS NULL`) — like every ORM with soft delete does. `.WithDeleted()` turns that
+> filter off for that query. It exists on any builder with `Where` underneath: `query.Query[T]`
 > (`FindMany`/`FindOne`), `query.Count[T]` (`Count`/`Exists`), `query.Update[T]` (`Update`)
-> e `query.Join[T]` (dentro de `join.*`). Em entities sem `DeleteDate`, `.WithDeleted()` é um no-op.
+> and `query.Join[T]` (inside `join.*`). On entities without `DeleteDate`, `.WithDeleted()` is a no-op.
 
 ```go
 package ex
@@ -704,33 +728,33 @@ func main() {
 
   ctx := context.Background()
 
-  // repository.Get[T] infere T pelo tipo de UserEntity (*entity.Entity[User]), não precisa escrever
-  // repository.Get[User](...). dataSource implementa golem.Conn, então roda no pool dele
+  // repository.Get[T] infers T from UserEntity's type (*entity.Entity[User]), no need to write
+  // repository.Get[User](...). dataSource implements golem.Conn, so it runs on its pool
   userRepo := repository.Get(dataSource, UserEntity)
 
-  // Insert: sempre 1 entity nova, retorna com a PK preenchida
+  // Insert: always 1 new entity, returned with its PK filled in
   user, err := userRepo.Insert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
   if err != nil {
     panic(err)
   }
 
-  // SaveOne: já tenho a instância em runtime (veio do Insert acima) — persiste de novo por PK
+  // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK
   user.Age = 31
   user, err = userRepo.SaveOne(ctx, &user)
   if err != nil {
     panic(err)
   }
 
-  // SaveMany: mesma ideia, só que pra várias instâncias já em runtime (variádico, igual InsertMany)
+  // SaveMany: same idea, but for several runtime instances at once (variadic, like InsertMany)
   users, err := userRepo.SaveMany(ctx, &user)
   if err != nil {
     panic(err)
   }
   _ = users
 
-  // Update: sem instância nenhuma — só Where+Set, atualiza direto no banco. Não existe
-  // UpdateOne/UpdateMany separados — o critério pode casar 1 linha ou várias, o método é o mesmo,
-  // e 0 linhas casadas não é erro.
+  // Update: no instance at all — just Where+Set, updates directly in the database. There's no
+  // separate UpdateOne/UpdateMany — the criteria can match 1 row or several, the method is the
+  // same, and 0 matched rows is not an error.
   updated, err := userRepo.Update(ctx, func(t *User, u *query.Update[User]) {
     u.Where(op.Eq(&t.ID, user.ID))
     u.Set(&t.Name, "John Doe")
@@ -742,7 +766,7 @@ func main() {
   }
   _ = updated
 
-  // mesmo método, critério que pode casar (e atualizar) mais de uma linha
+  // same method, criteria that can match (and update) more than one row
   users, err = userRepo.Update(ctx, func(t *User, u *query.Update[User]) {
     u.Where(op.Eq(&t.Age, 30))
     u.Set(&t.Age, 31)
@@ -755,7 +779,7 @@ func main() {
   found, err := userRepo.FindOne(ctx, func (t *User, q *query.Query[User]) {
     q.Select(&t.Name, &t.Email, &t.Age)
     q.Where(
-      // aqui tendo outras condições como op.Or, op.In, op.Like, etc — op.Not(op.In(...)) compõe negação, sem NotIn dedicado
+      // other conditions available here: op.Or, op.In, op.Like, etc — op.Not(op.In(...)) composes negation, no dedicated NotIn
       op.Eq(&t.Name, "John Doe"),
       op.Eq(&t.Email, "john.doe@email.com"),
       op.Eq(&t.Age, 30),
@@ -763,7 +787,7 @@ func main() {
     q.OrderBy(op.Desc(&t.ID))
     q.Limit(10)
     q.Offset(0)
-    // sem isso, usuários com DeletedAt preenchido não apareceriam nesse FindOne
+    // without this, users with DeletedAt set wouldn't show up in this FindOne
     q.WithDeleted()
   })
   if err != nil {
@@ -771,14 +795,14 @@ func main() {
   }
 
   admins, err := userRepo.FindMany(ctx, func (t *User, q *query.Query[User]) {
-    // se não for passado o q.Select sempre traz todas as colunas
+    // if q.Select isn't passed, every column is always returned
     q.Where(
-      // aqui tendo outras condições como op.Or, op.In, op.Like, etc — op.Not(op.In(...)) compõe negação, sem NotIn dedicado
+      // other conditions available here: op.Or, op.In, op.Like, etc — op.Not(op.In(...)) composes negation, no dedicated NotIn
       op.Eq(&t.Name, "John Doe"),
       op.Eq(&t.Email, "john.doe@email.com"),
       op.Eq(&t.Age, 30),
     )
-    // a ordem das declarações não importam, a query é construída quando a função se encerra
+    // declaration order doesn't matter, the query is built once the function returns
     q.Limit(10)
     q.Offset(0)
     q.OrderBy(op.Desc(&t.ID))
@@ -788,27 +812,27 @@ func main() {
   }
   _ = admins
 
-  // Count/Exists recebem um critério próprio (query.Count[T], só Where); sem argumento nenhum,
-  // contam/checam a tabela toda
+  // Count/Exists take their own criteria type (query.Count[T], Where only); with no argument at
+  // all, they count/check the whole table
   adultCount, err := userRepo.Count(ctx, func (t *User, c *query.Count[User]) {
     c.Where(op.Gte(&t.Age, 18))
   })
   if err != nil {
     panic(err)
   }
-  fmt.Println("total de usuários adultos:", adultCount)
+  fmt.Println("total adult users:", adultCount)
 
   if err := userRepo.Delete(ctx, &found); err != nil {
     panic(err)
   }
 
-  // Transaction fica no DataSource, não no Repository. dentro do callback, tx (que também implementa
-  // golem.Conn) substitui o dataSource na hora de montar o repository.Get
+  // Transactions live on DataSource, not on Repository. Inside the callback, tx (which also
+  // implements golem.Conn) replaces dataSource when building repository.Get
   err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
-    if _, err := repository.Get(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "primeiro post"}); err != nil {
+    if _, err := repository.Get(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "first post"}); err != nil {
       return err
     }
-    _, err := repository.Get(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "primeira mensagem"})
+    _, err := repository.Get(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "first message"})
     return err
   })
   if err != nil {
@@ -819,16 +843,16 @@ func main() {
 
 ### Joins
 
-> Pacote `golem/join`: `join.Inner`/`join.Left`/`join.Right`/`join.Full` (nomes de `JOIN` do SQL — `Left`/
-> `Right`/`Full` já são "outer" por definição, não precisa de um `Outer` genérico separado). Cada um
-> recebe a `*query.Query[T]` de fora (pra se registrar nela), a entity do lado que está entrando no join
-> (`T` inferido dela, igual `repository.Get`) e um callback com o lado novo. Nomeamos os builders `q0`
-> (de fora), `q1` (do join) etc pra deixar explícito o nível de cada um.
+> `golem/join` package: `join.Inner`/`join.Left`/`join.Right`/`join.Full` (SQL's `JOIN` names — `Left`/
+> `Right`/`Full` are already "outer" by definition, no need for a separate generic `Outer`). Each one
+> takes the outer `*query.Query[T]` (to register itself on it), the entity on the side entering the join
+> (`T` inferred from it, same as `repository.Get`), and a callback for the new side. We name the builders
+> `q0` (outer), `q1` (join), etc, to make each level explicit.
 >
-> `q1.On(fieldPtr, fieldPtr)` compara coluna com coluna (os dois lados são endereço de campo) — diferente
-> de `op.Eq(fieldPtr, valor)`, que compara coluna com valor literal no `Where`. Por isso é um método
-> separado em vez de reaproveitar `op.Eq` pros dois casos. `q1.Where(...)` também existe, pra filtrar
-> pelo lado que entrou no join (com `op.*` normal, valor literal) sem misturar com o `Where` da query de fora.
+> `q1.On(fieldPtr, fieldPtr)` compares column to column (both sides are field addresses) — different from
+> `op.Eq(fieldPtr, value)`, which compares a column to a literal value in `Where`. That's why it's a
+> separate method instead of reusing `op.Eq` for both cases. `q1.Where(...)` also exists, to filter the
+> side that entered the join (with normal `op.*`, literal values) without mixing it with the outer query's `Where`.
 
 ```go
 package ex
@@ -858,7 +882,7 @@ func main() {
 
   ctx := context.Background()
 
-  // usuários que têm pelo menos 1 post publicado (INNER: só entra quem casa a condição do On)
+  // users who have at least 1 published post (INNER: only rows matching the On condition make it in)
   users, err := repository.Get(dataSource, UserEntity).FindMany(ctx, func (u *User, q0 *query.Query[User]) {
     join.Inner(q0, PostEntity, func (p *Post, q1 *query.Join[Post]) {
       q1.On(&p.OwnerUserID, &u.ID)
@@ -875,22 +899,22 @@ func main() {
 
 ### Preload / Eager Loading
 
-> `repository.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` busca as linhas relacionadas
-> a `items` (o resultado de um `FindMany`/`FindOne` anterior) e devolve um `map[any][]J` agrupado pela
-> chave da relação — NUNCA anexa o resultado de volta em `items` (não existe campo tipo `user.Posts
-> []Post` no struct; ver AD-001/AD-024 em `.specs/project/STATE.md` — isso é proposital, entities
-> continuam structs simples, sem campo navegacional).
+> `repository.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to
+> `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the
+> relation key — it NEVER attaches the result back onto `items` (there's no field like `user.Posts
+> []Post` on the struct; see AD-001/AD-024 in `.specs/project/STATE.md` — this is deliberate, entities
+> stay plain structs, with no navigational field).
 >
-> A coluna de junção é descoberta automaticamente a partir do `ForeignKey` já declarado entre as duas
-> entities (funciona nas duas direções: `Preload(ctx, userRepo, users, PostEntity)` — carrega os posts
-> de cada user — ou `Preload(ctx, postRepo, posts, UserEntity)` — carrega o dono de cada post). `criteria`
-> aceita o mesmo `func(j *J, q *query.Query[J])` de `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
-> sempre combinado (AND) com o filtro de junção que o `Preload` já monta sozinho.
+> The join column is discovered automatically from the `ForeignKey` already declared between the two
+> entities (works in both directions: `Preload(ctx, userRepo, users, PostEntity)` — loads each user's
+> posts — or `Preload(ctx, postRepo, posts, UserEntity)` — loads each post's owner). `criteria` accepts
+> the same `func(j *J, q *query.Query[J])` as `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
+> always combined (AND) with the join filter `Preload` already builds on its own.
 >
-> Não existe uma flag tipo `Eager(true)` que dispara `Preload` automaticamente dentro de
-> `FindMany`/`FindOne` — não há como devolver dados de tipos diferentes (`J` varia por FK) escondido
-> atrás da assinatura fixa `([]T, error)` sem reflection pesada ou quebrar a API. Chame
-> `repository.Preload` explicitamente sempre. Detalhes: `.specs/features/preload-eager-loading/design.md`.
+> There's no flag like `Eager(true)` that automatically triggers `Preload` inside `FindMany`/`FindOne` —
+> there's no way to return data of different types (`J` varies by FK) hidden behind the fixed
+> `([]T, error)` signature without heavy reflection or breaking the API. Always call `repository.Preload`
+> explicitly. Details: `.specs/features/preload-eager-loading/design.md`.
 
 ```go
 package ex
@@ -928,7 +952,7 @@ func main() {
     panic(err)
   }
 
-  // busca os posts de cada user retornado acima, agrupados por User.ID
+  // fetches the posts for each user returned above, grouped by User.ID
   postsByUserID, err := repository.Preload(ctx, userRepo, users, PostEntity, func (p *Post, q *query.Query[Post]) {
     q.Where(op.Eq(&p.Published, true))
     q.OrderBy(op.Desc(&p.ID))
@@ -937,7 +961,7 @@ func main() {
     panic(err)
   }
   for _, u := range users {
-    fmt.Printf("%s tem %d posts publicados\n", u.Name, len(postsByUserID[u.ID]))
+    fmt.Printf("%s has %d published posts\n", u.Name, len(postsByUserID[u.ID]))
   }
 }
 ```
@@ -945,22 +969,22 @@ func main() {
 ### Aggregations
 
 > `repository.Aggregate[T, R](ctx, repo, func(t *T, res *R, a *query.Aggregate[T, R]) {...}) ([]R, error)` —
-> mesmo princípio do `Preload`: `R` é um struct qualquer (não precisa de `entity.New`), resolvido por
-> ponteiro de campo contra `t` (fonte, `T`) e `res` (destino, `R`), sem tags.
+> same principle as `Preload`: `R` is any struct (doesn't need `entity.New`), resolved by field pointer
+> against `t` (source, `T`) and `res` (destination, `R`), no tags.
 >
-> `a.GroupBy(&t.Campo, &res.Campo)` marca uma coluna de agrupamento, carregando o valor pro campo de
-> destino. `a.Sum`/`a.Avg`/`a.Count` recebem `(sourceFieldPtr, destFieldPtr)` — a agregação lê de `T`,
-> escreve em `R`. `a.CountAll(&res.Campo)` é `COUNT(*)`, sem coluna de origem. `a.Where(...)` filtra
-> ANTES de agrupar (resolvido contra `T`, igual `FindMany`); `a.Having(...)` filtra DEPOIS de agrupar —
-> o `FieldPtr` de cada condição do `Having` precisa apontar pra um campo de `R` que já foi registrado via
-> `Sum`/`Avg`/`Count`/`CountAll` (não dá pra fazer `HAVING` sobre uma coluna de `GroupBy` simples nesta
-> versão). `a.OrderBy(...)` aceita tanto campos de `GroupBy` quanto de agregação.
+> `a.GroupBy(&t.Field, &res.Field)` marks a grouping column, loading the value into the destination
+> field. `a.Sum`/`a.Avg`/`a.Count` take `(sourceFieldPtr, destFieldPtr)` — the aggregate reads from `T`,
+> writes to `R`. `a.CountAll(&res.Field)` is `COUNT(*)`, with no source column. `a.Where(...)` filters
+> BEFORE grouping (resolved against `T`, same as `FindMany`); `a.Having(...)` filters AFTER grouping —
+> each `Having` condition's `FieldPtr` must point to an `R` field already registered via
+> `Sum`/`Avg`/`Count`/`CountAll` (you can't `HAVING` over a plain `GroupBy` column in this version).
+> `a.OrderBy(...)` accepts both `GroupBy` and aggregate fields.
 >
-> `Sum`/`Avg` sempre voltam como `float64` no destino (o driver Postgres força `CAST(... AS DOUBLE
-> PRECISION)` — sem isso, `SUM`/`AVG` de coluna inteira vira `NUMERIC` no Postgres, que o driver não
-> decodifica direto como `float64`). `MIN`/`MAX` não existem nesta versão (de propósito, não esquecimento
-> — teriam sentido em colunas não-numéricas como texto/data, onde o cast pra `DOUBLE PRECISION` quebraria;
-> ver `.specs/features/aggregations/design.md`).
+> `Sum`/`Avg` always come back as `float64` on the destination (the Postgres driver forces a `CAST(...
+> AS DOUBLE PRECISION)` — without it, `SUM`/`AVG` over an integer column becomes `NUMERIC` in Postgres,
+> which the driver doesn't decode directly as `float64`). `MIN`/`MAX` don't exist in this version (on
+> purpose, not an oversight — they'd make sense on non-numeric columns like text/date, where the cast to
+> `DOUBLE PRECISION` would break; see `.specs/features/aggregations/design.md`).
 
 ```go
 package ex
@@ -997,7 +1021,7 @@ func main() {
   ctx := context.Background()
   postRepo := repository.Get(dataSource, PostEntity)
 
-  // total (e contagem) de posts por categoria, só categorias com mais de 1 post
+  // total (and count) of posts per category, only categories with more than 1 post
   totals, err := repository.Aggregate(ctx, postRepo, func (p *Post, res *CategoryTotal, a *query.Aggregate[Post, CategoryTotal]) {
     a.GroupBy(&p.Category, &res.Category)
     a.Sum(&p.Views, &res.Total)
@@ -1017,17 +1041,17 @@ func main() {
 
 ### Pessimistic Locking
 
-> `query.Query[T]` ganha `.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()` — viram
-> `SELECT ... FOR UPDATE`/`FOR NO KEY UPDATE`/`FOR SHARE`/`FOR KEY SHARE` no Postgres. Cada um aceita um
-> `query.LockWaitNoWait` ou `query.LockWaitSkipLocked` opcional (padrão: bloqueia até a linha destravar).
+> `query.Query[T]` gains `.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()` — they
+> become `SELECT ... FOR UPDATE`/`FOR NO KEY UPDATE`/`FOR SHARE`/`FOR KEY SHARE` on Postgres. Each one
+> accepts an optional `query.LockWaitNoWait` or `query.LockWaitSkipLocked` (default: blocks until the row unlocks).
 >
-> **Travar uma leitura fora de uma transação é um no-op disfarçado de sucesso** — a trava libera assim
-> que o statement isolado termina, então `FindMany`/`FindOne` com `.ForUpdate()` (ou qualquer variante)
-> retornam erro se `conn` não for um `golem.Tx` (`repository.Get(dataSource, ...)` direto não vale;
-> precisa ser `repository.Get(tx, ...)` dentro de `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`).
+> **Locking a read outside a transaction is a no-op disguised as success** — the lock releases as soon
+> as the isolated statement finishes, so `FindMany`/`FindOne` with `.ForUpdate()` (or any variant) return
+> an error if `conn` isn't a `golem.Tx` (`repository.Get(dataSource, ...)` directly doesn't count; it
+> must be `repository.Get(tx, ...)` inside `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`).
 >
-> Não se aplica a `repository.Aggregate` — o próprio Postgres não permite `FOR UPDATE` junto de funções
-> agregadas.
+> Doesn't apply to `repository.Aggregate` — Postgres itself doesn't allow `FOR UPDATE` together with
+> aggregate functions.
 
 ```go
 package ex
@@ -1056,15 +1080,15 @@ func main() {
 
   ctx := context.Background()
 
-  // padrão leitura-então-escrita: trava a linha, decide o que fazer com base nela, atualiza,
-  // tudo dentro da mesma transação — nenhuma outra transação consegue travar/ler essa linha
-  // (com FOR UPDATE dela também) até essa transação commitar ou dar rollback.
+  // read-then-write pattern: lock the row, decide what to do based on it, update it,
+  // all inside the same transaction — no other transaction can lock/read this row
+  // (with FOR UPDATE too) until this transaction commits or rolls back.
   err = dataSource.Transaction(ctx, func (tx golem.Tx) error {
     userRepo := repository.Get(tx, UserEntity)
 
     user, err := userRepo.FindOne(ctx, func (u *User, q *query.Query[User]) {
       q.Where(op.Eq(&u.ID, 42))
-      q.ForUpdate() // ou q.ForUpdate(query.LockWaitSkipLocked) pra pular linhas já travadas
+      q.ForUpdate() // or q.ForUpdate(query.LockWaitSkipLocked) to skip already-locked rows
     })
     if err != nil {
       return err
@@ -1072,7 +1096,7 @@ func main() {
 
     _, err = userRepo.Update(ctx, func (u *User, upd *query.Update[User]) {
       upd.Where(op.Eq(&u.ID, user.ID))
-      upd.Set(&u.Name, "atualizado com segurança")
+      upd.Set(&u.Name, "safely updated")
     })
     return err
   })
@@ -1084,25 +1108,25 @@ func main() {
 
 ### Raw SQL (escape hatch)
 
-> Nenhum builder cobre 100% dos casos, então precisa de uma saída pra SQL cru em dois níveis:
+> No builder covers 100% of the cases, so there needs to be an escape hatch to raw SQL, at two levels:
 >
-> `Exec` faz parte de `golem.Conn` (então funciona igual em `*golem.DataSource` e em `golem.Tx` dentro de uma
-> transaction) — roda qualquer statement e devolve um `golem.Result`, porque consultas diferentes devolvem
-> referências diferentes (uma `SELECT` tem linhas pra iterar, um `UPDATE` sem `RETURNING` só tem contagem
-> afetada, um `UPDATE ... RETURNING` tem os dois). `golem.Result`:
+> `Exec` is part of `golem.Conn` (so it works the same on `*golem.DataSource` and on `golem.Tx` inside a
+> transaction) — it runs any statement and returns a `golem.Result`, because different queries return
+> different things (a `SELECT` has rows to iterate, an `UPDATE` without `RETURNING` only has an affected
+> count, an `UPDATE ... RETURNING` has both). `golem.Result`:
 >
 >  type Result interface {
->    // avança pro próximo registro (igual sql.Rows.Next); false quando acabam as linhas ou não há nenhuma
+>    // advances to the next row (like sql.Rows.Next); false once rows run out or there are none
 >    Next() bool
->    // linha atual como coluna→valor; só válido depois de Next() == true
+>    // current row as column→value; only valid after Next() == true
 >    Scan() (map[string]any, error)
->    // linhas afetadas pelo statement; não depende de Next/Scan, funciona mesmo sem RETURNING
+>    // rows affected by the statement; doesn't depend on Next/Scan, works even without RETURNING
 >    RowsAffected() (int64, error)
 >  }
 >
-> `Repository[T].Exec` roda uma SQL de leitura crua mas escaneia o resultado pro tipo `T` (retorna `[]T`
-> direto, sem precisar de `Result`), reaproveitando o mapeamento coluna→campo que já existe (o mesmo nome
-> declarado em `Col(...).Name(...)`) — sem precisar de tags nem scanning manual.
+> `Repository[T].Exec` runs a raw read query but scans the result into type `T` (returns `[]T` directly,
+> no `Result` needed), reusing the column→field mapping that already exists (the same name declared via
+> `Col(...).Name(...)`) — no tags or manual scanning needed.
 
 ```go
 package ex
@@ -1130,8 +1154,8 @@ func main() {
 
   ctx := context.Background()
 
-  // Exec: devolve golem.Result (golem.Conn: dataSource ou tx, tanto faz). RowsAffected funciona mesmo sem
-  // RETURNING; Next/Scan só trazem linha se o statement devolver alguma (aqui, via RETURNING)
+  // Exec: returns golem.Result (golem.Conn: dataSource or tx, either works). RowsAffected works even
+  // without RETURNING; Next/Scan only yield rows if the statement returns any (here, via RETURNING)
   result, err := dataSource.Exec(ctx, "UPDATE users SET age = age + 1 WHERE id = $1 RETURNING *", 1)
   if err != nil {
     panic(err)
@@ -1140,7 +1164,7 @@ func main() {
   if err != nil {
     panic(err)
   }
-  fmt.Println("linhas afetadas:", affected)
+  fmt.Println("rows affected:", affected)
 
   for result.Next() {
     row, err := result.Scan()
@@ -1150,7 +1174,7 @@ func main() {
     fmt.Println(row)
   }
 
-  // Exec no Repository[T]: mesma ideia, mas escaneia o resultado pro tipo da entity
+  // Exec on Repository[T]: same idea, but scans the result into the entity's type
   users, err := repository.Get(dataSource, UserEntity).Exec(ctx, "SELECT * FROM users WHERE age > $1", 18)
   if err != nil {
     panic(err)
@@ -1159,30 +1183,30 @@ func main() {
 }
 ```
 
-> **Referência rápida** adicional:
+> **Additional quick reference**:
 >
-> | Método | Onde | Retorno | Descrição |
+> | Method | Where | Returns | Description |
 > | :- | :- | :- | :- |
-> | `Exec(ctx, sql string, args ...any) (golem.Result, error)` | `golem.Conn` (`DataSource`/`Tx`) | `Result` (`Next`/`Scan`/`RowsAffected`) | statement cru, sem tipo amarrado |
-> | `Exec(ctx, sql string, args ...any) ([]T, error)` | `Repository[T]` | N registros | leitura crua, escaneada pro tipo `T` |
+> | `Exec(ctx, sql string, args ...any) (golem.Result, error)` | `golem.Conn` (`DataSource`/`Tx`) | `Result` (`Next`/`Scan`/`RowsAffected`) | raw statement, no bound type |
+> | `Exec(ctx, sql string, args ...any) ([]T, error)` | `Repository[T]` | N rows | raw read, scanned into type `T` |
 
 ### Errors
 
-> Sentinels em `golem` (`golem.Err*`) pros casos mais comuns — sempre checa com `errors.Is`, nunca compara
-> mensagem de string (cada dialeto/driver fala diferente). O adapter (`postgres`, etc.) é quem traduz o
-> erro nativo do driver (ex: SQLSTATE `23505` do postgres) pro sentinel correspondente, preservando o
-> erro original por baixo via `%w` — então `errors.Unwrap`/`errors.As` ainda alcança o erro nativo do
-> driver quando o sentinel não é granular o suficiente.
+> Sentinels in `golem` (`golem.Err*`) for the most common cases — always check with `errors.Is`, never
+> compare the string message (each dialect/driver speaks differently). The adapter (`postgres`, etc.) is
+> what translates the driver's native error (e.g. Postgres's SQLSTATE `23505`) into the matching
+> sentinel, preserving the original error underneath via `%w` — so `errors.Unwrap`/`errors.As` can still
+> reach the driver's native error when the sentinel isn't granular enough.
 >
-> conjunto inicial (mais comuns; a lista cresce conforme mais dialetos/casos forem mapeados, sem quebrar
-> o que já existe):
+> initial set (most common; the list grows as more dialects/cases get mapped, without breaking what
+> already exists):
 >
->  - `golem.ErrNotFound`: nenhum registro encontrado (`FindOne`/`SaveOne` sem match — `Update` não dispara isso, 0 linhas casadas não é erro)
->  - `golem.ErrDuplicateKey`: violação de `Unique` (coluna ou composta)
->  - `golem.ErrForeignKeyViolation`: violação de `ForeignKey` (aponta pra algo que não existe, ou deleta algo ainda referenciado)
+>  - `golem.ErrNotFound`: no matching row found (`FindOne`/`SaveOne` with no match — `Update` never triggers this, 0 matched rows is not an error)
+>  - `golem.ErrDuplicateKey`: `Unique` constraint violation (single or composite)
+>  - `golem.ErrForeignKeyViolation`: `ForeignKey` violation (points at something that doesn't exist, or deletes something still referenced)
 >
-> se o driver devolver um erro que não bate com nenhum sentinel mapeado ainda, o erro original sobe sem
-> alteração (sem forçar num sentinel genérico tipo "unknown") — só vira sentinel o que já foi mapeado.
+> if the driver returns an error that doesn't match any mapped sentinel yet, the original error surfaces
+> unchanged (never forced into a generic "unknown" sentinel) — only what's already been mapped becomes a sentinel.
 
 ```go
 package ex
@@ -1203,16 +1227,16 @@ func handle(ctx context.Context, userRepo *repository.Repository[User]) {
     q.Where(op.Eq(&t.ID, 999))
   })
   if errors.Is(err, golem.ErrNotFound) {
-    fmt.Println("usuário não existe")
+    fmt.Println("user does not exist")
     return
   }
   if err != nil {
-    panic(err) // erro de infra de verdade (conexão caiu, etc.)
+    panic(err) // a real infra error (connection dropped, etc.)
   }
 
   _, err = userRepo.Insert(ctx, &User{Email: user.Email})
   if errors.Is(err, golem.ErrDuplicateKey) {
-    fmt.Println("email já cadastrado")
+    fmt.Println("email already registered")
     return
   }
   if err != nil {
@@ -1223,9 +1247,9 @@ func handle(ctx context.Context, userRepo *repository.Repository[User]) {
 
 ### Migrations
 
-> Fora de escopo, de propósito. Entities aqui descrevem mapeamento/comportamento em runtime, não são
-> fonte de verdade de DDL — schema (criação/alteração de tabelas, versionamento, rollback) fica pra
-> ferramenta externa (Liquibase, Flyway, goose, etc.). Sem "synchronize" automático tipo TypeORM dev mode.
+> Out of scope, on purpose. Entities here describe runtime mapping/behavior, not a source of truth for
+> DDL — schema (creating/altering tables, versioning, rollback) is left to an external tool (Liquibase,
+> Flyway, goose, etc.). No automatic "synchronize" like TypeORM's dev mode.
 
 ### Custom logger
 
@@ -1239,7 +1263,7 @@ import (
 
 type Logger struct {}
 
-// garante que a struct Logger implementa a interface golem.Logger
+// ensures the Logger struct implements the golem.Logger interface
 var _ golem.Logger = (*Logger)(nil)
 
 func (l *Logger) Log(level golem.LogLevel, msg string, args map[string]any) {
@@ -1250,7 +1274,7 @@ func (l *Logger) Log(level golem.LogLevel, msg string, args map[string]any) {
   case golem.LogLevelInfo: fmt.Println("[INFO]: " + msg, str)
   case golem.LogLevelWarn: fmt.Println("[WARN]: " + msg, str)
   case golem.LogLevelError: fmt.Println("[ERROR]: " + msg, str)
-  default: panic("log level desconhecido " + level.String())
+  default: panic("unknown log level " + level.String())
   }
 }
 func (l *Logger) Debug(msg string, args map[string]any) { l.Log(golem.LogLevelDebug, msg, args) }
@@ -1261,7 +1285,7 @@ func (l *Logger) Error(msg string, args map[string]any) { l.Log(golem.LogLevelEr
 func main() {
   dataSource, err := golem.NewDataSource(
     postgres.New(func (o *postgres.Options) {
-      // define qual logger será usado, por padrão usa uma implementação com fmt.Println
+      // sets which logger is used; defaults to an implementation using fmt.Println
       o.Logger = &Logger{}
     })
   )
