@@ -120,15 +120,12 @@ runs:
         path: .coverage/coverage.txt
 
     # -------- codecov --------
-    # fail_ci_if_error is false: without a CODECOV_TOKEN repo secret this
-    # upload can't authenticate, and a Codecov outage/auth failure shouldn't
-    # take down a CI run that already built, vetted, and tested successfully.
     - name: Upload to Codecov
       if: ${{ inputs.codecov == 'true' && hashFiles('.coverage/coverage.txt') != '' }}
       uses: codecov/codecov-action@v4
       with:
         files: .coverage/coverage.txt
         flags: ${{ inputs.os-tag }}-go${{ inputs.go-tag }}
-        fail_ci_if_error: false
+        fail_ci_if_error: true
         token: ${{ inputs.codecov_token }}
 
