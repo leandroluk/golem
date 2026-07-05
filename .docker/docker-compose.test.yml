@@ -15,3 +15,21 @@ services:
       timeout: 3s
       retries: 20
 
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_USER: golem
+      MYSQL_PASSWORD: golem
+      MYSQL_DATABASE: golem_test
+      MYSQL_ROOT_PASSWORD: golem_root
+    ports:
+      - "53306:3306"
+    # No init schema: driver/mysql's conformance suite creates its own
+    # CREATE TEMPORARY TABLEs at test-run time (see internal/dialecttest),
+    # so an empty, ready-to-connect database is all this needs to provide.
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u golem -pgolem"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
