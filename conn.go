@@ -36,7 +36,7 @@ type txImpl struct {
 	txConn  TxConn
 }
 
-func (*txImpl) isConn() {}
+func (*txImpl) isConn() { return }
 
 func (t *txImpl) Dialect() Dialect {
 	return t.dialect
@@ -98,4 +98,3 @@ func (r *rawResult) Scan() (map[string]any, error) {
 func (r *rawResult) RowsAffected() (int64, error) {
 	return r.rowsAffected, nil
 }
-

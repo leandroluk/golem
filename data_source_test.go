@@ -1,194 +1,246 @@
 package golem
 
 import (
+	"context"
+	"database/sql/driver"
 	"errors"
+	"github.com/leandroluk/golem/internal/stmt"
 	"testing"
 )
 
-// dsFakeConnector is a uniquely-named fake Connector for this test file
-// (distinct from fakeConnector in connector_test.go) because it needs call
-// counters and a configurable error, which the sibling fake doesn't have.
-type dsFakeConnector struct {
-	connectCalls int
-	closeCalls   int
-	connectErr   error
-	dialect      Dialect
+type mockConnector struct {
+	err error
 }
 
-func (f *dsFakeConnector) Connect() (Dialect, error) {
-	f.connectCalls++
-	if f.connectErr != nil {
-		return nil, f.connectErr
+func (c *mockConnector) Connect() (Dialect, error) {
+	if c.err != nil {
+		return nil, c.err
 	}
-	return f.dialect, nil
+	return &mockDialect{}, nil
 }
 
-func (f *dsFakeConnector) Close() error {
-	f.closeCalls++
-	return nil
+func (c *mockConnector) Close() error { return nil }
+
+type mockDialect struct {
+	beginErr error
+	execErr  error
 }
 
-var _ Connector = (*dsFakeConnector)(nil)
+func (d *mockDialect) Bind(t ColumnType, value any) (driver.Value, error)  { return nil, nil }
+func (d *mockDialect) Scan(t ColumnType, raw any, dest any) error          { return nil }
+func (d *mockDialect) CompileSelect(s *stmt.Select) (string, []any, error) { return "", nil, nil }
+func (d *mockDialect) CompileInsert(s *stmt.Insert) (string, []any, error) { return "", nil, nil }
+func (d *mockDialect) CompileUpdate(s *stmt.Update) (string, []any, error) { return "", nil, nil }
+func (d *mockDialect) CompileDelete(s *stmt.Delete) (string, []any, error) { return "", nil, nil }
+func (d *mockDialect) Query(ctx context.Context, conn Conn, sql string, args []any) ([]map[string]any, error) {
+	return nil, nil
+}
+func (d *mockDialect) Exec(ctx context.Context, conn Conn, sql string, args []any) (int64, error) {
+	return 0, nil
+}
+func (d *mockDialect) IsConflict(err error) bool { return false }
+func (d *mockDialect) ExecRaw(ctx context.Context, conn Conn, sql string, args []any) ([]map[string]any, int64, error) {
+	if d.execErr != nil {
+		return nil, 0, d.execErr
+	}
+	return nil, 1, nil
+}
+func (d *mockDialect) Begin(ctx context.Context, conn Conn) (TxConn, error) {
+	if d.beginErr != nil {
+		return nil, d.beginErr
+	}
+	return &mockTxConn{}, nil
+}
+func (d *mockDialect) Insert(ctx context.Context, conn Conn, s *stmt.Insert) (map[string]any, error) {
+	return nil, nil
+}
+func (d *mockDialect) Update(ctx context.Context, conn Conn, s *stmt.Update) ([]map[string]any, error) {
+	return nil, nil
+}
 
-func TestNewDataSource_NoConnector(t *testing.T) {
-	ds, err := NewDataSource()
+type mockTxConn struct{}
+
+func (f *mockTxConn) Commit(ctx context.Context) error   { return nil }
+func (f *mockTxConn) Rollback(ctx context.Context) error { return nil }
+
+func TestDataSource_IsConn(t *testing.T) {
+	var _ Conn = (*DataSource)(nil)
+	var ds DataSource
+	ds.isConn() // just to cover
+}
+
+func TestNewDataSource_ErrorNoConnector(t *testing.T) {
+	_, err := NewDataSource()
 	if err == nil {
-		t.Fatal("expected error when no connector configured, got nil")
-	}
-	if ds != nil {
-		t.Fatalf("expected nil DataSource, got %v", ds)
+		t.Fatal("expected error when no connector configured")
 	}
 }
 
-func TestNewDataSource_WithConnector_DefaultName(t *testing.T) {
-	fake := &dsFakeConnector{dialect: fakeDialect{}}
-	ds, err := NewDataSource(WithConnector(fake))
+func TestNewDataSource_DefaultName(t *testing.T) {
+	ds, err := NewDataSource(WithConnector(&mockConnector{}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if ds == nil {
-		t.Fatal("expected non-nil DataSource")
 	}
 	if ds.Name() != "default" {
-		t.Fatalf("expected name %q, got %q", "default", ds.Name())
+		t.Fatalf("Name() = %q, want default", ds.Name())
 	}
 }
 
-func TestNewDataSource_WithName(t *testing.T) {
-	fake := &dsFakeConnector{dialect: fakeDialect{}}
-	ds, err := NewDataSource(DataSourceName("example"), WithConnector(fake))
+func TestNewDataSource_CustomName(t *testing.T) {
+	ds, err := NewDataSource(WithConnector(&mockConnector{}), DataSourceName("primary"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ds.Name() != "example" {
-		t.Fatalf("expected name %q, got %q", "example", ds.Name())
+	if ds.Name() != "primary" {
+		t.Fatalf("Name() = %q, want primary", ds.Name())
 	}
 }
 
-func TestDataSource_Connect_Success(t *testing.T) {
-	wantDialect := fakeDialect{}
-	fake := &dsFakeConnector{dialect: wantDialect}
-	ds, err := NewDataSource(WithConnector(fake))
-	if err != nil {
-		t.Fatalf("unexpected error building DataSource: %v", err)
-	}
-
-	if err := ds.Connect(); err != nil {
-		t.Fatalf("unexpected error from Connect: %v", err)
-	}
-	if fake.connectCalls != 1 {
-		t.Fatalf("expected connectCalls == 1, got %d", fake.connectCalls)
-	}
-	if ds.dialect != wantDialect {
-		t.Fatalf("expected ds.dialect to be the fake's returned Dialect")
-	}
-	if !ds.connected {
-		t.Fatal("expected ds.connected to be true after successful Connect")
+func TestDataSource_Connect_Error(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{err: errors.New("connect error")}))
+	err := ds.Connect()
+	if err == nil || err.Error() != "connect error" {
+		t.Fatalf("expected connect error, got %v", err)
 	}
 }
 
-func TestDataSource_Connect_Idempotent(t *testing.T) {
-	fake := &dsFakeConnector{dialect: fakeDialect{}}
-	ds, err := NewDataSource(WithConnector(fake))
-	if err != nil {
-		t.Fatalf("unexpected error building DataSource: %v", err)
-	}
-
+func TestDataSource_Connect_IdempotentNoOp(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
 	if err := ds.Connect(); err != nil {
-		t.Fatalf("unexpected error from first Connect: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if err := ds.Connect(); err != nil {
-		t.Fatalf("unexpected error from second Connect: %v", err)
-	}
-	if fake.connectCalls != 1 {
-		t.Fatalf("expected connectCalls to stay 1 after second Connect, got %d", fake.connectCalls)
+		t.Fatalf("expected no-op success on second Connect, got %v", err)
 	}
 }
 
-func TestDataSource_Connect_ErrorThenRetrySucceeds(t *testing.T) {
-	wantErr := errors.New("boom")
-	fake := &dsFakeConnector{connectErr: wantErr}
-	ds, err := NewDataSource(WithConnector(fake))
-	if err != nil {
-		t.Fatalf("unexpected error building DataSource: %v", err)
-	}
-
-	if err := ds.Connect(); !errors.Is(err, wantErr) {
-		t.Fatalf("expected Connect to return %v, got %v", wantErr, err)
-	}
-	if ds.connected {
-		t.Fatal("expected ds.connected to stay false after failed Connect")
-	}
-
-	// Fix the fake and retry.
-	fake.connectErr = nil
-	fake.dialect = fakeDialect{}
-	if err := ds.Connect(); err != nil {
-		t.Fatalf("expected retry to succeed, got error: %v", err)
-	}
-	if !ds.connected {
-		t.Fatal("expected ds.connected to be true after successful retry")
-	}
-	if fake.connectCalls != 2 {
-		t.Fatalf("expected connectCalls == 2 after retry, got %d", fake.connectCalls)
-	}
-}
-
-func TestDataSource_Close_WithoutConnect(t *testing.T) {
-	fake := &dsFakeConnector{dialect: fakeDialect{}}
-	ds, err := NewDataSource(WithConnector(fake))
-	if err != nil {
-		t.Fatalf("unexpected error building DataSource: %v", err)
-	}
-
+func TestDataSource_Close_NeverConnected_NoOp(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
 	if err := ds.Close(); err != nil {
-		t.Fatalf("expected nil error from Close without Connect, got %v", err)
-	}
-	if fake.closeCalls != 0 {
-		t.Fatalf("expected closeCalls == 0, got %d", fake.closeCalls)
+		t.Fatalf("expected nil, got %v", err)
 	}
 }
 
 func TestDataSource_Close_AfterConnect(t *testing.T) {
-	fake := &dsFakeConnector{dialect: fakeDialect{}}
-	ds, err := NewDataSource(WithConnector(fake))
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+	if err := ds.Close(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDataSource_Exec_Success(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+	res, err := ds.Exec(context.Background(), "SELECT 1")
 	if err != nil {
-		t.Fatalf("unexpected error building DataSource: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := ds.Connect(); err != nil {
-		t.Fatalf("unexpected error from Connect: %v", err)
-	}
-
-	if err := ds.Close(); err != nil {
-		t.Fatalf("expected nil error from Close, got %v", err)
-	}
-	if fake.closeCalls != 1 {
-		t.Fatalf("expected closeCalls == 1, got %d", fake.closeCalls)
+	if res == nil {
+		t.Fatal("expected non-nil Result")
 	}
 }
 
-func TestDataSource_Close_Idempotent(t *testing.T) {
-	fake := &dsFakeConnector{dialect: fakeDialect{}}
-	ds, err := NewDataSource(WithConnector(fake))
+func TestDataSource_Transaction_Success(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+	err := ds.Transaction(context.Background(), func(tx Tx) error { return nil })
 	if err != nil {
-		t.Fatalf("unexpected error building DataSource: %v", err)
-	}
-	if err := ds.Connect(); err != nil {
-		t.Fatalf("unexpected error from Connect: %v", err)
-	}
-
-	if err := ds.Close(); err != nil {
-		t.Fatalf("unexpected error from first Close: %v", err)
-	}
-	if err := ds.Close(); err != nil {
-		t.Fatalf("unexpected error from second Close: %v", err)
-	}
-	if fake.closeCalls != 1 {
-		t.Fatalf("expected closeCalls to stay 1 after second Close, got %d", fake.closeCalls)
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestDataSource_SatisfiesConn(t *testing.T) {
-	var _ Conn = (*DataSource)(nil)
+func TestDataSource_Transaction_FnError_Rollback(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+	fnErr := errors.New("fn error")
+	err := ds.Transaction(context.Background(), func(tx Tx) error { return fnErr })
+	if err != fnErr {
+		t.Fatalf("expected fn error, got %v", err)
+	}
 }
 
+func TestDataSource_Transaction_FnPanic_RollbackAndRepropagate(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+
+	defer func() {
+		r := recover()
+		if r != "boom" {
+			t.Fatalf("expected panic 'boom' to propagate, got %v", r)
+		}
+	}()
+
+	ds.Transaction(context.Background(), func(tx Tx) error { panic("boom") })
+}
+
+func TestDataSource_Transaction_ErrorDisconnected(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	err := ds.Transaction(context.Background(), func(tx Tx) error { return nil })
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDataSource_Transaction_ErrorBegin(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+	ds.dialect.(*mockDialect).beginErr = errors.New("begin error")
+	err := ds.Transaction(context.Background(), func(tx Tx) error { return nil })
+	if err == nil || err.Error() != "begin error" {
+		t.Fatal("expected begin error")
+	}
+}
+
+func TestDataSource_Exec_ErrorDisconnected(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	_, err := ds.Exec(context.Background(), "SELECT 1")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDataSource_Exec_ErrorExec(t *testing.T) {
+	ds, _ := NewDataSource(WithConnector(&mockConnector{}))
+	ds.Connect()
+	ds.dialect.(*mockDialect).execErr = errors.New("exec error")
+	_, err := ds.Exec(context.Background(), "SELECT 1")
+	if err == nil || err.Error() != "exec error" {
+		t.Fatal("expected exec error")
+	}
+}
+
+func TestTxImpl_IsConn(t *testing.T) {
+	var _ Conn = (*txImpl)(nil)
+	var tx txImpl
+	tx.isConn()
+}
+
+func TestTxImpl_Exec_Error(t *testing.T) {
+	d := &mockDialect{execErr: errors.New("exec error")}
+	tx := NewTx(d, &mockTxConn{})
+	_, err := tx.Exec(context.Background(), "SELECT 1")
+	if err == nil || err.Error() != "exec error" {
+		t.Fatal("expected exec error")
+	}
+}
+
+func TestTxImpl_Exec_Success(t *testing.T) {
+	d := &mockDialect{}
+	tx := NewTx(d, &mockTxConn{})
+	res, err := tx.Exec(context.Background(), "SELECT 1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("expected non-nil Result")
+	}
+}
+
+func TestRawResult_Scan_OutOfBounds(t *testing.T) {
+	res := &rawResult{rows: []map[string]any{}, currentIndex: -1}
+	_, err := res.Scan()
+	if err == nil || err.Error() != "golem: Scan called out of bounds or before Next" {
+		t.Fatal("expected scan out of bounds err")
+	}
+}

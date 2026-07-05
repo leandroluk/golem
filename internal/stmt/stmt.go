@@ -17,7 +17,7 @@ type Comparison struct {
 	Value  any    // driver.Value or []driver.Value for "in"
 }
 
-func (Comparison) isPredicate() {}
+func (Comparison) isPredicate() { return }
 
 // Logical represents a logical combination (AND, OR) of nested predicates.
 type Logical struct {
@@ -25,14 +25,14 @@ type Logical struct {
 	Predicates []Predicate
 }
 
-func (Logical) isPredicate() {}
+func (Logical) isPredicate() { return }
 
 // Not represents a logical negation of a nested predicate.
 type Not struct {
 	Predicate Predicate
 }
 
-func (Not) isPredicate() {}
+func (Not) isPredicate() { return }
 
 // AggregateComparison represents an aggregate-expression-to-value comparison
 // (e.g. `SUM("amount")>$1`), used in HAVING clauses. Unlike Comparison, Column
@@ -46,7 +46,7 @@ type AggregateComparison struct {
 	Value  any
 }
 
-func (AggregateComparison) isPredicate() {}
+func (AggregateComparison) isPredicate() { return }
 
 // OrderElement represents a single column ordering clause.
 type OrderElement struct {

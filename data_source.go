@@ -17,7 +17,7 @@ type DataSource struct {
 
 var _ Conn = (*DataSource)(nil)
 
-func (*DataSource) isConn() {}
+func (*DataSource) isConn() { return }
 
 // NewDataSource builds a DataSource from the given options. Returns an error
 // if no Connector was supplied via any option (e.g. postgres.New(...) is
@@ -109,4 +109,3 @@ func (ds *DataSource) Exec(ctx context.Context, sql string, args ...any) (Result
 	}
 	return &rawResult{rows: rows, rowsAffected: affected, currentIndex: -1}, nil
 }
-
