@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -480,6 +481,88 @@ func TestNew_NoTimestamps_FieldsAreEmpty(t *testing.T) {
 	}
 	if meta.DeleteDateField != "" {
 		t.Fatalf("DeleteDateField = %q, want empty", meta.DeleteDateField)
+	}
+}
+
+type triggerTestSubject struct {
+	ID int64
+}
+
+func TestEntity_Triggers_NoHookRegistered_ReturnNil(t *testing.T) {
+	e := New(func(s *triggerTestSubject, b *Table) {
+		b.Col(&s.ID, golem.BIGINT())
+	})
+	ctx := context.Background()
+	var conn golem.Conn
+	item := &triggerTestSubject{ID: 1}
+
+	triggers := map[string]func() error{
+		"BeforeCreate":     func() error { return e.TriggerBeforeCreate(ctx, item, conn) },
+		"AfterCreate":      func() error { return e.TriggerAfterCreate(ctx, item, conn) },
+		"OnConflictCreate": func() error { return e.TriggerOnConflictCreate(ctx, item, conn) },
+		"BeforeUpdate":     func() error { return e.TriggerBeforeUpdate(ctx, item, conn) },
+		"AfterUpdate":      func() error { return e.TriggerAfterUpdate(ctx, item, conn) },
+		"OnConflictUpdate": func() error { return e.TriggerOnConflictUpdate(ctx, item, conn) },
+		"BeforeDelete":     func() error { return e.TriggerBeforeDelete(ctx, item, conn) },
+		"AfterDelete":      func() error { return e.TriggerAfterDelete(ctx, item, conn) },
+		"OnConflictDelete": func() error { return e.TriggerOnConflictDelete(ctx, item, conn) },
+	}
+	for name, fn := range triggers {
+		if err := fn(); err != nil {
+			t.Errorf("Trigger%s with no hook registered: expected nil, got %v", name, err)
+		}
+	}
+}
+
+func TestEntity_Triggers_HookRegistered_RunsIt(t *testing.T) {
+	e := New(func(s *triggerTestSubject, b *Table) {
+		b.Col(&s.ID, golem.BIGINT())
+	})
+	ctx := context.Background()
+	var conn golem.Conn
+	item := &triggerTestSubject{ID: 1}
+
+	var calls []string
+	record := func(name string) func(context.Context, *triggerTestSubject, golem.Conn) error {
+		return func(context.Context, *triggerTestSubject, golem.Conn) error {
+			calls = append(calls, name)
+			return nil
+		}
+	}
+
+	AddHook(e).
+		BeforeCreate(record("BeforeCreate")).
+		AfterCreate(record("AfterCreate")).
+		OnConflictCreate(record("OnConflictCreate")).
+		BeforeUpdate(record("BeforeUpdate")).
+		AfterUpdate(record("AfterUpdate")).
+		OnConflictUpdate(record("OnConflictUpdate")).
+		BeforeDelete(record("BeforeDelete")).
+		AfterDelete(record("AfterDelete")).
+		OnConflictDelete(record("OnConflictDelete"))
+
+	triggers := []struct {
+		name string
+		fn   func() error
+	}{
+		{"BeforeCreate", func() error { return e.TriggerBeforeCreate(ctx, item, conn) }},
+		{"AfterCreate", func() error { return e.TriggerAfterCreate(ctx, item, conn) }},
+		{"OnConflictCreate", func() error { return e.TriggerOnConflictCreate(ctx, item, conn) }},
+		{"BeforeUpdate", func() error { return e.TriggerBeforeUpdate(ctx, item, conn) }},
+		{"AfterUpdate", func() error { return e.TriggerAfterUpdate(ctx, item, conn) }},
+		{"OnConflictUpdate", func() error { return e.TriggerOnConflictUpdate(ctx, item, conn) }},
+		{"BeforeDelete", func() error { return e.TriggerBeforeDelete(ctx, item, conn) }},
+		{"AfterDelete", func() error { return e.TriggerAfterDelete(ctx, item, conn) }},
+		{"OnConflictDelete", func() error { return e.TriggerOnConflictDelete(ctx, item, conn) }},
+	}
+	for _, tc := range triggers {
+		calls = nil
+		if err := tc.fn(); err != nil {
+			t.Errorf("Trigger%s: unexpected error %v", tc.name, err)
+		}
+		if len(calls) != 1 || calls[0] != tc.name {
+			t.Errorf("Trigger%s: expected hook %q to run, got calls=%v", tc.name, tc.name, calls)
+		}
 	}
 }
 
