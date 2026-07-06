@@ -52,6 +52,23 @@ services:
       timeout: 5s
       retries: 20
 
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    environment:
+      ORACLE_PASSWORD: "Golem_Test_2026"
+    ports:
+      - "51521:1521"
+    # No init schema: driver/oracle's conformance suite creates its own
+    # CREATE TABLEs at test-run time (see internal/dialecttest), so a
+    # ready-to-connect FREEPDB1 pluggable database is all this needs to
+    # provide. Unlike M18's mcr.microsoft.com, this image needs no
+    # container-registry login and pulled cleanly in this environment.
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   bigquery:
     image: ghcr.io/goccy/bigquery-emulator:latest
     ports:
