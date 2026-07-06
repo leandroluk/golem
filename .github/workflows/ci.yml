@@ -15,6 +15,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Container jobs check the repo out as a different owner than the
+      # container's user, so git (and go build's VCS stamping, which shells
+      # out to git) refuses it as "dubious ownership" — safe.directory
+      # opts back in. Needed only for this container-based job; the
+      # macos/windows jobs run directly on the runner, not in a container,
+      # so they never hit this.
+      - name: Trust the checked-out repo (container job)
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Go env
         run: |
           go version
