@@ -101,6 +101,20 @@ type Select struct {
 	Count       bool // If true, projects COUNT(*) instead of Columns
 	Joins       []Join
 	Lock        *LockClause // nil means no row locking requested
+
+	// PrimaryKey lists the entity's primary key column names, in declared
+	// order. Every dialect so far ignores this (LIMIT/OFFSET pagination
+	// needs no ORDER BY to be valid SQL for them). driver/mssql needs it:
+	// SQL Server's OFFSET/FETCH pagination is a hard syntax error without
+	// an ORDER BY clause, so when a caller pages without specifying one,
+	// that dialect injects ORDER BY on PrimaryKey instead of letting SQL
+	// Server's own cryptic error surface. Only populated by
+	// Repository[T].FindMany (the one caller that supports pagination
+	// against a real entity table) — repository.Aggregate's own
+	// stmt.Select construction leaves this empty, since an aggregate
+	// query's result columns don't include the source entity's primary
+	// key at all.
+	PrimaryKey []string
 }
 
 // Delete represents a DELETE statement plan.

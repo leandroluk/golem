@@ -3,6 +3,7 @@ version: "3"
 vars:
   GOLEM_TEST_DSN: "{{.GOLEM_TEST_DSN | default \"postgres://golem:golem@localhost:55432/golem_test?sslmode=disable\"}}"
   GOLEM_MYSQL_TEST_DSN: "{{.GOLEM_MYSQL_TEST_DSN | default \"golem:golem@tcp(localhost:53306)/golem_test\"}}"
+  GOLEM_MSSQL_TEST_DSN: "{{.GOLEM_MSSQL_TEST_DSN | default \"sqlserver://sa:Golem_Test_2026!@localhost:51433?database=master\"}}"
 
 tasks:
   build:
@@ -41,10 +42,11 @@ tasks:
       - go tool cover -func=.coverage/coverage.txt
 
   test-integration:
-    desc: Spin up Postgres + MySQL, run integration tests, tear down (always)
+    desc: Spin up Postgres + MySQL + SQL Server, run integration tests, tear down (always)
     env:
       GOLEM_TEST_DSN: "{{.GOLEM_TEST_DSN}}"
       GOLEM_MYSQL_TEST_DSN: "{{.GOLEM_MYSQL_TEST_DSN}}"
+      GOLEM_MSSQL_TEST_DSN: "{{.GOLEM_MSSQL_TEST_DSN}}"
     cmds:
       - docker compose -f .docker/docker-compose.test.yml up -d --wait
       - defer: docker compose -f .docker/docker-compose.test.yml down

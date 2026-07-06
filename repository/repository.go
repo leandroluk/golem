@@ -467,14 +467,15 @@ func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *quer
 	}
 
 	selPlan := &stmt.Select{
-		Table:   r.meta.TableName,
-		Columns: cols,
-		Where:   wherePred,
-		OrderBy: orderBy,
-		Limit:   q.GetLimit(),
-		Offset:  q.GetOffset(),
-		Joins:   stmtJoins,
-		Lock:    lock,
+		Table:      r.meta.TableName,
+		Columns:    cols,
+		Where:      wherePred,
+		OrderBy:    orderBy,
+		Limit:      q.GetLimit(),
+		Offset:     q.GetOffset(),
+		Joins:      stmtJoins,
+		Lock:       lock,
+		PrimaryKey: r.meta.PrimaryKey,
 	}
 
 	sql, args, err := r.conn.Dialect().CompileSelect(selPlan)
@@ -1031,10 +1032,11 @@ func (r *Repository[T]) Exists(ctx context.Context, criteria ...func(*T, *query.
 
 	limit := 1
 	selPlan := &stmt.Select{
-		Table: r.meta.TableName,
-		Where: wherePred,
-		Limit: &limit,
-		Count: true,
+		Table:      r.meta.TableName,
+		Where:      wherePred,
+		Limit:      &limit,
+		Count:      true,
+		PrimaryKey: r.meta.PrimaryKey,
 	}
 
 	sql, args, err := r.conn.Dialect().CompileSelect(selPlan)

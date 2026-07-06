@@ -33,3 +33,28 @@ services:
       timeout: 3s
       retries: 20
 
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Golem_Test_2026!"
+      MSSQL_PID: Developer
+    ports:
+      - "51433:1433"
+    # No init schema: driver/mssql's conformance suite creates its own
+    # CREATE TABLEs at test-run time (see internal/dialecttest), so a
+    # ready-to-connect "master" database is all this needs to provide.
+    # Pulling this image needs mcr.microsoft.com's CDN backend reachable —
+    # see README.md's M18 note if `docker pull` hangs/fails.
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  bigquery:
+    image: ghcr.io/goccy/bigquery-emulator:latest
+    ports:
+      - "59050:9050"
+      - "59060:9060"
+    command: ["--project=test-project", "--port=9050", "--grpc-port=9060"]
