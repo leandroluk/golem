@@ -110,6 +110,21 @@ runs:
       run: |
         New-Item -ItemType Directory -Force .coverage | Out-Null
         go test ./... -short -coverpkg=./... -coverprofile=".coverage/coverage.txt" -covermode=atomic
+        # pwsh does NOT fail this step just because a native command (go
+        # test) returned a non-zero exit code — unlike bash, $LASTEXITCODE
+        # isn't propagated automatically. Without this check, a real `go
+        # test` failure here would silently continue to the next step
+        # (covfilter), which would then fail on a missing/incomplete
+        # coverage.txt with a confusing "file not found" error instead of
+        # the actual test failure.
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "go test failed with exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
+        if (-not (Test-Path ".coverage/coverage.txt")) {
+          Write-Error "go test reported success but .coverage/coverage.txt was not created"
+          exit 1
+        }
 
     # internal/dialecttest/locking.go's lockedFind (line 46+) only runs when
     # the real adapter under test supports a given lock strength — under
