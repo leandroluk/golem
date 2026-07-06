@@ -111,6 +111,29 @@ runs:
         New-Item -ItemType Directory -Force .coverage | Out-Null
         go test ./... -short -coverpkg=./... -coverprofile=".coverage/coverage.txt" -covermode=atomic
 
+    # internal/dialecttest/locking.go's lockedFind (line 46+) only runs when
+    # the real adapter under test supports a given lock strength — under
+    # -short (no Docker in this matrix), only driver/sqlite's untagged
+    # conformance test exercises it, and sqlite reports every strength
+    # unsupported, so these lines are legitimately unreachable here (100%
+    # reachable under `task test-integration`, see STATE.md AD-043/AD-044).
+    # Go has no source-level coverage-ignore pragma, so internal/covfilter
+    # (a plain Go program, no awk/shell-utility dependency — works
+    # identically on every OS in this matrix, including windows/pwsh) strips
+    # those specific profile entries before Codecov/the artifact ever see
+    # them. Mirrors Taskfile.yml's own "coverage" task exactly — one command
+    # instead of separate bash/pwsh variants, since `go run` needs no shell
+    # scripting at all.
+    - name: filter known-integration-only coverage lines
+      if: inputs.os-tag != 'windows'
+      shell: bash
+      run: go run ./internal/covfilter .coverage/coverage.txt
+
+    - name: filter known-integration-only coverage lines (windows)
+      if: inputs.os-tag == 'windows'
+      shell: pwsh
+      run: go run ./internal/covfilter .coverage/coverage.txt
+
     # -------- artifacts --------
     - name: Upload coverage artifact
       if: ${{ hashFiles('.coverage/coverage.txt') != '' }}

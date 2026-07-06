@@ -25,6 +25,18 @@ tasks:
     cmds:
       - mkdir -p .coverage
       - go test ./... -short -coverpkg=./... -coverprofile=.coverage/coverage.txt -covermode=atomic
+      # internal/dialecttest/locking.go's lockedFind (line 46+) only runs
+      # when the real adapter under test supports a given lock strength —
+      # under -short (no Docker), only driver/sqlite's untagged conformance
+      # test exercises it, and sqlite reports every strength unsupported, so
+      # these lines are legitimately unreachable in THIS run (100% reachable
+      # under `task test-integration`, see STATE.md AD-043/AD-044). Go has
+      # no source-level coverage-ignore pragma, so internal/covfilter (a
+      # plain Go program — works wherever `go` runs, no awk/shell-utility
+      # dependency) strips those specific profile entries before computing
+      # %. Keep its excludeFromLine const in sync with locking.go's own
+      # "COVERAGE-EXCLUDED" comment if that file's lines ever shift.
+      - go run ./internal/covfilter .coverage/coverage.txt
       - go tool cover -html=.coverage/coverage.txt -o .coverage/coverage.html
       - go tool cover -func=.coverage/coverage.txt
 
