@@ -97,7 +97,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M16 - MySQL / MariaDB Adapter
 - [x] M17 - SQLite Adapter
 - [x] M18 - SQL Server (MSSQL) Adapter
-- [ ] M19 - Oracle Adapter
+- [x] M19 - Oracle Adapter
 - [ ] M20 - IBM Db2 Adapter
 - [ ] M21 - Snowflake (OLAP) Adapter — reduced scope
 
@@ -119,13 +119,15 @@ now has concrete planned milestones for every database in [INSIGHT.md](INSIGHT.m
   in-memory database — no Docker service needed, the one adapter that genuinely doesn't need one
 - **M18** ✅ — `driver/mssql` (`microsoft/go-mssqldb`, pure database/sql), verified against a real
   SQL Server 2025 container — `OUTPUT INSERTED.*`, `@pN` placeholders, table-hint locking
-- **M19** Oracle, **M20** IBM Db2 — roughly ordered by effort (closer to ANSI SQL/Postgres
-  semantics = less work)
+- **M19** ✅ — `driver/oracle` (`github.com/sijms/go-ora/v2`, pure Go/no cgo), verified against a
+  real Oracle 23ai Free container — multi-round-trip Insert/Update (MySQL-shaped, not
+  single-`RETURNING`), `:N` placeholders, `NUMBER`-family scan disambiguation
+- **M20** IBM Db2 — roughly ordered by effort (closer to ANSI SQL/Postgres semantics = less work)
 - **M21** Snowflake (OLAP) — explicitly reduced scope; no row locking, no `CHECK` constraints, and
   cascade-delete semantics that may not even be wanted for an analytical schema
 
-M19-M21 haven't started yet (see AD-034/AD-036 through AD-045 in `.specs/project/STATE.md`
-for the full reasoning, including the core gaps M16/M17/M18 found and fixed along the way).
+M20-M21 haven't started yet (see AD-034/AD-036 through AD-046 in `.specs/project/STATE.md`
+for the full reasoning, including the core gaps M16-M19 found and fixed along the way).
 
 **M18 (SQL Server) note:** pulling `mcr.microsoft.com/mssql/server` can silently fail or hang on
 some networks/ISPs/corporate DNS setups — the registry's blob storage backend

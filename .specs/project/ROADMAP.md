@@ -417,16 +417,26 @@ Full spec/design/tasks: `.specs/features/mssql-adapter/`.
 ## M19 - Oracle Adapter
 
 **Goal:** `driver/oracle` passing conformance.
-**Status:** PLANNED
+**Status:** ✅ DONE — `TestOracle_Conformance` green against a real Oracle 23ai Free container (`gvenzl/oracle-free:23-slim`, `github.com/sijms/go-ora/v2`, pure Go/no cgo, targeting Oracle 12c+). Found 4 real issues only a live server exposed: unquoted DDL identifiers fold to UPPERCASE (opposite of quoteIdent's always-lowercase-preserving quoting), `golem.TIME()`'s Oracle mapping had to change from `INTERVAL DAY TO SECOND` to `TIMESTAMP` (go-ora can't bind a `time.Time` into an interval column), a `scale`-based int/float disambiguation rule broke `COUNT(*)` (shares FLOAT's "unconstrained NUMBER" sentinel scale — fixed by trying `ParseInt` first, unconditionally), and the default unbounded connection pool caused an intermittent stale-read race requiring `SetMaxOpenConns(1)`. See AD-046 in STATE.md.
 
 ### Features
 
-**`driver/oracle`** - PLANNED
+**`driver/oracle`** (`github.com/sijms/go-ora/v2` + `database/sql`) - DONE
 
-- Resolve the identifier-length question already flagged in STATE.md's Deferred Ideas (30 bytes pre-12.2, 128 from 12.2+: validate/truncate at entity-registration time vs. let the driver error surface as-is) — decide before this milestone starts, not during
-- Decide minimum supported Oracle version up front: `OFFSET`/`FETCH` pagination needs 12c+; earlier versions need `ROWNUM`-based emulation, a materially different `CompileSelect` path
-- `MERGE INTO` for upsert; `RAW(16)`/`VARCHAR2(36)` for UUID (no native UUID type)
-- `FOR UPDATE NOWAIT`/`SKIP LOCKED` supported, same shape as Postgres
+- `OFFSET y ROWS FETCH NEXT x ROWS ONLY` pagination — unlike M18/MSSQL, Oracle does NOT require an `ORDER BY` for this syntax (confirmed via probe), so no default-order-injection logic is needed; `stmt.Select.PrimaryKey` (M18) is read but unused here
+- No upsert path — golem never implemented upsert semantics on any adapter (same finding as M18); `SaveOne`/`SaveMany` route through `Update`, shaped like `driver/mysql`'s multi-round-trip (plain `INSERT`/`UPDATE` + follow-up `SELECT * WHERE <primary key>`), NOT a single-round-trip `RETURNING`-style adapter — Oracle's `RETURNING ... INTO` needs one pre-typed out-bind per column, not viable generically; auto-generated `IDENTITY` primary keys are resolved via a single-column `RETURNING <pk> INTO :N` (`go_ora.Out{}` bind) since `sql.Result.LastInsertId()` is silently unsupported
+- `VARCHAR2(36)` for UUID (design decision, not `RAW(16)`'s byte-format ambiguity); `TIMESTAMP` for TIME (design correction, not `INTERVAL DAY TO SECOND`)
+- `FOR UPDATE`/`NOWAIT`/`SKIP LOCKED` supported, same trailing-clause shape as Postgres; no `FOR SHARE` (Oracle has none, a permanent SQL-dialect gap) and no `NO KEY UPDATE`/`KEY SHARE` (Postgres-specific)
+- `:N` numbered placeholders; double-quoted identifiers
+- `normalizeCell` handles Oracle's uniform `"NUMBER"` `DatabaseTypeName()` (every numeric kind, scanned as a Go string) by trying `strconv.ParseInt` first, falling back to `strconv.ParseFloat`
+- `IsConflict`/`mapError` match `*network.OracleError{ErrCode}` (1 duplicate key, 2291/2292 FK violation — two distinct codes for insert/update-side vs. delete-side, unlike MSSQL's single 547)
+- `db.SetMaxOpenConns(1)` — not a style choice, fixes a confirmed intermittent stale-read race under the default unbounded pool
+
+**Docker/Taskfile wiring** - DONE
+
+- `.docker/docker-compose.test.yml` gained an `oracle` service (`gvenzl/oracle-free:23-slim`, port 51521) — no Oracle Container Registry login needed, unlike Oracle's own official images (a real reachability win over M18's `mcr.microsoft.com` friction); `Taskfile.yml`'s `test-integration` gained `GOLEM_ORACLE_TEST_DSN`
+
+Full spec/design/tasks: `.specs/features/oracle-adapter/`.
 
 ---
 
