@@ -11,7 +11,7 @@ follows.
 
 ## Prior art already in this repo
 
-`.examples/postgres-minimal-blog/main_integration_test.go` is today's only real integration proof
+`.examples/postgres/main_integration_test.go` is today's only real integration proof
 of CRUD/joins/cascade/aggregate/locking/preload against a live Postgres. It already solved two
 problems the harness reuses as-is:
 
@@ -132,17 +132,17 @@ still runs.
 
 ## Subtest groups (`t.Run` names, one group per Goal in spec.md)
 
-| Group | What it proves | Reuses |
-| --- | --- | --- |
-| `BindScanRoundTrip` | every `golem.ColumnType` kind round-trips through `Insert`+`FindOne` unchanged | — |
-| `CRUD` | `Insert`/`InsertMany`/`SaveOne`/`SaveMany`/`Update`/`FindOne`/`FindMany`/`Count`/`Exists`/`Delete` (hard delete, `Widget`) | — |
-| `SoftDelete` | `Delete`/`Restore` on `Deleted`, default filtering + `.WithDeleted()` | M12's soft-delete guarantee |
-| `Cascade` | `OnDeleteCascade`/`OnDeleteSetNull`/`OnDeleteRestrict` between `Parent`/`Child` | M11 |
-| `Joins` | `join.Inner` (at minimum; `Left`/`Right`/`Full` if the dialect's `Capabilities` doesn't gate them out later) between `Parent`/`Child` | M6 |
-| `Preload` | `repository.Preload` between `Parent`/`Child` | M12 |
-| `Aggregates` | `repository.Aggregate` (`GroupBy`/`Sum`/`Count`/`CountAll`/`Having`) over `Widget` | M13 |
-| `Locking` | each `Capabilities.Locking`-gated case, plus the outside-a-`Tx` error guard | M14 |
-| `ConflictDetection` | `golem.ErrDuplicateKey`/`golem.ErrForeignKeyViolation` surface via `errors.Is` | M10 |
+| Group               | What it proves                                                                                                                        | Reuses                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `BindScanRoundTrip` | every `golem.ColumnType` kind round-trips through `Insert`+`FindOne` unchanged                                                        | —                           |
+| `CRUD`              | `Insert`/`InsertMany`/`SaveOne`/`SaveMany`/`Update`/`FindOne`/`FindMany`/`Count`/`Exists`/`Delete` (hard delete, `Widget`)            | —                           |
+| `SoftDelete`        | `Delete`/`Restore` on `Deleted`, default filtering + `.WithDeleted()`                                                                 | M12's soft-delete guarantee |
+| `Cascade`           | `OnDeleteCascade`/`OnDeleteSetNull`/`OnDeleteRestrict` between `Parent`/`Child`                                                       | M11                         |
+| `Joins`             | `join.Inner` (at minimum; `Left`/`Right`/`Full` if the dialect's `Capabilities` doesn't gate them out later) between `Parent`/`Child` | M6                          |
+| `Preload`           | `repository.Preload` between `Parent`/`Child`                                                                                         | M12                         |
+| `Aggregates`        | `repository.Aggregate` (`GroupBy`/`Sum`/`Count`/`CountAll`/`Having`) over `Widget`                                                    | M13                         |
+| `Locking`           | each `Capabilities.Locking`-gated case, plus the outside-a-`Tx` error guard                                                           | M14                         |
+| `ConflictDetection` | `golem.ErrDuplicateKey`/`golem.ErrForeignKeyViolation` surface via `errors.Is`                                                        | M10                         |
 
 Each group is an unexported function (`runCRUD(t *testing.T, ds *golem.DataSource, schema Schema)`,
 etc.) called from `Run` via `t.Run(name, func(t *testing.T) { ... })` — keeps `Run` itself a short
@@ -154,7 +154,7 @@ dispatch table, each group independently readable/skippable.
   `connector_integration_test.go`'s existing convention): defines `postgresConformanceSchema`
   (the four `CREATE TEMPORARY TABLE` statements) and `postgresCapabilities` (all fields `true`),
   then calls `dialecttest.Run`.
-- No changes to `.examples/postgres-minimal-blog` — it stays as a hand-written, narrative example
+- No changes to `.examples/postgres` — it stays as a hand-written, narrative example
   (its purpose is documentation-by-demonstration, not conformance proof), and no changes to
   `driver/postgres/connector_integration_test.go` (adapter-specific connection plumbing stays
   separate per spec.md's Out of Scope).

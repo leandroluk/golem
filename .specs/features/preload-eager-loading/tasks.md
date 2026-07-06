@@ -11,7 +11,7 @@
 
 ## T2: Example + integration test — DONE
 
-`.examples/postgres-minimal-blog/main_integration_test.go`: `TestBlogExample_Preload_LoadsPostsPerUser` — 2 users, 3 posts (2+1 split), verifies `repository.Preload(ctx, userRepo, users, PostEntity)` groups correctly against real Postgres.
+`.examples/postgres/main_integration_test.go`: `TestBlogExample_Preload_LoadsPostsPerUser` — 2 users, 3 posts (2+1 split), verifies `repository.Preload(ctx, userRepo, users, PostEntity)` groups correctly against real Postgres.
 
 ## T3: README.md — DONE
 

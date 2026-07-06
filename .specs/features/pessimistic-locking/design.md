@@ -36,7 +36,7 @@ Postgres rejects `SELECT ... FOR UPDATE` when the query has `GROUP BY`, a HAVING
 
 ## Real-blocking verification, not just SQL-shape verification
 
-Every other milestone's example integration test asserts an outcome (a row exists/doesn't, a value changed). Pessimistic locking's entire value proposition is a *runtime concurrency property* — two overlapping transactions actually serialize on the same row — which SQL-shape assertions (unit tests checking `sql == "... FOR UPDATE"`) can't prove by themselves. `TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker` (`.examples/postgres-minimal-blog/main_integration_test.go`) runs two real transactions from two goroutines against real Postgres, channel-synchronized:
+Every other milestone's example integration test asserts an outcome (a row exists/doesn't, a value changed). Pessimistic locking's entire value proposition is a *runtime concurrency property* — two overlapping transactions actually serialize on the same row — which SQL-shape assertions (unit tests checking `sql == "... FOR UPDATE"`) can't prove by themselves. `TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker` (`.examples/postgres/main_integration_test.go`) runs two real transactions from two goroutines against real Postgres, channel-synchronized:
 
 1. Goroutine 1 opens a transaction, runs `FindOne(...).ForUpdate()`, signals "locked" over a channel, then blocks on a second channel waiting for permission to commit.
 2. Main goroutine waits for the "locked" signal, then starts goroutine 2, which opens its own transaction and runs the same `FindOne(...).ForUpdate()` against the identical row.

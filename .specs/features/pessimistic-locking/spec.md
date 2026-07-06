@@ -23,4 +23,4 @@
 
 - [x] `go test ./query/... ./driver/postgres/... ./repository/...` — green, every new function at 100% statement coverage
 - [x] `go build ./...` — no errors
-- [x] `.examples/postgres-minimal-blog`: `TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker` proves real blocking behavior against Postgres (two goroutines, two transactions, channel-synchronized); `TestBlogExample_ForUpdate_OutsideTransaction_ReturnsError` proves the outside-a-Tx guard
+- [x] `.examples/postgres`: `TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker` proves real blocking behavior against Postgres (two goroutines, two transactions, channel-synchronized); `TestBlogExample_ForUpdate_OutsideTransaction_ReturnsError` proves the outside-a-Tx guard

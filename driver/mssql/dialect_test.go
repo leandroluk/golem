@@ -1283,6 +1283,36 @@ func TestDialect_ExecRaw_CollectRowsError(t *testing.T) {
 	}
 }
 
+func TestDialect_ExecRaw_WriteStatement_Success(t *testing.T) {
+	d, mock := newMockDialect(t)
+	mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(0, 3))
+
+	rows, affected, err := d.ExecRaw(context.Background(), nil, "UPDATE users SET name = @p1", []any{"x"})
+	if err != nil || affected != 3 || len(rows) != 0 {
+		t.Fatalf("rows=%v affected=%d err=%v", rows, affected, err)
+	}
+}
+
+func TestDialect_ExecRaw_WriteStatement_ExecError(t *testing.T) {
+	d, mock := newMockDialect(t)
+	mock.ExpectExec("UPDATE users").WillReturnError(errors.New("exec error"))
+
+	_, _, err := d.ExecRaw(context.Background(), nil, "UPDATE users SET name = @p1", []any{"x"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDialect_ExecRaw_WriteStatement_RowsAffectedError(t *testing.T) {
+	d, mock := newMockDialect(t)
+	mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewErrorResult(errors.New("rows affected error")))
+
+	_, _, err := d.ExecRaw(context.Background(), nil, "UPDATE users SET name = @p1", []any{"x"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestCollectRows_ColumnsError(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

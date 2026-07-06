@@ -23,4 +23,4 @@
 
 ## T5: Example + integration test — DONE
 
-`.examples/postgres-minimal-blog/entities.go`: `Post`'s `ForeignKey` to `User` now uses `OnDelete(relation.OnDeleteCascade)`. `TestBlogExample_CascadeDeleteUser_DeletesTheirPosts` in `main_integration_test.go` verifies against real Postgres. README.md's `ForeignKeyOptions` example corrected (`OnDelete(OnDeleteDefault)` → `OnDelete(OnDeleteCascade)`, matching its own descriptive comment) and annotated with which options have real runtime effect.
+`.examples/postgres/entities.go`: `Post`'s `ForeignKey` to `User` now uses `OnDelete(relation.OnDeleteCascade)`. `TestBlogExample_CascadeDeleteUser_DeletesTheirPosts` in `main_integration_test.go` verifies against real Postgres. README.md's `ForeignKeyOptions` example corrected (`OnDelete(OnDeleteDefault)` → `OnDelete(OnDeleteCascade)`, matching its own descriptive comment) and annotated with which options have real runtime effect.

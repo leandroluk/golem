@@ -1,9 +1,9 @@
 # Schema Declaration + Repository Core CRUD Tasks
 
-Covers both `.specs/features/schema-declaration/` and `.specs/features/repository-core-crud/` (delivered together, driven by `examples/postgres-minimal-blog`).
+Covers both `.specs/features/schema-declaration/` and `.specs/features/repository-core-crud/` (delivered together, driven by `examples/postgres`).
 
 **Design**: `schema-declaration/design.md`, `repository-core-crud/design.md`
-**Status**: Done — all 9 tasks complete, `make gate-full` passes (unit + real dockerized Postgres integration, including `examples/postgres-minimal-blog`)
+**Status**: Done — all 9 tasks complete, `make gate-full` passes (unit + real dockerized Postgres integration, including `examples/postgres`)
 
 **SPEC_DEVIATION found during T9**: `Repository[T].Insert` originally sent every declared column, including a zero-valued PK, which collided with `BIGSERIAL` defaults (caught via the real-Postgres integration test). Fixed in `repository/repository.go`: zero-valued fields are now omitted from the INSERT so DB-side defaults apply. See commit `fix(repository): omit zero-valued fields from Insert`.
 
@@ -80,18 +80,18 @@ Phase 6 (sequential): T9 (example main.go + integration test) -- depends on T5, 
 **Tests**: none (infra) — validated implicitly when T9's integration test runs against it
 **Gate**: build (`docker compose -f docker-compose.test.yml config` validates)
 
-### T8: `examples/postgres-minimal-blog` entity declarations [P]  — ✅ Complete
+### T8: `examples/postgres` entity declarations [P]  — ✅ Complete
 
 **What**: `User`/`Post`/`Category`/`PostToCategory` structs + their `entity.New[...]` declarations, matching `testdata/schema.sql`'s table/column names exactly (explicit `.TableName("users")`/`.TableName("post_to_category")`/`.Name("owner_user_id")` etc. where defaults wouldn't match).
-**Where**: `examples/postgres-minimal-blog/entities.go`
+**Where**: `examples/postgres/entities.go`
 **Depends on**: T3 (entity package), T1 (ColumnType)
 **Tests**: unit — `go build` succeeding on this file IS the test (declarations either compile and resolve correctly or don't); one light test per entity asserting `Describe()` returns the expected table/column names is worth adding since it directly proves the naming-match with `schema.sql`
 **Gate**: quick
 
-### T9: `examples/postgres-minimal-blog/main.go` + integration test  — ✅ Complete
+### T9: `examples/postgres/main.go` + integration test  — ✅ Complete
 
 **What**: A runnable `main.go` demonstrating: insert a user, insert 2 posts owned by that user, insert 2 categories, insert `post_to_category` junction rows linking them, `FindByID` the user back to prove the round-trip. An integration test (`//go:build integration`) running the same flow programmatically (not just eyeballing `main.go` output) against the dockerized Postgres from T7's schema.
-**Where**: `examples/postgres-minimal-blog/main.go`, `examples/postgres-minimal-blog/main_integration_test.go`
+**Where**: `examples/postgres/main.go`, `examples/postgres/main_integration_test.go`
 **Depends on**: T5, T6, T7, T8
 **Tests**: integration
 **Gate**: full (`make test-integration`)
@@ -108,5 +108,3 @@ Phase 4: T5 (needs T4)
 Phase 5: T6 (needs T3, T4)
 Phase 6: T9 (needs T5, T6, T7, T8)
 ```
-
-

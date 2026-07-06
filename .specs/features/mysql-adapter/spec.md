@@ -25,12 +25,12 @@ test of whether AD-015/AD-016's dialect-agnostic core (`golem.ColumnType`, `gole
 
 ## Out of Scope
 
-| Item | Reason |
-| --- | --- |
-| Dedicated MariaDB CI target / conformance run | User decision: MySQL 8+ is primary and verified this milestone; MariaDB is best-effort (same driver, same code), revisit with its own milestone if a real need shows up |
-| `NO KEY UPDATE`/`KEY SHARE` locking strengths | No MySQL equivalent exists at all (Postgres-specific, per M15's `Capabilities.Locking`) — declared unsupported, not worked around |
-| MySQL-specific features with no golem equivalent (e.g. `ENUM`/`SET` types, storage engine selection, full-text indexes) | Nothing in `golem.ColumnType`/`entity.Table` models these yet; adding them is a separate, larger design question than "port the existing surface to a new dialect" |
-| Migrating `.examples/postgres-minimal-blog` to also run against MySQL | The conformance suite (M15) is what proves cross-dialect correctness now; the example stays Postgres-only narrative documentation, consistent with M15's own scope decision |
+| Item                                                                                                                    | Reason                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dedicated MariaDB CI target / conformance run                                                                           | User decision: MySQL 8+ is primary and verified this milestone; MariaDB is best-effort (same driver, same code), revisit with its own milestone if a real need shows up     |
+| `NO KEY UPDATE`/`KEY SHARE` locking strengths                                                                           | No MySQL equivalent exists at all (Postgres-specific, per M15's `Capabilities.Locking`) — declared unsupported, not worked around                                           |
+| MySQL-specific features with no golem equivalent (e.g. `ENUM`/`SET` types, storage engine selection, full-text indexes) | Nothing in `golem.ColumnType`/`entity.Table` models these yet; adding them is a separate, larger design question than "port the existing surface to a new dialect"          |
+| Migrating `.examples/postgres` to also run against MySQL                                                                | The conformance suite (M15) is what proves cross-dialect correctness now; the example stays Postgres-only narrative documentation, consistent with M15's own scope decision |
 
 ---
 
@@ -137,19 +137,19 @@ against `driver/mysql`, with `NoKeyUpdate`/`KeyShare` reported as `SKIP`.
 
 ## Requirement Traceability
 
-| Requirement ID | Story | Phase | Status |
-| --- | --- | --- | --- |
-| MYSQL-01 | P1: Passes M15 conformance | Design | Pending |
-| MYSQL-02 | P1: Passes M15 conformance | Design | Pending |
-| MYSQL-03 | P1: Passes M15 conformance | Design | Pending |
-| MYSQL-04 | P2: Insert/Update without RETURNING | Design | Pending |
-| MYSQL-05 | P2: Insert/Update without RETURNING | Design | Pending |
-| MYSQL-06 | P2: Insert/Update without RETURNING | Design | Pending |
-| MYSQL-07 | P3: Conflict/lock/pagination/upsert | Design | Pending |
-| MYSQL-08 | P3: Conflict/lock/pagination/upsert | Design | Pending |
-| MYSQL-09 | P3: Conflict/lock/pagination/upsert | Design | Pending |
-| MYSQL-10 | P3: Conflict/lock/pagination/upsert | Design | Pending |
-| MYSQL-11 | P3: Conflict/lock/pagination/upsert | Design | Pending |
+| Requirement ID | Story                               | Phase  | Status  |
+| -------------- | ----------------------------------- | ------ | ------- |
+| MYSQL-01       | P1: Passes M15 conformance          | Design | Pending |
+| MYSQL-02       | P1: Passes M15 conformance          | Design | Pending |
+| MYSQL-03       | P1: Passes M15 conformance          | Design | Pending |
+| MYSQL-04       | P2: Insert/Update without RETURNING | Design | Pending |
+| MYSQL-05       | P2: Insert/Update without RETURNING | Design | Pending |
+| MYSQL-06       | P2: Insert/Update without RETURNING | Design | Pending |
+| MYSQL-07       | P3: Conflict/lock/pagination/upsert | Design | Pending |
+| MYSQL-08       | P3: Conflict/lock/pagination/upsert | Design | Pending |
+| MYSQL-09       | P3: Conflict/lock/pagination/upsert | Design | Pending |
+| MYSQL-10       | P3: Conflict/lock/pagination/upsert | Design | Pending |
+| MYSQL-11       | P3: Conflict/lock/pagination/upsert | Design | Pending |
 
 **Coverage:** 11 total, 0 mapped to tasks, 11 unmapped ⚠️ (expected — Design/Tasks phases haven't run yet)
 

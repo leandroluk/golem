@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  GOLEM_TEST_DSN: "{{.GOLEM_TEST_DSN | default \"postgres://golem:golem@localhost:55432/golem_test?sslmode=disable\"}}"
+  GOLEM_POSTGRES_TEST_DSN: "{{.GOLEM_POSTGRES_TEST_DSN | default \"postgres://golem:golem@localhost:55432/golem_test?sslmode=disable\"}}"
   GOLEM_MYSQL_TEST_DSN: "{{.GOLEM_MYSQL_TEST_DSN | default \"golem:golem@tcp(localhost:53306)/golem_test\"}}"
   GOLEM_MSSQL_TEST_DSN: "{{.GOLEM_MSSQL_TEST_DSN | default \"sqlserver://sa:Golem_Test_2026!@localhost:51433?database=master\"}}"
   GOLEM_ORACLE_TEST_DSN: "{{.GOLEM_ORACLE_TEST_DSN | default \"oracle://system:Golem_Test_2026@localhost:51521/FREEPDB1\"}}"
@@ -42,23 +42,63 @@ tasks:
       - go tool cover -html=.coverage/coverage.txt -o .coverage/coverage.html
       - go tool cover -func=.coverage/coverage.txt
 
-  test-integration:
-    desc: Spin up Postgres + MySQL + SQL Server + Oracle, run integration tests, tear down (always)
+  test-integration-postgres:
+    desc: Spin up Postgres, run integration tests, tear down (always)
     env:
-      GOLEM_TEST_DSN: "{{.GOLEM_TEST_DSN}}"
-      GOLEM_MYSQL_TEST_DSN: "{{.GOLEM_MYSQL_TEST_DSN}}"
-      GOLEM_MSSQL_TEST_DSN: "{{.GOLEM_MSSQL_TEST_DSN}}"
-      GOLEM_ORACLE_TEST_DSN: "{{.GOLEM_ORACLE_TEST_DSN}}"
+      GOLEM_POSTGRES_TEST_DSN: "{{.GOLEM_POSTGRES_TEST_DSN}}"
     cmds:
-      - docker compose -f .docker/docker-compose.test.yml up -d --wait
-      - defer: docker compose -f .docker/docker-compose.test.yml down
+      - docker compose -f docker-compose.test.yml up -d --wait postgres
+      - defer: docker compose -f docker-compose.test.yml down
       # go's "..." wildcard skips dot-prefixed dirs even when given explicitly
       # (e.g. "./.examples/..." still matches nothing), so each dot-prefixed
-      # package needing coverage must be listed by its exact path — otherwise
-      # .examples/postgres-minimal-blog's integration tests never run (see
-      # STATE.md L-003).
-      - go test -tags=integration ./...
-      - go test -tags=integration ./.examples/postgres-minimal-blog
+      # package needing coverage must be listed by its exact path
+      - go test -tags=integration ./.examples/postgres
+      - go test -tags=integration ./driver/postgres
+
+  test-integration-mysql:
+    desc: Spin up MySQL, run integration tests, tear down (always)
+    env:
+      GOLEM_MYSQL_TEST_DSN: "{{.GOLEM_MYSQL_TEST_DSN}}"
+    cmds:
+      - docker compose -f docker-compose.test.yml up -d --wait mysql
+      - defer: docker compose -f docker-compose.test.yml down
+      - go test -tags=integration ./.examples/mysql
+      - go test -tags=integration ./driver/mysql
+
+  test-integration-mssql:
+    desc: Spin up SQL Server, run integration tests, tear down (always)
+    env:
+      GOLEM_MSSQL_TEST_DSN: "{{.GOLEM_MSSQL_TEST_DSN}}"
+    cmds:
+      - docker compose -f docker-compose.test.yml up -d --wait mssql
+      - defer: docker compose -f docker-compose.test.yml down
+      - go test -tags=integration ./.examples/mssql
+      - go test -tags=integration ./driver/mssql
+
+  test-integration-oracle:
+    desc: Spin up Oracle, run integration tests, tear down (always)
+    env:
+      GOLEM_ORACLE_TEST_DSN: "{{.GOLEM_ORACLE_TEST_DSN}}"
+    cmds:
+      - docker compose -f docker-compose.test.yml up -d --wait oracle
+      - defer: docker compose -f docker-compose.test.yml down
+      - go test -tags=integration ./.examples/oracle
+      - go test -tags=integration ./driver/oracle
+
+  test-integration-sqlite:
+    desc: Run SQLite integration tests
+    cmds:
+      - go test -tags=integration ./.examples/sqlite
+      - go test -tags=integration ./driver/sqlite
+
+  test-integration:
+    desc: Spin up Postgres + MySQL + SQL Server + Oracle, run integration tests, tear down (always)
+    cmds:
+      - task: test-integration-postgres
+      - task: test-integration-mysql
+      - task: test-integration-mssql
+      - task: test-integration-oracle
+      - task: test-integration-sqlite
 
   gate-quick:
     desc: Fast gate — build + vet + unit tests
@@ -72,4 +112,3 @@ tasks:
     cmds:
       - task: gate-quick
       - task: test-integration
-

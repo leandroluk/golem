@@ -44,7 +44,7 @@ by default — individual cascade subtests override per-case via their own entit
 `OnDeleteSetNull`/`OnDeleteRestrict` need separate FK configs, per M11's existing test pattern of
 one child-table-per-cascade-mode).
 **Depends on**: T1
-**Reuses**: `.examples/postgres-minimal-blog/entities.go`'s style (plain structs, `entity.New`, no tags)
+**Reuses**: `.examples/postgres/entities.go`'s style (plain structs, `entity.New`, no tags)
 **Requirement**: CONF-03
 
 **Done when**:
@@ -137,7 +137,7 @@ same PK/unique twice) and `golem.ErrForeignKeyViolation` (bad FK, and — reusin
 `CREATE TEMPORARY TABLE` statements matching T2's entities exactly) + `postgresCapabilities`
 (every field `true`) + one test function calling `dialecttest.Run`.
 **Depends on**: T1-T7 (needs every group to exist)
-**Reuses**: `.examples/postgres-minimal-blog/main_integration_test.go`'s `TempPost` DDL pattern,
+**Reuses**: `.examples/postgres/main_integration_test.go`'s `TempPost` DDL pattern,
 `connector_integration_test.go`'s `testDSN()`/`resolveDSN()` helpers
 **Requirement**: CONF-01, CONF-02, CONF-06
 

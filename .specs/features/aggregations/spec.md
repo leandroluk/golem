@@ -25,4 +25,4 @@
 
 - [x] `go test ./query/... ./repository/... ./driver/postgres/...` — green, every new function at 100% statement coverage
 - [x] `go build ./...` — no errors
-- [x] `.examples/postgres-minimal-blog`: `TestBlogExample_Aggregate_PostCountPerUser` (real Postgres, `task test-integration`) verifies `GroupBy`+`CountAll`+`Where`+`Having` end to end
+- [x] `.examples/postgres`: `TestBlogExample_Aggregate_PostCountPerUser` (real Postgres, `task test-integration`) verifies `GroupBy`+`CountAll`+`Where`+`Having` end to end

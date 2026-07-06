@@ -27,4 +27,4 @@
 
 - [x] `go test ./repository/...` — green, every new function (`Preload`, `resolvePreloadJoin`) at 100% statement coverage
 - [x] `go build ./...` — no errors
-- [x] `.examples/postgres-minimal-blog`: `TestBlogExample_Preload_LoadsPostsPerUser` (real Postgres, `task test-integration`) verifies loading multiple users' posts in one call
+- [x] `.examples/postgres`: `TestBlogExample_Preload_LoadsPostsPerUser` (real Postgres, `task test-integration`) verifies loading multiple users' posts in one call

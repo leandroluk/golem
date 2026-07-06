@@ -98,8 +98,9 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M17 - SQLite Adapter
 - [x] M18 - SQL Server (MSSQL) Adapter
 - [x] M19 - Oracle Adapter
-- [ ] M20 - IBM Db2 Adapter
-- [ ] M21 - Snowflake (OLAP) Adapter — reduced scope
+
+Adapter set is considered **done** at these 5 databases (Postgres, MySQL, SQLite, SQL Server,
+Oracle) — see "Next Steps" below.
 
 See `.specs/project/ROADMAP.md` for the full milestone breakdown.
 
@@ -122,12 +123,19 @@ now has concrete planned milestones for every database in [INSIGHT.md](INSIGHT.m
 - **M19** ✅ — `driver/oracle` (`github.com/sijms/go-ora/v2`, pure Go/no cgo), verified against a
   real Oracle 23ai Free container — multi-round-trip Insert/Update (MySQL-shaped, not
   single-`RETURNING`), `:N` placeholders, `NUMBER`-family scan disambiguation
-- **M20** IBM Db2 — roughly ordered by effort (closer to ANSI SQL/Postgres semantics = less work)
-- **M21** Snowflake (OLAP) — explicitly reduced scope; no row locking, no `CHECK` constraints, and
-  cascade-delete semantics that may not even be wanted for an analytical schema
 
-M20-M21 haven't started yet (see AD-034/AD-036 through AD-046 in `.specs/project/STATE.md`
-for the full reasoning, including the core gaps M16-M19 found and fixed along the way).
+**M20 (IBM Db2) and M21 (Snowflake) were both dropped from scope** (see AD-051/AD-052 in
+`.specs/project/STATE.md`). Db2 was the only adapter that couldn't stay pure-Go
+(`github.com/ibmdb/go_ibm_db` needs the IBM CLI driver's native DLL/shared library at runtime, no
+viable pure-Go alternative exists) and has a small, enterprise/legacy-niche real-world footprint
+(~0.7-0.8% relational-database market share). Snowflake's only free local test target (a DuckDB-based
+emulator) turned out too broken on basic operations (parameterized queries, pagination, several core
+types) to trust, and Snowflake's standard tables don't enforce `UNIQUE`/`FOREIGN KEY` constraints at
+all — a real, permanent divergence from every other adapter. After two consecutive milestones landing
+on "increasingly exotic database, increasingly awkward adapter shape, no free way to verify," the
+adapter set was deliberately capped at the 5 common, widely-used databases above — the same scope
+philosophy mainstream ORMs like TypeORM follow, rather than chasing exhaustive database coverage. Any
+future adapter needs its own fresh scope justification, not an assumption that M20/M21 resume.
 
 **M18 (SQL Server) note:** pulling `mcr.microsoft.com/mssql/server` can silently fail or hang on
 some networks/ISPs/corporate DNS setups — the registry's blob storage backend
@@ -136,15 +144,13 @@ and there's no Docker Hub mirror to fall back to. If `docker pull` fails, check 
 setup first. For one setup, installing and enabling the **Cloudflare One (WARP) client** was the
 only thing that fixed it — your mileage may vary depending on what's actually blocking the CDN
 backend in your environment.
-CockroachDB, BigQuery, Redshift, and ClickHouse aren't in INSIGHT.md's comparison table and aren't
-currently planned — CockroachDB is Postgres-wire-compatible and could likely reuse `driver/postgres`
-with light changes; the OLAP-analytics ones (BigQuery/Redshift/ClickHouse) diverge enough (no real
-OLTP transactions, `STRUCT`/`ARRAY` types, table-engine concepts) to need their own design pass first.
+No other adapters are planned. The adapter set is deliberately capped at the 5 common databases
+above (AD-051/AD-052) — CockroachDB, BigQuery, Redshift, ClickHouse, Db2, and Snowflake are all out
+of scope, not a backlog.
 
-`INSIGHT.md` (repo root) is the type-mapping reference this list draws from — it already covers
-Postgres/MySQL/MSSQL/Oracle/SQLite/Db2/Snowflake column types, DDL equivalences (auto-increment,
-upsert, pagination, indexes), and full-text-search query patterns per dialect. Extend it with
-BigQuery/Redshift/ClickHouse columns before starting any of the OLAP adapters.
+`INSIGHT.md` (repo root) is the type-mapping research this list drew from while the adapters above
+were being built — kept as reference material, including its Db2/Snowflake sections from before
+those were dropped.
 
 ---
 

@@ -1,6 +1,6 @@
 # Repository Core CRUD (M3, scoped) Specification
 
-**Driving use case:** `examples/postgres-minimal-blog` — insert users/posts/categories/junction rows, read a few back to prove the relations round-trip through real Postgres.
+**Driving use case:** `examples/postgres` — insert users/posts/categories/junction rows, read a few back to prove the relations round-trip through real Postgres.
 
 ## Scope decision (SPEC_DEVIATION from ROADMAP.md's full M3 list)
 
@@ -17,15 +17,15 @@ Same rationale as `schema-declaration/spec.md`: scoped to exactly what the drivi
 
 ## Out of Scope (this pass)
 
-| Feature | Reason |
-| --- | --- |
-| `SaveOne`/`SaveMany` | Example never re-persists an in-memory instance after insert |
-| `UpdateOne`/`UpdateMany` | No update use case in the example |
-| `Delete`/`Restore` | No `DeleteDate` on any example entity |
-| `Count`/`Exists` | Not exercised |
-| `FindMany`/`FindOne` (query builder) | M4 — needs `op`/`query` packages not built yet |
-| Composite-PK `FindByID` | `PostToCategory` (the only composite-PK entity) is insert-only in the example |
-| Batched multi-row `INSERT` | `InsertMany` as N×`Insert` is correct and sufficient; optimize only if a real perf need appears |
+| Feature                              | Reason                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `SaveOne`/`SaveMany`                 | Example never re-persists an in-memory instance after insert                                    |
+| `UpdateOne`/`UpdateMany`             | No update use case in the example                                                               |
+| `Delete`/`Restore`                   | No `DeleteDate` on any example entity                                                           |
+| `Count`/`Exists`                     | Not exercised                                                                                   |
+| `FindMany`/`FindOne` (query builder) | M4 — needs `op`/`query` packages not built yet                                                  |
+| Composite-PK `FindByID`              | `PostToCategory` (the only composite-PK entity) is insert-only in the example                   |
+| Batched multi-row `INSERT`           | `InsertMany` as N×`Insert` is correct and sufficient; optimize only if a real perf need appears |
 
 ## Acceptance Criteria
 
@@ -38,8 +38,6 @@ Same rationale as `schema-declaration/spec.md`: scoped to exactly what the drivi
 
 ## Success Criteria
 
-- [ ] `examples/postgres-minimal-blog/main.go` runs against a real (dockerized) Postgres: creates a user, two posts (one per... at least one) owned by that user, two categories, and junction rows linking posts to categories; reads at least one entity back via `FindByID` to prove the round-trip
+- [ ] `examples/postgres/main.go` runs against a real (dockerized) Postgres: creates a user, two posts (one per... at least one) owned by that user, two categories, and junction rows linking posts to categories; reads at least one entity back via `FindByID` to prove the round-trip
 - [ ] `go test ./repository/...` unit tests pass (fake `Conn`/`Dialect`)
 - [ ] An integration test (behind the `integration` build tag, reusing `docker-compose.test.yml`) runs the same flow against real Postgres
-
-

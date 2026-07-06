@@ -14,6 +14,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/must"
+	"github.com/leandroluk/golem/internal/sqlutil"
 	"github.com/leandroluk/golem/internal/stmt"
 )
 
@@ -778,6 +779,31 @@ func (d *dialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []
 // ExecRaw executes a raw SQL statement, returning the list of returned rows (if any) and rows affected count.
 func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, int64, error) {
 	executor := d.getExecutor(conn)
+
+	// database/sql's *sql.Rows has no CommandTag-equivalent RowsAffected —
+	// that's only available from sql.Result (ExecContext), not
+	// QueryContext. A write statement (INSERT/UPDATE/DELETE/...) run via
+	// QueryContext always reports 0 rows (no result set), which used to
+	// make golem.DataSource.Exec("UPDATE ...") always report 0 rows
+	// affected regardless of how many rows actually changed — confirmed
+	// via a real .examples/mysql test failure. sqlutil.IsRowReturning is a
+	// heuristic (checks the leading keyword) picking ExecContext for
+	// writes (real RowsAffected()) and QueryContext for reads (real row
+	// data, no affected-count that matters). driver/postgres never had
+	// this problem: pgx's Rows expose a CommandTag with the real affected
+	// count even through its own Query path.
+	if !sqlutil.IsRowReturning(sql) {
+		result, err := executor.ExecContext(ctx, sql, args...)
+		if err != nil {
+			return nil, 0, mapError(err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return nil, 0, err
+		}
+		return nil, affected, nil
+	}
+
 	rows, err := executor.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, 0, mapError(err)
@@ -789,12 +815,6 @@ func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args
 		return nil, 0, err
 	}
 
-	// database/sql's *sql.Rows has no CommandTag-equivalent RowsAffected —
-	// that's only available from sql.Result (ExecContext), not
-	// QueryContext. For a raw statement that might be either a SELECT (rows,
-	// no meaningful affected-count) or a write issued via Query (unusual but
-	// not prevented), len(results) is the best available affected-count
-	// signal when rows are present.
 	return results, int64(len(results)), nil
 }
 

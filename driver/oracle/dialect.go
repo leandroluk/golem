@@ -16,6 +16,7 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/must"
+	"github.com/leandroluk/golem/internal/sqlutil"
 	"github.com/leandroluk/golem/internal/stmt"
 )
 
@@ -847,6 +848,24 @@ func (d *dialect) Exec(ctx context.Context, conn golem.Conn, sql string, args []
 // ExecRaw executes a raw SQL statement, returning the list of returned rows (if any) and rows affected count.
 func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, int64, error) {
 	executor := d.getExecutor(conn)
+
+	// See driver/mysql's identical comment: QueryContext can't report a
+	// real affected-row-count for a write statement (no result set), so a
+	// write is run via ExecContext instead — confirmed necessary via a
+	// real .examples test failure (golem.DataSource.Exec("UPDATE ...")
+	// always reported 0 rows affected).
+	if !sqlutil.IsRowReturning(sql) {
+		result, err := executor.ExecContext(ctx, sql, args...)
+		if err != nil {
+			return nil, 0, mapError(err)
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return nil, 0, err
+		}
+		return nil, affected, nil
+	}
+
 	rows, err := executor.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, 0, mapError(err)

@@ -19,7 +19,7 @@ Reads `q.GetLockStrength()`/`.GetLockWait()`, builds `stmt.Select.Lock`, returns
 
 ## T4: Example + integration tests — DONE
 
-`.examples/postgres-minimal-blog/main_integration_test.go`: `TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker` (real two-transaction blocking proof) and `TestBlogExample_ForUpdate_OutsideTransaction_ReturnsError` (guard proof), both against real Postgres.
+`.examples/postgres/main_integration_test.go`: `TestBlogExample_PessimisticLocking_ForUpdateBlocksConcurrentLocker` (real two-transaction blocking proof) and `TestBlogExample_ForUpdate_OutsideTransaction_ReturnsError` (guard proof), both against real Postgres.
 
 ## T5: README.md — DONE
 

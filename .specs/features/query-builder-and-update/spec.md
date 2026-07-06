@@ -4,7 +4,7 @@
 
 ## Scope decision (SPEC_DEVIATION from ROADMAP.md's full M4/M5)
 
-Per user direction: drop `Repository[T].FindByID` entirely — `FindOne`/`FindMany` (with a `Where(op.Eq(&t.ID, id))` criteria) already cover that case, so keeping a separate PK-only method is redundant surface. Also scoped down from the full M4/M5 feature lists to exactly what closes basic CRUD for `postgres-minimal-blog`-style usage:
+Per user direction: drop `Repository[T].FindByID` entirely — `FindOne`/`FindMany` (with a `Where(op.Eq(&t.ID, id))` criteria) already cover that case, so keeping a separate PK-only method is redundant surface. Also scoped down from the full M4/M5 feature lists to exactly what closes basic CRUD for `postgres`-style usage:
 
 **In scope this pass:**
 - `op.Eq(fieldPtr, value) op.Condition` — the ONE comparison operator (others — `Gt`/`Gte`/`Lt`/`Lte`/`In`/`Like`/`Or`/`Not` — grow on demand later, per AD-017's own precedent)
@@ -33,8 +33,6 @@ Per user direction: drop `Repository[T].FindByID` entirely — `FindOne`/`FindMa
 
 ## Success Criteria
 
-- [ ] `.examples/postgres-minimal-blog/main.go` uses `FindOne` instead of the removed `FindByID`, still round-trips correctly
+- [ ] `.examples/postgres/main.go` uses `FindOne` instead of the removed `FindByID`, still round-trips correctly
 - [ ] `go test ./op/... ./query/... ./repository/...` pass (unit, fakes)
 - [ ] Integration test (real Postgres) covers `FindMany`/`FindOne`/`SaveOne`/`UpdateOne`/`UpdateMany`
-
-

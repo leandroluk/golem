@@ -36,4 +36,4 @@
 
 - [x] `go test ./relation/... ./entity/... ./repository/...` — all green, `relation` package at 100% statement coverage, every new function in `entity`/`repository` for this feature at 100% (verified via `go tool cover -func`)
 - [x] `go build ./...` — no errors
-- [x] `.examples/postgres-minimal-blog`: `Post`'s `ForeignKey` to `User` now uses `OnDelete(relation.OnDeleteCascade)`; `TestBlogExample_CascadeDeleteUser_DeletesTheirPosts` (real Postgres, `task test-integration`) verifies deleting a `User` cascades into deleting their `Post` rows
+- [x] `.examples/postgres`: `Post`'s `ForeignKey` to `User` now uses `OnDelete(relation.OnDeleteCascade)`; `TestBlogExample_CascadeDeleteUser_DeletesTheirPosts` (real Postgres, `task test-integration`) verifies deleting a `User` cascades into deleting their `Post` rows

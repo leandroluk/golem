@@ -70,10 +70,8 @@ Phase 4 (sequential): T7 (example: FindOne instead of FindByID + integration tes
 
 ### T7: Update example + integration test
 
-**What**: `examples/postgres-minimal-blog/main.go`: replace the removed `FindByID` call with `FindOne(ctx, func(t *User, q *query.Query[User]) { q.Where(op.Eq(&t.ID, user.ID)) })`. `main_integration_test.go`: replace/extend the existing `FindByID`-based assertions with `FindOne`/`FindMany` equivalents, and add real-Postgres coverage for `SaveOne` (e.g. update the user's `Name`, save, re-fetch, confirm) and `UpdateOne`/`UpdateMany` (e.g. update a post's `Title` by criteria).
-**Where**: `examples/postgres-minimal-blog/main.go`, `examples/postgres-minimal-blog/main_integration_test.go`
+**What**: `examples/postgres/main.go`: replace the removed `FindByID` call with `FindOne(ctx, func(t *User, q *query.Query[User]) { q.Where(op.Eq(&t.ID, user.ID)) })`. `main_integration_test.go`: replace/extend the existing `FindByID`-based assertions with `FindOne`/`FindMany` equivalents, and add real-Postgres coverage for `SaveOne` (e.g. update the user's `Name`, save, re-fetch, confirm) and `UpdateOne`/`UpdateMany` (e.g. update a post's `Title` by criteria).
+**Where**: `examples/postgres/main.go`, `examples/postgres/main_integration_test.go`
 **Depends on**: T5, T6
 **Tests**: integration
 **Gate**: full (`make test-integration`)
-
-

@@ -110,7 +110,7 @@ M10 will add `ErrDuplicateKey`/`ErrForeignKeyViolation` and SQLSTATE-based mappi
 
 ## Bootstrapping the example's schema (DDL — out of golem's own scope per AD-012)
 
-`golem` never generates DDL. `examples/postgres-minimal-blog` needs real tables (`users`, `post`, `category`, `post_to_category`) with FK constraints before it can run. Since `docker-compose.test.yml`'s Postgres service has no persistent volume (fresh container every `up`/`down` cycle), a SQL file mounted at `/docker-entrypoint-initdb.d/` runs automatically on first container init — idiomatic Postgres-in-Docker bootstrapping, zero code in `golem` or the example needed to create tables.
+`golem` never generates DDL. `examples/postgres` needs real tables (`users`, `post`, `category`, `post_to_category`) with FK constraints before it can run. Since `docker-compose.test.yml`'s Postgres service has no persistent volume (fresh container every `up`/`down` cycle), a SQL file mounted at `/docker-entrypoint-initdb.d/` runs automatically on first container init — idiomatic Postgres-in-Docker bootstrapping, zero code in `golem` or the example needed to create tables.
 
 - **New file**: `testdata/schema.sql` (repo root) — `CREATE TABLE` statements for all M2/M3 integration tests AND the example to share.
 - **`docker-compose.test.yml` modification**: add a volume mount `./testdata/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro` to the existing `postgres` service.
@@ -120,13 +120,11 @@ M10 will add `ErrDuplicateKey`/`ErrForeignKeyViolation` and SQLSTATE-based mappi
 
 ## Tech Decisions
 
-| Decision | Choice | Rationale |
-| --- | --- | --- |
-| No `internal/plan` AST this pass | Direct SQL string building in `Dialect.Insert`/`FindByID` | No query builder exists yet to justify an AST (YAGNI) — see "Why this pass diverges from AD-016" above |
-| `Conn` gains `Dialect() Dialect` | Exported method added now | FOUND-11/18 (M1) explicitly anticipated this exact growth moment; `repository` (external package) has no other way to reach the active `Dialect` |
-| `golem.ErrNotFound` introduced ahead of M10 | One sentinel, in a new `errors.go` | `FindByID` cannot signal "no row" any other way without string-matching driver errors, which the project explicitly rejects elsewhere (see Errors section of README) |
-| Values passed to `pgx` without going through `Dialect.Bind` | Direct native Go values | `Bind`'s real job (UUID/JSONB/exotic types) isn't exercised by `BIGINT`/`VARCHAR`/`TEXT` — pgx already marshals these natively; wiring `Bind` through now would just call a stub that always errors |
-| `InsertMany` = N×`Insert` | No batched multi-row `INSERT` | Spec's own Out of Scope — optimize only when there's a real multi-row perf need |
-| Schema bootstrap via Docker `initdb.d`, not golem code | `testdata/schema.sql` | Matches AD-012 (migrations are always external to `golem`) — the example needs tables to exist, but golem itself must never be the thing that creates them |
-
-
+| Decision                                                    | Choice                                                    | Rationale                                                                                                                                                                                           |
+| ----------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No `internal/plan` AST this pass                            | Direct SQL string building in `Dialect.Insert`/`FindByID` | No query builder exists yet to justify an AST (YAGNI) — see "Why this pass diverges from AD-016" above                                                                                              |
+| `Conn` gains `Dialect() Dialect`                            | Exported method added now                                 | FOUND-11/18 (M1) explicitly anticipated this exact growth moment; `repository` (external package) has no other way to reach the active `Dialect`                                                    |
+| `golem.ErrNotFound` introduced ahead of M10                 | One sentinel, in a new `errors.go`                        | `FindByID` cannot signal "no row" any other way without string-matching driver errors, which the project explicitly rejects elsewhere (see Errors section of README)                                |
+| Values passed to `pgx` without going through `Dialect.Bind` | Direct native Go values                                   | `Bind`'s real job (UUID/JSONB/exotic types) isn't exercised by `BIGINT`/`VARCHAR`/`TEXT` — pgx already marshals these natively; wiring `Bind` through now would just call a stub that always errors |
+| `InsertMany` = N×`Insert`                                   | No batched multi-row `INSERT`                             | Spec's own Out of Scope — optimize only when there's a real multi-row perf need                                                                                                                     |
+| Schema bootstrap via Docker `initdb.d`, not golem code      | `testdata/schema.sql`                                     | Matches AD-012 (migrations are always external to `golem`) — the example needs tables to exist, but golem itself must never be the thing that creates them                                          |

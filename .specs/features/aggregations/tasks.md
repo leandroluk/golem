@@ -23,7 +23,7 @@
 
 ## T5: Example + integration test — DONE
 
-`.examples/postgres-minimal-blog/main_integration_test.go`: `TestBlogExample_Aggregate_PostCountPerUser` — `GroupBy`+`CountAll`+`Where`+`Having` against real Postgres.
+`.examples/postgres/main_integration_test.go`: `TestBlogExample_Aggregate_PostCountPerUser` — `GroupBy`+`CountAll`+`Where`+`Having` against real Postgres.
 
 ## T6: README.md — DONE
 

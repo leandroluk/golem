@@ -8,10 +8,10 @@ M1-M14 proved golem's core (entity mapping, repository, query builder, joins, ho
 transactions, relations/cascade, preload, aggregations, pessimistic locking) against Postgres
 only. The behavior contracts these features rely on were never written down as a portable test
 suite — they live scattered across `driver/postgres`'s unit tests (mocked dialect) and
-`.examples/postgres-minimal-blog`'s integration tests (real Postgres, using that example's own
+`.examples/postgres`'s integration tests (real Postgres, using that example's own
 `User`/`Post`/`Message` schema). Nothing about either is reusable by a second adapter.
 
-Without this, M16 (MySQL/MariaDB) would mean hand-copying `.examples/postgres-minimal-blog`'s ~10
+Without this, M16 (MySQL/MariaDB) would mean hand-copying `.examples/postgres`'s ~10
 integration test functions into a new example, adjusting them by hand, and hoping nothing drifts
 as more adapters get added after that. AD-034 already decided this is worth avoiding — this spec
 defines exactly what gets built.
@@ -19,7 +19,7 @@ defines exactly what gets built.
 ## Goals
 
 - [ ] A single, reusable test harness that any `golem.Connector` implementation can be run
-      against, asserting the same behavioral guarantees `.examples/postgres-minimal-blog`
+      against, asserting the same behavioral guarantees `.examples/postgres`
       currently proves only for Postgres
 - [ ] `driver/postgres` is proven conformant by being the harness's first (and, until M16, only)
       caller — no behavior change to what's already verified, just relocated/reused
@@ -29,11 +29,11 @@ defines exactly what gets built.
 
 ## Out of Scope
 
-| Item | Reason |
-| --- | --- |
-| Actually building a second adapter (MySQL/etc.) | That's M16+; this milestone only builds and proves the harness against the one adapter that already exists |
+| Item                                                                             | Reason                                                                                                                                     |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Actually building a second adapter (MySQL/etc.)                                  | That's M16+; this milestone only builds and proves the harness against the one adapter that already exists                                 |
 | Testing driver-specific connection plumbing (DSN parsing, pool options, logging) | Adapter-specific by nature (see `driver/postgres/dsn_test.go`, `connector_test.go`) — stays adapter-local, not part of the shared contract |
-| A CLI or `go generate` step to scaffold a new adapter's test file | Out of scope for now; revisit if scaffolding boilerplate becomes painful once 2-3 adapters exist |
+| A CLI or `go generate` step to scaffold a new adapter's test file                | Out of scope for now; revisit if scaffolding boilerplate becomes painful once 2-3 adapters exist                                           |
 
 ---
 
@@ -55,11 +55,11 @@ need to invent my own integration tests from scratch.
    `golem.Connector` THEN the harness SHALL run every conformance case as Go subtests
    (`t.Run(...)`), each independently reportable pass/fail.
 2. WHEN `driver/postgres`'s own integration test calls the same entrypoint THEN every case that
-   currently passes via `.examples/postgres-minimal-blog` SHALL still pass, with no assertions
+   currently passes via `.examples/postgres` SHALL still pass, with no assertions
    weakened to make the harness generic.
 3. WHEN the harness needs example entities (a single-PK entity, a soft-delete entity, a
    cascade-FK parent/child pair) THEN it SHALL define and own them itself — no dependency on
-   `.examples/postgres-minimal-blog`'s `User`/`Post`/`Message` types.
+   `.examples/postgres`'s `User`/`Post`/`Message` types.
 
 **Independent Test**: Run the harness against `driver/postgres` under `-tags=integration`
 targeting the existing Dockerized test Postgres; all conformance subtests pass.
@@ -112,7 +112,7 @@ suite could.
 
 - WHEN the harness's own example entities collide (table name, schema) with something already in
   the target test database THEN the harness SHALL use a distinct, harness-owned table-name
-  prefix so it never collides with `.examples/postgres-minimal-blog`'s tables when both run
+  prefix so it never collides with `.examples/postgres`'s tables when both run
   against the same test database in the same CI job.
 - WHEN a conformance subtest needs cleanup (rows inserted) THEN it SHALL clean up after itself
   (delete/truncate) so subtests don't leak state into each other or across repeated runs.
@@ -124,14 +124,14 @@ suite could.
 
 ## Requirement Traceability
 
-| Requirement ID | Story | Phase | Status |
-| --- | --- | --- | --- |
-| CONF-01 | P1: Run the shared suite | Design | Pending |
-| CONF-02 | P1: Run the shared suite | Design | Pending |
-| CONF-03 | P1: Run the shared suite | Design | Pending |
-| CONF-04 | P2: Declare unsupported capabilities | Design | Pending |
-| CONF-05 | P2: Declare unsupported capabilities | Design | Pending |
-| CONF-06 | P3: Wired into test-integration | Design | Pending |
+| Requirement ID | Story                                | Phase  | Status  |
+| -------------- | ------------------------------------ | ------ | ------- |
+| CONF-01        | P1: Run the shared suite             | Design | Pending |
+| CONF-02        | P1: Run the shared suite             | Design | Pending |
+| CONF-03        | P1: Run the shared suite             | Design | Pending |
+| CONF-04        | P2: Declare unsupported capabilities | Design | Pending |
+| CONF-05        | P2: Declare unsupported capabilities | Design | Pending |
+| CONF-06        | P3: Wired into test-integration      | Design | Pending |
 
 **Coverage:** 6 total, 0 mapped to tasks, 6 unmapped ⚠️ (expected — Design/Tasks phases haven't run yet)
 

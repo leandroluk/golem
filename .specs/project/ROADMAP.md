@@ -226,7 +226,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 - `golem.ErrNotFound`, `golem.ErrDuplicateKey`, `golem.ErrForeignKeyViolation` (`errors.go`)
 - Postgres adapter (`driver/postgres/dialect.go`'s `mapError`) maps SQLSTATE codes (`23505` → `ErrDuplicateKey`, `23503` → `ErrForeignKeyViolation`) and wraps with `%w` (Go 1.20+ multi-`%w`) so the native `*pgconn.PgError` stays reachable via `errors.As`
 - Unmapped driver errors (including non-Postgres ones) pass through unchanged — no forced generic "unknown" sentinel
-- Covered by `driver/postgres/errors_test.go` (unit, all 4 SQLSTATE/pass-through cases) and `.examples/postgres-minimal-blog`'s `TestBlogExample_TypedErrors` (integration, real constraint violations)
+- Covered by `driver/postgres/errors_test.go` (unit, all 4 SQLSTATE/pass-through cases) and `.examples/postgres`'s `TestBlogExample_TypedErrors` (integration, real constraint violations)
 
 ---
 
@@ -305,14 +305,14 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 
 **Goal:** Extract cross-cutting behavior contracts (bind/scan round-trip, CRUD, joins, soft delete, cascade, aggregates, locking, conflict detection) into a reusable, dialect-agnostic harness — so every adapter from M16 onward is verified against the identical guarantees instead of hand-copied ad hoc tests per adapter.
 **Target:** `internal/dialecttest` exposes a single conformance entrypoint (`Run`); `driver/postgres` calls it from a new `conformance_integration_test.go`.
-**Status:** ✅ DONE — `task test-integration` passes: `TestPostgres_Conformance` green against real Postgres, `.examples/postgres-minimal-blog`'s pre-existing suite unaffected. Along the way, the harness immediately found and fixed 3 real bugs in `driver/postgres`/`repository` that no prior test (unit or integration) had exercised — see AD-037.
+**Status:** ✅ DONE — `task test-integration` passes: `TestPostgres_Conformance` green against real Postgres, `.examples/postgres`'s pre-existing suite unaffected. Along the way, the harness immediately found and fixed 3 real bugs in `driver/postgres`/`repository` that no prior test (unit or integration) had exercised — see AD-037.
 
 ### Features
 
 **Conformance harness** (`internal/dialecttest`) - DONE
 
 - `Run(t, schema, caps, opts ...golem.Option)` — builds a uniquely-named `*DataSource` (`t.Name()`, per AD-035), runs `schema`'s DDL once, dispatches to 9 subtest groups
-- Own fixed logical schema (`Widget`/`Deleted`/`Parent`/`CascadeChild`/`SetNullChild`/`RestrictChild`, table-prefixed `conf_*`) — no dependency on `.examples/postgres-minimal-blog`'s entities; each adapter supplies its own dialect-correct `CREATE TEMPORARY TABLE` DDL for that fixed shape (harness never generates DDL, see AD-012)
+- Own fixed logical schema (`Widget`/`Deleted`/`Parent`/`CascadeChild`/`SetNullChild`/`RestrictChild`, table-prefixed `conf_*`) — no dependency on `.examples/postgres`'s entities; each adapter supplies its own dialect-correct `CREATE TEMPORARY TABLE` DDL for that fixed shape (harness never generates DDL, see AD-012)
 - Bind/Scan round-trip for every `golem.ColumnType` kind (`BindScanRoundTrip` group)
 - CRUD (`Insert`/`InsertMany`/`SaveOne`/`Update`/`FindOne`/`FindMany`/`Count`/`Exists`/`Delete`) + `Where`/`OrderBy`/`Limit`/`Offset` (`CRUD` group)
 - Soft delete filter + `.WithDeleted()`/`Restore` (`SoftDelete` group, M12); cascade delete/set-null/restrict (`Cascade` group, M11, one physical child table per mode)
@@ -323,7 +323,7 @@ testable on its own, in dependency order (later milestones assume earlier ones w
 **`driver/postgres` as first caller** - DONE
 
 - New `driver/postgres/conformance_integration_test.go` (own `//go:build integration` tag): `postgresConformanceSchema` (6 `CREATE TEMPORARY TABLE` statements) + `postgresCapabilities` (every field `true`) + `TestPostgres_Conformance` calling `dialecttest.Run`
-- No changes to `.examples/postgres-minimal-blog` (stays a hand-written narrative example) or `driver/postgres/connector_integration_test.go` (adapter-specific connection plumbing, out of scope per spec.md)
+- No changes to `.examples/postgres` (stays a hand-written narrative example) or `driver/postgres/connector_integration_test.go` (adapter-specific connection plumbing, out of scope per spec.md)
 
 **3 real bugs found and fixed** (AD-037) - DONE
 
@@ -440,40 +440,40 @@ Full spec/design/tasks: `.specs/features/oracle-adapter/`.
 
 ---
 
-## M20 - IBM Db2 Adapter
+## M20 - IBM Db2 Adapter — DROPPED
 
-**Goal:** `driver/db2` passing conformance.
-**Status:** PLANNED
-
-### Features
-
-**`driver/db2`** - PLANNED
-
-- `MERGE INTO` for upsert; `OFFSET`/`FETCH` pagination
-- `CHAR(16) FOR BIT DATA` for UUID (no native UUID type)
-- `FOR UPDATE WITH RS`/`WITH RR` locking clauses — another `stmt.LockClause` translation table, distinct from MSSQL's and Oracle's
+**Status:** ❌ Dropped from scope (see AD-051 in STATE.md). `driver/db2` was fully built and
+100%-unit-tested (`github.com/ibmdb/go_ibm_db`), and its real container was later confirmed reachable
+and healthy — but closing it required installing IBM's native CLI driver (`db2cli64.dll`/`.so`) on
+every machine that runs it, the only adapter that couldn't stay pure-Go (no viable pure-Go DRDA
+driver exists — `github.com/obaydullahmhs/go-db2` was evaluated and rejected as an experimental,
+"work in progress" reimplementation). Combined with Db2's small, enterprise/legacy-niche real-world
+usage (~0.7-0.8% relational-database market share per public tooling-adoption data), the mandatory
+native-driver friction for every `golem` user wasn't worth the one exception to every other adapter's
+"just `go get` and go" experience. All code was removed (`driver/db2`, `.examples/db2`,
+`.specs/features/db2-adapter/`); see AD-047/AD-049/AD-050 in STATE.md for what the build/real-server
+work found before the decision to drop it, kept for history in case a solid pure-Go Db2 driver
+appears later.
 
 ---
 
-## M21 - Snowflake (OLAP) Adapter — reduced scope
+## M21 - Snowflake (OLAP) Adapter — DROPPED
 
-**Goal:** `driver/snowflake` passing a deliberately narrower conformance subset — this is the one adapter whose target workload (analytical/OLAP) doesn't fit every M1-M14 guarantee, so scope is explicitly smaller than every prior adapter, not a gap to close later.
-**Status:** PLANNED
-
-### Features
-
-**`driver/snowflake`** - PLANNED
-
-- No row-level locking at all (OLAP has no `SELECT ... FOR UPDATE` equivalent) — this adapter rejects every lock strength unconditionally; M14's `golem.Tx` guard already assumes a dialect *can* lock, so this is the first real test of a dialect that flatly can't
-- No `CHECK` constraint support (per INSIGHT.md) — degrade gracefully rather than emit invalid DDL, if/when `entity.Table` grows a `CHECK` equivalent
-- `MERGE INTO` for upsert; `VARIANT` for JSON; `TIMESTAMP_NTZ` for DATETIME
-- Do not inherit M11's cascade-delete assumptions uncritically — OLAP schemas commonly skip FK constraints entirely for load performance; confirm a real use case wants cascade support here before building it
+**Status:** ❌ Dropped from scope (see AD-052 in STATE.md). A working `driver/snowflake` package was
+built (pure Go, `github.com/snowflakedb/gosnowflake`, no native dependency) and unit-tested with
+mocks, but before it was finished the user made an explicit scope call: stop chasing progressively
+more niche/exotic databases (Db2, Snowflake) and instead follow the same adapter-scope philosophy as
+mainstream ORMs like TypeORM — support the common, widely-used databases well, not every database
+that exists. `driver/postgres`/`mysql`/`sqlite`/`mssql`/`oracle` (M15-M19) already cover that common
+set. All Snowflake code was removed (`driver/snowflake`, `.specs/features/snowflake-adapter/`, the
+`snowflake` service from `docker-compose.test.yml`, `github.com/snowflakedb/gosnowflake` from
+`go.mod`); the `internal/dialecttest.Capabilities.ConstraintsNotEnforced` core-schema addition (added
+to let the harness skip conflict-detection subtests for Snowflake's non-enforcing standard tables)
+was reverted too, since no adapter needs it anymore.
 
 ---
 
 ## Future Considerations
 
 - Configurable transaction isolation level on `dataSource.Transaction` (v1 ships with driver/DB default only, see M8)
-- M16-M21's exact order is a starting proposal (impact/effort: MySQL and SQLite first, MSSQL/Oracle/Db2 progressively higher effort, Snowflake last and reduced-scope) — re-order freely if a real consumer needs a specific adapter sooner; see AD-034 in STATE.md
-
-
+- The adapter set is considered DONE at M19's 5 databases (Postgres, MySQL, SQLite, SQL Server, Oracle) — M20 (Db2) and M21 (Snowflake) were both explicitly dropped rather than built out further; see AD-051/AD-052 in STATE.md for the reasoning. A new adapter would need its own fresh scope decision, not an assumption that the M16-M21 list resumes where it left off.
