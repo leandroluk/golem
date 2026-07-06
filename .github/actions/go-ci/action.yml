@@ -109,7 +109,14 @@ runs:
       shell: pwsh
       run: |
         New-Item -ItemType Directory -Force .coverage | Out-Null
-        go test ./... -short -coverpkg=./... -coverprofile=".coverage/coverage.txt" -covermode=atomic
+        # Space-separated flags, NOT "-flag=value" — confirmed via direct
+        # repro that pwsh mis-tokenizes multiple stacked "-flag=value"
+        # native-command arguments (e.g. "-coverpkg=./... -coverprofile=
+        # .coverage/coverage.txt"), silently producing a `go test` that
+        # exits 0 but never writes the coverage file at all (no error, no
+        # warning — just a missing file discovered one step later). Using
+        # "-flag value" instead sidesteps pwsh's parser entirely.
+        go test ./... -short -coverpkg ./... -coverprofile .coverage/coverage.txt -covermode atomic
         # pwsh does NOT fail this step just because a native command (go
         # test) returned a non-zero exit code — unlike bash, $LASTEXITCODE
         # isn't propagated automatically. Without this check, a real `go
