@@ -367,32 +367,50 @@ Full spec/design/tasks: `.specs/features/mysql-adapter/`.
 
 **Goal:** `driver/sqlite` — embedded/serverless, no Docker service needed for its own tests (the one adapter genuinely different from every other in this list).
 **Target:** Conformance suite green against an in-memory/temp-file database, no `docker-compose` dependency.
-**Status:** PLANNED
+**Status:** ✅ DONE — `TestSQLite_Conformance` green against a real in-memory SQLite database via `modernc.org/sqlite` (pure Go, no cgo). Zero Docker/Taskfile wiring needed — realizes this milestone's own stated goal. Every `Locking` field reports `false`/`SKIP` (first adapter where locking is entirely unsupported). Found that `golem.Dialect.Bind`/`Scan` being dead code (M15/AD-037's known fact) has a sharper consequence here than in M16: date/time values round-trip via the raw driver's own serialization, not this adapter's Bind formatting — see AD-04x.
 
 ### Features
 
-**`driver/sqlite`** - PLANNED
+**`driver/sqlite`** (`modernc.org/sqlite` + `database/sql`) - DONE
 
-- Every `ColumnType` kind maps onto one of SQLite's 5 storage classes (mostly INTEGER/TEXT/REAL/BLOB) — dynamic typing means Bind/Scan carry more of the correctness burden here than in any other adapter
-- `INSERT ... ON CONFLICT ... DO UPDATE SET` for upsert (same syntax family as Postgres)
-- No real row-level locking (SQLite locks the whole database file) — every lock strength either maps to a database-level lock or is rejected; this is where M14's "locking works or errors, never silently no-ops" guarantee gets exercised hardest
-- `AUTOINCREMENT` only means anything combined with `INTEGER PRIMARY KEY` — confirm this composes with existing `entity.PrimaryKey` metadata before assuming it's a drop-in
+- Every `ColumnType` kind maps onto one of SQLite's 5 storage classes (mostly INTEGER/TEXT/REAL/BLOB); `Bind`/`Scan` mirror `driver/postgres`'s simple pass-through shape (including for `date`/`datetime`/`time` — see below), even though both remain unit-tested-only dead code in the real path, same as every other adapter
+- `Insert`/`Update` via `RETURNING *` — SQLite (3.35+, confirmed via Context7 + web search against the bundled `modernc.org/sqlite` v1.53.0) supports `RETURNING` natively, so this adapter is architecturally closer to `driver/postgres`'s single-round-trip shape than to `driver/mysql`'s `LAST_INSERT_ID()` dance; `stmt.Insert/Update.PrimaryKey` (M16/AD-038) are read but unused, same as Postgres
+- `resolveDSN` forces 3 non-optional settings via the DSN's query string: `_pragma=foreign_keys(1)` (SQLite defaults FK enforcement OFF), `_pragma=busy_timeout(5000)`, and `_time_format=sqlite` (see AD-04x — needed because `Bind` is never actually called)
+- Connection pool is always bounded to `SetMaxOpenConns(1)` — SQLite's single-writer model, and required so a shared `:memory:` DSN (`file::memory:?cache=shared`) doesn't fragment across multiple pooled connections
+- `IsConflict`/`mapError` use `modernc.org/sqlite`'s extended SQLite result codes (`Error.Code()`) — confirmed empirically (not just via docs) that the driver returns the extended code (2067/1555/787) by default, not the primary one (19)
+- Locking: every strength (`update`/`no_key_update`/`share`/`key_share`) and every wait mode unconditionally errors — SQLite has no `SELECT ... FOR ...` clause of any kind, the first adapter where `Capabilities.Locking` is entirely `false`
+- `INSERT ... ON CONFLICT (key) DO UPDATE SET` for upsert (same syntax family as Postgres); `LIMIT ? OFFSET ?` pagination; double-quote identifier quoting (Postgres-style, not MySQL's backticks)
+- `AUTOINCREMENT` behavior: `INTEGER PRIMARY KEY` alone (SQLite's rowid alias) is sufficient and composes with `entity.PrimaryKey` with no changes needed — the stricter `AUTOINCREMENT` keyword (which prevents rowid reuse) wasn't needed for a fresh `:memory:` database per test run
+
+**No Docker/Taskfile wiring** - DONE (by not existing)
+
+- `driver/sqlite`'s own tests (unit and integration) open `sqlite.New(func(o *Options) { o.Path = ":memory:" })` directly — no `GOLEM_SQLITE_TEST_DSN` env var, no `.docker/docker-compose.test.yml` service, no `Taskfile.yml` change. `task test-integration`'s existing `go test -tags=integration ./...` already picks this adapter up.
 
 ---
 
 ## M18 - SQL Server (MSSQL) Adapter
 
 **Goal:** `driver/mssql` passing conformance.
-**Status:** PLANNED
+**Status:** ✅ DONE — `TestMSSQL_Conformance` green against a real SQL Server 2025 container (`microsoft/go-mssqldb`, pure database/sql, no cgo). Found 3 real bugs only a live server exposed (mocks caught none): DECIMAL columns scan as `[]byte` ASCII text (same class as MySQL's AD-039); `repository.Exists()`'s Count+Limit query needed `ORDER BY (SELECT NULL)` (a bare `COUNT(*)` can't `ORDER BY` a real column without `GROUP BY`); `go-mssqldb`'s `QueryContext` is lazy — constraint violations only surface via `rows.Err()` inside `collectRows`, not the immediate `QueryContext` error. See AD-045 in STATE.md.
 
 ### Features
 
-**`driver/mssql`** - PLANNED
+**`driver/mssql`** (`github.com/microsoft/go-mssqldb` + `database/sql`) - DONE
 
-- `OFFSET y ROWS FETCH NEXT x ROWS ONLY` pagination (different clause shape than `LIMIT`/`OFFSET`)
-- `MERGE INTO ...` for upsert (no native `ON CONFLICT`)
-- Locking via table hints (`WITH (UPDLOCK, ROWLOCK)`) instead of `FOR UPDATE` — `stmt.LockClause`'s `Strength`/`Wait` need an MSSQL-specific translation table; `NOWAIT` maps to a statement-level hint, not a per-row clause
+- `OFFSET @pN ROWS FETCH NEXT @pM ROWS ONLY` pagination — hard syntax error without an `ORDER BY`; `stmt.Select` gained a new `PrimaryKey []string` field so `CompileSelect` can inject a default `ORDER BY <pk> ASC` when a caller paginates without one, or `ORDER BY (SELECT NULL)` for bare-aggregate (`Count`) queries where no real column can be ordered by
+- No upsert path needed — golem never implemented upsert semantics on any adapter (a design-phase assumption about needing `MERGE INTO` was caught and corrected before implementation, see STATE.md AD-045); `SaveOne`/`SaveMany` route through the same `Update` as everywhere else
+- Locking via table hints (`WITH (UPDLOCK, ROWLOCK[, NOWAIT|READPAST])` for "update", `WITH (HOLDLOCK, ROWLOCK...)` for "share") attached to `FROM`, not a trailing clause — the only adapter so far shaped this way; no `NO KEY UPDATE`/`KEY SHARE` equivalent, same stance as MySQL/SQLite
 - `OUTPUT INSERTED.*` in place of `RETURNING` for the insert/update round-trip
+- `@p1`/`@p2` numbered placeholders (not `?`/`$N`); `[bracket]`-quoted identifiers
+- `normalizeCell` (column-type-aware via `rows.ColumnTypes()`) handles `UNIQUEIDENTIFIER` (mixed-endian byte layout) and `DECIMAL` (`[]byte` ASCII text → `float64`)
+- `IsConflict`/`mapError` match `mssql.Error{Number}` (2627/2601 duplicate key, 547 FK/CHECK violation — golem has no CHECK concept, so 547 maps uniformly to `ErrForeignKeyViolation`)
+
+**Docker/Taskfile wiring** - DONE
+
+- `.docker/docker-compose.test.yml` gained an `mssql` service (`mcr.microsoft.com/mssql/server:2022-latest`, port 51433); `Taskfile.yml`'s `test-integration` gained `GOLEM_MSSQL_TEST_DSN`
+- README.md's Next Steps section notes `mcr.microsoft.com`'s CDN backend can be unreachable on some networks (no Docker Hub mirror exists) — installing/enabling the Cloudflare One (WARP) client resolved it in one real case
+
+Full spec/design/tasks: `.specs/features/mssql-adapter/`.
 
 ---
 

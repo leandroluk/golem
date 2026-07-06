@@ -95,8 +95,8 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M14 - Pessimistic Locking
 - [x] M15 - Cross-Dialect Conformance Suite
 - [x] M16 - MySQL / MariaDB Adapter
-- [ ] M17 - SQLite Adapter
-- [ ] M18 - SQL Server (MSSQL) Adapter
+- [x] M17 - SQLite Adapter
+- [x] M18 - SQL Server (MSSQL) Adapter
 - [ ] M19 - Oracle Adapter
 - [ ] M20 - IBM Db2 Adapter
 - [ ] M21 - Snowflake (OLAP) Adapter — reduced scope
@@ -115,13 +115,25 @@ now has concrete planned milestones for every database in [INSIGHT.md](INSIGHT.m
 - **M15** ✅ — `internal/dialecttest`, a cross-dialect conformance test suite every adapter below
   must pass; `driver/postgres` is its first caller, verified against real Postgres
 - **M16** ✅ — `driver/mysql` (MySQL 8+ primary, MariaDB best-effort), verified against real MySQL
-- **M17** SQLite, **M18** SQL Server (MSSQL), **M19** Oracle, **M20** IBM Db2 — roughly ordered by
-  effort (closer to ANSI SQL/Postgres semantics = less work)
+- **M17** ✅ — `driver/sqlite` (`modernc.org/sqlite`, pure Go/no cgo), verified against a real
+  in-memory database — no Docker service needed, the one adapter that genuinely doesn't need one
+- **M18** ✅ — `driver/mssql` (`microsoft/go-mssqldb`, pure database/sql), verified against a real
+  SQL Server 2025 container — `OUTPUT INSERTED.*`, `@pN` placeholders, table-hint locking
+- **M19** Oracle, **M20** IBM Db2 — roughly ordered by effort (closer to ANSI SQL/Postgres
+  semantics = less work)
 - **M21** Snowflake (OLAP) — explicitly reduced scope; no row locking, no `CHECK` constraints, and
   cascade-delete semantics that may not even be wanted for an analytical schema
 
-M17-M21 haven't started yet (see AD-034/AD-036/AD-037/AD-038/AD-039 in `.specs/project/STATE.md`
-for the full reasoning, including 2 core gaps M16 found and fixed along the way).
+M19-M21 haven't started yet (see AD-034/AD-036 through AD-045 in `.specs/project/STATE.md`
+for the full reasoning, including the core gaps M16/M17/M18 found and fixed along the way).
+
+**M18 (SQL Server) note:** pulling `mcr.microsoft.com/mssql/server` can silently fail or hang on
+some networks/ISPs/corporate DNS setups — the registry's blob storage backend
+(`*.data.mcr.microsoft.com`) may be unreachable even when `mcr.microsoft.com` itself resolves fine,
+and there's no Docker Hub mirror to fall back to. If `docker pull` fails, check your DNS/network
+setup first. For one setup, installing and enabling the **Cloudflare One (WARP) client** was the
+only thing that fixed it — your mileage may vary depending on what's actually blocking the CDN
+backend in your environment.
 CockroachDB, BigQuery, Redshift, and ClickHouse aren't in INSIGHT.md's comparison table and aren't
 currently planned — CockroachDB is Postgres-wire-compatible and could likely reuse `driver/postgres`
 with light changes; the OLAP-analytics ones (BigQuery/Redshift/ClickHouse) diverge enough (no real
