@@ -19,6 +19,10 @@
   </a>
 </div>
 
+<br/>
+
+📚 **[Read the Documentation](https://leandroluk.github.io/golem)**
+
 ---
 
 ## Contents
