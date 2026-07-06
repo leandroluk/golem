@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/internal/testutil"
 	"github.com/leandroluk/golem/join"
 	"github.com/leandroluk/golem/op"
 	"github.com/leandroluk/golem/query"
@@ -19,12 +20,9 @@ func runJoins(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema)
 	childRepo := repository.Get(ds, cascadeChildEntity)
 
 	parent, err := parentRepo.Insert(ctx, &Parent{Name: "join-parent"})
-	if err != nil {
-		t.Fatalf("Insert parent: %v", err)
-	}
-	if _, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "join-child"}); err != nil {
-		t.Fatalf("Insert child: %v", err)
-	}
+	testutil.FatalIfError(t, err, "Insert parent")
+	_, err = childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "join-child"})
+	testutil.FatalIfError(t, err, "Insert child")
 
 	parents, err := parentRepo.FindMany(ctx, func(p *Parent, q0 *query.Query[Parent]) {
 		join.Inner(q0, cascadeChildEntity, func(c *Child, q1 *query.Join[Child]) {
@@ -33,10 +31,6 @@ func runJoins(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema)
 		})
 		q0.Where(op.Eq(&p.ID, parent.ID))
 	})
-	if err != nil {
-		t.Fatalf("FindMany with join.Inner: %v", err)
-	}
-	if len(parents) != 1 {
-		t.Errorf("expected 1 parent matched via inner join, got %d", len(parents))
-	}
+	testutil.FatalIfError(t, err, "FindMany with join.Inner")
+	testutil.ErrorIf(t, len(parents) != 1, "expected 1 parent matched via inner join, got %d", len(parents))
 }

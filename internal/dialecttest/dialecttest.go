@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/internal/testutil"
 )
 
 // Schema supplies the dialect-correct DDL for the harness's fixed logical
@@ -71,14 +72,11 @@ func Run(t *testing.T, schema Schema, caps Capabilities, opts ...golem.Option) {
 
 	opts = append(opts, golem.DataSourceName(t.Name()))
 	ds, err := golem.NewDataSource(opts...)
-	if err != nil {
-		t.Fatalf("dialecttest: NewDataSource: %v", err)
-	}
+	testutil.FatalIfError(t, err, "dialecttest: NewDataSource")
 	defer ds.Close()
 
-	if err := ds.Connect(); err != nil {
-		t.Fatalf("dialecttest: Connect: %v", err)
-	}
+	err = ds.Connect()
+	testutil.FatalIfError(t, err, "dialecttest: Connect")
 
 	ctx := context.Background()
 
@@ -89,9 +87,8 @@ func Run(t *testing.T, schema Schema, caps Capabilities, opts ...golem.Option) {
 		schema.Widget, schema.Deleted, schema.Parent,
 		schema.CascadeChild, schema.SetNullChild, schema.RestrictChild,
 	} {
-		if _, err := ds.Exec(ctx, ddl); err != nil {
-			t.Fatalf("dialecttest: schema setup: %v", err)
-		}
+		_, err := ds.Exec(ctx, ddl)
+		testutil.FatalIfError(t, err, "dialecttest: schema setup")
 	}
 
 	t.Run("BindScanRoundTrip", func(t *testing.T) { runBindScanRoundTrip(t, ctx, ds, schema) })

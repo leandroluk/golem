@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/internal/testutil"
 	"github.com/leandroluk/golem/op"
 	"github.com/leandroluk/golem/query"
 	"github.com/leandroluk/golem/repository"
@@ -20,52 +21,32 @@ func runSoftDelete(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Sc
 		&Deleted{Name: "soft-1"},
 		&Deleted{Name: "soft-2"},
 	)
-	if err != nil {
-		t.Fatalf("InsertMany: %v", err)
-	}
+	testutil.FatalIfError(t, err, "InsertMany")
 
-	if err := repo.Delete(ctx, &rows[0]); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
+	err = repo.Delete(ctx, &rows[0])
+	testutil.FatalIfError(t, err, "Delete")
 
 	count, err := repo.Count(ctx)
-	if err != nil {
-		t.Fatalf("Count: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("Count after Delete = %d, want 1 (soft-deleted row filtered by default)", count)
-	}
+	testutil.FatalIfError(t, err, "Count")
+	testutil.ErrorIf(t, count != 1, "Count after Delete = %d, want 1 (soft-deleted row filtered by default)", count)
 
 	countWithDeleted, err := repo.Count(ctx, func(d *Deleted, c *query.Count[Deleted]) {
 		c.WithDeleted()
 	})
-	if err != nil {
-		t.Fatalf("Count with WithDeleted: %v", err)
-	}
-	if countWithDeleted != 2 {
-		t.Errorf("Count with WithDeleted = %d, want 2", countWithDeleted)
-	}
+	testutil.FatalIfError(t, err, "Count with WithDeleted")
+	testutil.ErrorIf(t, countWithDeleted != 2, "Count with WithDeleted = %d, want 2", countWithDeleted)
 
 	found, err := repo.FindOne(ctx, func(d *Deleted, q *query.Query[Deleted]) {
 		q.Where(op.Eq(&d.ID, rows[0].ID))
 		q.WithDeleted()
 	})
-	if err != nil {
-		t.Fatalf("FindOne with WithDeleted: %v", err)
-	}
-	if found.DeletedAt == nil {
-		t.Error("expected DeletedAt to be set after Delete")
-	}
+	testutil.FatalIfError(t, err, "FindOne with WithDeleted")
+	testutil.ErrorIf(t, found.DeletedAt == nil, "expected DeletedAt to be set after Delete")
 
-	if err := repo.Restore(ctx, &rows[0]); err != nil {
-		t.Fatalf("Restore: %v", err)
-	}
+	err = repo.Restore(ctx, &rows[0])
+	testutil.FatalIfError(t, err, "Restore")
 
 	countAfterRestore, err := repo.Count(ctx)
-	if err != nil {
-		t.Fatalf("Count after Restore: %v", err)
-	}
-	if countAfterRestore != 2 {
-		t.Errorf("Count after Restore = %d, want 2", countAfterRestore)
-	}
+	testutil.FatalIfError(t, err, "Count after Restore")
+	testutil.ErrorIf(t, countAfterRestore != 2, "Count after Restore = %d, want 2", countAfterRestore)
 }
