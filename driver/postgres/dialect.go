@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/internal/must"
 	"github.com/leandroluk/golem/internal/stmt"
 )
 
@@ -116,7 +117,8 @@ func (dialect) Bind(t golem.ColumnType, value any) (driver.Value, error) {
 
 // Scan converts a raw value returned by pgx into dest, according to the
 // declared ColumnType.
-func (dialect) Scan(t golem.ColumnType, raw any, dest any) error {
+func (dialect) Scan(t golem.ColumnType, raw any, dest any) (err error) {
+	defer must.Recover(&err)
 	if raw == nil {
 		return nil
 	}
@@ -166,11 +168,10 @@ func (dialect) Scan(t golem.ColumnType, raw any, dest any) error {
 			// A plain (non-CAST) NUMERIC/DECIMAL column comes back from pgx
 			// as pgtype.Numeric, not float64 — unlike SUM/AVG, which
 			// aggregateSQLFunc already casts to DOUBLE PRECISION.
-			f8, err := v.Float64Value()
-			if err != nil {
-				return fmt.Errorf("postgres: scan %s: %w", t.Kind(), err)
-			}
-			*d = f8.Float64
+			// Float64Value() failing here is accepted-unreachable (AD-037):
+			// extracted via internal/must so the branch is exercised (and
+			// counted) through the deferred must.Recover above.
+			*d = must.Value(v.Float64Value()).Float64
 		default:
 			return fmt.Errorf("postgres: scan %s: unsupported raw type %T", t.Kind(), raw)
 		}

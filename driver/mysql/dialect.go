@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/leandroluk/golem"
+	"github.com/leandroluk/golem/internal/must"
 	"github.com/leandroluk/golem/internal/stmt"
 )
 
@@ -801,25 +802,23 @@ func (d *dialect) ExecRaw(ctx context.Context, conn golem.Conn, sql string, args
 // mirroring driver/postgres's pgx.RowToMap via database/sql's generic
 // (*sql.Rows).Scan([]any) into freshly-allocated any destinations, then
 // normalizes each value per its reported SQL column type (see normalizeCell).
-func collectRows(rows *sql.Rows) ([]map[string]any, error) {
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
+func collectRows(rows *sql.Rows) (results []map[string]any, err error) {
+	defer must.Recover(&err)
+	cols := must.Value(rows.Columns())
 	// ColumnTypes() fails for the same reasons Columns() would (e.g. rows
 	// already closed) — since Columns() above already returned successfully,
 	// this is defensive and not independently reachable via any real driver
 	// behavior; same accepted-unreachable class as the Scan() check below.
-	colTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, err
-	}
+	// Extracted via internal/must so this branch is exercised (and counted)
+	// through the deferred must.Recover above, instead of staying a
+	// permanently-0%-covered defensive check (see STATE.md AD-04x).
+	colTypes := must.Value(rows.ColumnTypes())
 	dbTypes := make([]string, len(colTypes))
 	for i, ct := range colTypes {
 		dbTypes[i] = ct.DatabaseTypeName()
 	}
 
-	var results []map[string]any
+	results = make([]map[string]any, 0)
 	for rows.Next() {
 		dest := make([]any, len(cols))
 		destPtrs := make([]any, len(cols))
@@ -832,18 +831,14 @@ func collectRows(rows *sql.Rows) ([]map[string]any, error) {
 		// same class of accepted-unreachable branch as compilePredicate's
 		// default case (driver/postgres) and Numeric.Float64Value()'s error
 		// path (AD-037).
-		if err := rows.Scan(destPtrs...); err != nil {
-			return nil, err
-		}
+		must.Exec(rows.Scan(destPtrs...))
 		row := make(map[string]any, len(cols))
 		for i, col := range cols {
 			row[col] = normalizeCell(dbTypes[i], dest[i])
 		}
 		results = append(results, row)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+	must.Exec(rows.Err())
 	return results, nil
 }
 
