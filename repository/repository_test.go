@@ -5,7 +5,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1259,23 +1258,6 @@ func TestRepository_Exec_RawExecution(t *testing.T) {
 	}
 }
 
-func TestAssignFieldValue_Errors(t *testing.T) {
-	var s struct {
-		IntField int
-	}
-	v := reflect.ValueOf(&s).Elem().FieldByName("IntField")
-	err := assignFieldValue(v, "not an int", "col", "IntField")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-
-	var invalid reflect.Value
-	err = assignFieldValue(invalid, 1, "col", "field")
-	if err != nil {
-		t.Fatal("expected no error for invalid field")
-	}
-}
-
 func TestTranslateCondition_OrAndNot(t *testing.T) {
 	d := &fakeDialect{}
 	conn := newFakeConn(t, d)
@@ -2420,13 +2402,6 @@ func TestRepository_RemainingCoverage(t *testing.T) {
 		t.Fatal("expected nil, nil")
 	}
 
-	// assignFieldValue: invalid value
-	// rawVal.IsValid() is false if scanning a nil into an interface{} that doesn't expect it, or similar.
-	err = assignFieldValue(reflect.ValueOf(&testSubject{}).Elem().FieldByName("Name"), nil, "name", "Name")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Insert: err after exec (scanRow)
 	d := &fakeDialect{insertResult: map[string]any{"id": "not-an-int"}}
 	conn := newFakeConn(t, d)
@@ -2519,123 +2494,6 @@ func TestBuildWherePredicate_MultiplePreds_ReturnsLogicalAnd(t *testing.T) {
 	logical, ok := p.(stmt.Logical)
 	if !ok || logical.Op != "and" || len(logical.Predicates) != 2 {
 		t.Fatalf("expected logical AND of 2 predicates, got %+v", p)
-	}
-}
-
-func TestAssignFieldValue_ConvertibleType_Success(t *testing.T) {
-	var s struct {
-		Big int64
-	}
-	v := reflect.ValueOf(&s).Elem().FieldByName("Big")
-	if err := assignFieldValue(v, int32(5), "col", "Big"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if s.Big != 5 {
-		t.Fatalf("Big = %d, want 5", s.Big)
-	}
-}
-
-func TestAssignFieldValue_PointerField_ExactElemType_WrapsInPointer(t *testing.T) {
-	var s struct {
-		DeletedAt *time.Time
-	}
-	now := time.Now()
-	v := reflect.ValueOf(&s).Elem().FieldByName("DeletedAt")
-	if err := assignFieldValue(v, now, "deleted_at", "DeletedAt"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if s.DeletedAt == nil || !s.DeletedAt.Equal(now) {
-		t.Fatalf("DeletedAt = %v, want a pointer wrapping %v", s.DeletedAt, now)
-	}
-}
-
-func TestAssignFieldValue_PointerField_ConvertibleElemType_WrapsInPointer(t *testing.T) {
-	var s struct {
-		Count *int64
-	}
-	v := reflect.ValueOf(&s).Elem().FieldByName("Count")
-	if err := assignFieldValue(v, int32(7), "count", "Count"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if s.Count == nil || *s.Count != 7 {
-		t.Fatalf("Count = %v, want a pointer to 7", s.Count)
-	}
-}
-
-func TestAssignFieldValue_PointerField_IncompatibleRaw_ReturnsError(t *testing.T) {
-	var s struct {
-		Count *int64
-	}
-	v := reflect.ValueOf(&s).Elem().FieldByName("Count")
-	err := assignFieldValue(v, "not an int", "count", "Count")
-	if err == nil {
-		t.Fatal("expected error for a raw value inconvertible to *int64's element type")
-	}
-}
-
-func TestAssignFieldValue_BoolField_NumericRaw(t *testing.T) {
-	var s struct {
-		Active bool
-	}
-	v := reflect.ValueOf(&s).Elem().FieldByName("Active")
-	if err := assignFieldValue(v, int64(1), "active", "Active"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !s.Active {
-		t.Fatal("expected Active = true for a non-zero int64")
-	}
-
-	if err := assignFieldValue(v, int64(0), "active", "Active"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if s.Active {
-		t.Fatal("expected Active = false for a zero int64")
-	}
-
-	if err := assignFieldValue(v, uint8(1), "active", "Active"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !s.Active {
-		t.Fatal("expected Active = true for a non-zero uint8")
-	}
-}
-
-func TestAssignFieldValue_PointerBoolField_NumericRaw(t *testing.T) {
-	var s struct {
-		Active *bool
-	}
-	v := reflect.ValueOf(&s).Elem().FieldByName("Active")
-	if err := assignFieldValue(v, int64(1), "active", "Active"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if s.Active == nil || !*s.Active {
-		t.Fatalf("Active = %v, want a pointer to true", s.Active)
-	}
-}
-
-func TestNumericToBool(t *testing.T) {
-	cases := []struct {
-		raw    any
-		wantB  bool
-		wantOK bool
-	}{
-		{int(1), true, true},
-		{int8(0), false, true},
-		{int16(1), true, true},
-		{int32(0), false, true},
-		{int64(1), true, true},
-		{uint(0), false, true},
-		{uint8(1), true, true},
-		{uint16(0), false, true},
-		{uint32(1), true, true},
-		{uint64(0), false, true},
-		{"not numeric", false, false},
-	}
-	for _, tc := range cases {
-		b, ok := numericToBool(reflect.ValueOf(tc.raw))
-		if ok != tc.wantOK || (ok && b != tc.wantB) {
-			t.Errorf("numericToBool(%v) = (%v, %v), want (%v, %v)", tc.raw, b, ok, tc.wantB, tc.wantOK)
-		}
 	}
 }
 

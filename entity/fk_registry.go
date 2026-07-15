@@ -2,6 +2,7 @@ package entity
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/leandroluk/golem/relation"
 )
@@ -23,24 +24,41 @@ type FKRegistration struct {
 
 var (
 	fkRegistryMu sync.Mutex
-	fkRegistry   = map[string][]FKRegistration{}
+	fkRegistry   atomic.Pointer[map[string][]FKRegistration]
 )
+
+func init() {
+	m := make(map[string][]FKRegistration)
+	fkRegistry.Store(&m)
+}
 
 // registerForeignKey is called from Table.finalize() for every declared
 // ForeignKey, once the child entity's own table/column names are resolved.
 func registerForeignKey(reg FKRegistration) {
 	fkRegistryMu.Lock()
 	defer fkRegistryMu.Unlock()
-	fkRegistry[reg.TargetTableName] = append(fkRegistry[reg.TargetTableName], reg)
+
+	oldMap := *fkRegistry.Load()
+	newMap := make(map[string][]FKRegistration, len(oldMap))
+	for k, v := range oldMap {
+		newMap[k] = v
+	}
+
+	oldList := newMap[reg.TargetTableName]
+	newList := make([]FKRegistration, len(oldList), len(oldList)+1)
+	copy(newList, oldList)
+	newList = append(newList, reg)
+	newMap[reg.TargetTableName] = newList
+
+	fkRegistry.Store(&newMap)
 }
 
 // ForeignKeysReferencing returns every registered ForeignKey pointing at
 // targetTable, in registration order. Used by Repository[T].Delete to apply
 // OnDelete/OnUpdate cascade behavior.
 func ForeignKeysReferencing(targetTable string) []FKRegistration {
-	fkRegistryMu.Lock()
-	defer fkRegistryMu.Unlock()
-	regs := fkRegistry[targetTable]
+	m := *fkRegistry.Load()
+	regs := m[targetTable]
 	out := make([]FKRegistration, len(regs))
 	copy(out, regs)
 	return out

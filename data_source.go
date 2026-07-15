@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // DataSource owns the connect/close lifecycle for one logical database
@@ -24,9 +25,14 @@ func (*DataSource) isConn() { return }
 // can look one up from anywhere without the caller threading it through
 // manually. Registered by NewDataSource, deregistered by Close.
 var (
-	dataSourceRegistryMu sync.RWMutex
-	dataSourceRegistry   = map[string]*DataSource{}
+	dataSourceRegistryMu sync.Mutex
+	dataSourceRegistry   atomic.Pointer[map[string]*DataSource]
 )
+
+func init() {
+	m := make(map[string]*DataSource)
+	dataSourceRegistry.Store(&m)
+}
 
 // NewDataSource builds a DataSource from the given options and registers it
 // under its name (see DataSourceName; defaults to "default") for later
@@ -45,11 +51,18 @@ func NewDataSource(opts ...Option) (*DataSource, error) {
 
 	dataSourceRegistryMu.Lock()
 	defer dataSourceRegistryMu.Unlock()
-	if _, exists := dataSourceRegistry[cfg.name]; exists {
+	oldMap := *dataSourceRegistry.Load()
+	if _, exists := oldMap[cfg.name]; exists {
 		return nil, fmt.Errorf("golem: a DataSource named %q is already registered", cfg.name)
 	}
+
+	newMap := make(map[string]*DataSource, len(oldMap)+1)
+	for k, v := range oldMap {
+		newMap[k] = v
+	}
 	ds := &DataSource{name: cfg.name, connector: cfg.connector}
-	dataSourceRegistry[cfg.name] = ds
+	newMap[cfg.name] = ds
+	dataSourceRegistry.Store(&newMap)
 	return ds, nil
 }
 
@@ -64,9 +77,8 @@ func GetDataSource(optionalName ...string) (*DataSource, error) {
 		name = optionalName[0]
 	}
 
-	dataSourceRegistryMu.RLock()
-	defer dataSourceRegistryMu.RUnlock()
-	ds, ok := dataSourceRegistry[name]
+	m := *dataSourceRegistry.Load()
+	ds, ok := m[name]
 	if !ok {
 		return nil, fmt.Errorf("golem: %w: %q", ErrDataSourceNotFound, name)
 	}
@@ -104,8 +116,15 @@ func (ds *DataSource) Connect() error {
 // case. Idempotent if called twice.
 func (ds *DataSource) Close() error {
 	dataSourceRegistryMu.Lock()
-	if dataSourceRegistry[ds.name] == ds {
-		delete(dataSourceRegistry, ds.name)
+	oldMap := *dataSourceRegistry.Load()
+	if oldMap[ds.name] == ds {
+		newMap := make(map[string]*DataSource, len(oldMap)-1)
+		for k, v := range oldMap {
+			if k != ds.name {
+				newMap[k] = v
+			}
+		}
+		dataSourceRegistry.Store(&newMap)
 	}
 	dataSourceRegistryMu.Unlock()
 

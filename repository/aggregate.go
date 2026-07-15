@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/leandroluk/golem/entity"
+	"github.com/leandroluk/golem/internal/scanner"
 	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/query"
 )
@@ -174,18 +176,25 @@ func Aggregate[T, R any](ctx context.Context, r *Repository[T], fn func(t *T, re
 		return nil, fmt.Errorf("repository: aggregate: %w", err)
 	}
 
+	cols := make([]entity.ColumnMeta, 0, len(projs))
+	rType := reflect.TypeOf(new(R)).Elem()
+	for _, p := range projs {
+		if sf, ok := rType.FieldByName(p.resultFieldName); ok {
+			cols = append(cols, entity.ColumnMeta{
+				Name:      p.alias,
+				FieldName: p.resultFieldName,
+				GoType:    sf.Type,
+				Offset:    sf.Offset,
+			})
+		}
+	}
+	plan := scanner.Compile(entity.EntityMeta{Columns: cols})
+
 	results := make([]R, 0, len(rows))
 	for _, row := range rows {
-		var item R
-		v := reflect.ValueOf(&item).Elem()
-		for _, p := range projs {
-			raw, ok := row[p.alias]
-			if !ok {
-				continue
-			}
-			if err := assignFieldValue(v.FieldByName(p.resultFieldName), raw, p.alias, p.resultFieldName); err != nil {
-				return nil, err
-			}
+		item, err := scanner.ScanFromMap[R](plan, row)
+		if err != nil {
+			return nil, err
 		}
 		results = append(results, item)
 	}

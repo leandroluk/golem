@@ -2,6 +2,7 @@ package entity
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/leandroluk/golem"
@@ -225,12 +226,23 @@ func (b *Table) finalize() {
 	columns := make([]ColumnMeta, 0, len(b.pendingColumns))
 	fieldToColumn := make(map[string]string, len(b.pendingColumns))
 
+	structType := reflect.TypeOf(b.zero).Elem()
+
 	for _, pc := range b.pendingColumns {
 		name := pc.cb.ResolvedName()
 		if name == "" {
 			name = strings.ToLower(pc.fieldName)
 		}
 		defaultVal, hasDefault := pc.cb.ResolvedDefault()
+		var goType reflect.Type
+		var offset uintptr
+		for i := 0; i < structType.NumField(); i++ {
+			if structType.Field(i).Name == pc.fieldName {
+				goType = structType.Field(i).Type
+				offset = structType.Field(i).Offset
+				break
+			}
+		}
 		columns = append(columns, ColumnMeta{
 			FieldName:   pc.fieldName,
 			Name:        name,
@@ -239,6 +251,8 @@ func (b *Table) finalize() {
 			Default:     defaultVal,
 			HasDefault:  hasDefault,
 			DefaultFunc: pc.cb.ResolvedDefaultFunc(),
+			GoType:      goType,
+			Offset:      offset,
 		})
 		fieldToColumn[pc.fieldName] = name
 	}

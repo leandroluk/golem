@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
-	"github.com/leandroluk/golem/internal/stmt"
 	"testing"
+
+	"github.com/leandroluk/golem/internal/stmt"
 )
 
 type mockConnector struct {

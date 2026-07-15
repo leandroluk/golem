@@ -39,6 +39,11 @@ type ColumnMeta struct {
 	Default     any
 	HasDefault  bool
 	DefaultFunc func() (any, error)
+	// GoType and Offset are pre-computed once in finalize() for the zero-alloc
+	// scanner (internal/scanner). GoType is the field's reflect.Type; Offset is
+	// its byte offset from the struct base pointer (unsafe.Offsetof equivalent).
+	GoType reflect.Type
+	Offset uintptr
 }
 
 // ForeignKeyMeta records that FieldName's column references TargetTableName's

@@ -15,6 +15,7 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/entity"
+	"github.com/leandroluk/golem/internal/scanner"
 	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/op"
 	"github.com/leandroluk/golem/query"
@@ -23,15 +24,22 @@ import (
 
 // Repository[T] is bound to one entity's metadata and a connection.
 type Repository[T any] struct {
-	conn   golem.Conn
-	meta   entity.EntityMeta
-	entity *entity.Entity[T]
+	conn     golem.Conn
+	meta     entity.EntityMeta
+	entity   *entity.Entity[T]
+	scanPlan *scanner.Plan
 }
 
 // Get builds a Repository[T] bound to conn and e. T is inferred from e's
 // type (*entity.Entity[T]).
 func Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T] {
-	return &Repository[T]{conn: conn, meta: e.Describe(), entity: e}
+	meta := e.Describe()
+	return &Repository[T]{
+		conn:     conn,
+		meta:     meta,
+		entity:   e,
+		scanPlan: scanner.Compile(meta),
+	}
 }
 
 // fieldToColumn builds a fieldName → columnName map from EntityMeta.
@@ -186,95 +194,10 @@ func (r *Repository[T]) applySoftDeleteFilter(tableName string, deleteDateField 
 	}
 }
 
-// numericToBool reports whether rawVal is an integer kind, and if so its
-// "!= 0" boolean value — the common "boolean stored as a small integer"
-// database convention (MySQL TINYINT(1), SQLite INTEGER, ...).
-func numericToBool(rawVal reflect.Value) (b bool, ok bool) {
-	switch rawVal.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return rawVal.Int() != 0, true
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return rawVal.Uint() != 0, true
-	}
-	return false, false
-}
-
-// assignFieldValue writes raw onto field, converting between Go types when
-// they aren't identical but one is convertible to the other (e.g. int32 ->
-// int64). A no-op if field is invalid/unsettable, or raw itself is invalid
-// (never happens for a real driver value, but matches the old scanRow
-// behavior for zero-value/nil-ish inputs).
-func assignFieldValue(field reflect.Value, raw any, colName, fieldName string) error {
-	if !field.IsValid() || !field.CanSet() {
-		return nil
-	}
-	rawVal := reflect.ValueOf(raw)
-	if !rawVal.IsValid() {
-		return nil
-	}
-	if rawVal.Type() == field.Type() {
-		field.Set(rawVal)
-		return nil
-	}
-	// A boolean-shaped column stored as a small integer (MySQL TINYINT(1),
-	// SQLite INTEGER, ...) arrives as an int64/etc, not bool. Go's
-	// reflect.ConvertibleTo never allows numeric->bool (unlike Postgres,
-	// where the driver already reports a native bool for a BOOLEAN column),
-	// so this needs its own explicit rule instead of falling through to the
-	// generic ConvertibleTo check below.
-	if field.Kind() == reflect.Bool {
-		if b, ok := numericToBool(rawVal); ok {
-			field.SetBool(b)
-			return nil
-		}
-	}
-	// A nullable field (*X) reading back a non-NULL row still arrives as a
-	// bare X (or something convertible to X), never *X — the column being
-	// NOT NULL for this particular row doesn't change the field's declared
-	// type. Wrap it in a new *X instead of failing.
-	if field.Kind() == reflect.Pointer {
-		elemType := field.Type().Elem()
-		if elemType.Kind() == reflect.Bool {
-			if b, ok := numericToBool(rawVal); ok {
-				ptr := reflect.New(elemType)
-				ptr.Elem().SetBool(b)
-				field.Set(ptr)
-				return nil
-			}
-		}
-		if rawVal.Type() == elemType || rawVal.Type().ConvertibleTo(elemType) {
-			ptr := reflect.New(elemType)
-			if rawVal.Type() != elemType {
-				rawVal = rawVal.Convert(elemType)
-			}
-			ptr.Elem().Set(rawVal)
-			field.Set(ptr)
-			return nil
-		}
-	}
-	if rawVal.Type().ConvertibleTo(field.Type()) {
-		field.Set(rawVal.Convert(field.Type()))
-		return nil
-	}
-	return fmt.Errorf("repository: column %q (Go value %v, type %s) is not convertible to field %s (%s)", colName, raw, rawVal.Type(), fieldName, field.Type())
-}
-
 // scanRow builds a new T and writes each declared column's value from row
 // (keyed by column name) onto the corresponding struct field.
 func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
-	var result T
-	v := reflect.ValueOf(&result).Elem()
-
-	for _, col := range r.meta.Columns {
-		raw, ok := row[col.Name]
-		if !ok {
-			continue
-		}
-		if err := assignFieldValue(v.FieldByName(col.FieldName), raw, col.Name, col.FieldName); err != nil {
-			return result, err
-		}
-	}
-	return result, nil
+	return scanner.ScanFromMap[T](r.scanPlan, row)
 }
 
 // Insert inserts a single entity. Triggers BeforeCreate/AfterCreate hooks,
