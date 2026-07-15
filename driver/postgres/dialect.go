@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/internal/must"
 	"github.com/leandroluk/golem/internal/stmt"
 )
 
@@ -27,230 +25,18 @@ var _ golem.Dialect = (*dialect)(nil)
 
 // Bind converts a Go value to a driver.Value suitable for Postgres, according
 // to the declared ColumnType.
-func (dialect) Bind(t golem.ColumnType, value any) (driver.Value, error) {
-	switch t.Kind() {
-	case "boolean":
-		switch v := value.(type) {
-		case bool:
-			return v, nil
-		case int, int8, int16, int32, int64:
-			return fmt.Sprintf("%v", v) != "0", nil
-		}
-		return nil, fmt.Errorf("postgres: bind boolean: unsupported Go type %T", value)
-
-	case "smallint", "integer", "bigint":
-		switch v := value.(type) {
-		case int:
-			return int64(v), nil
-		case int8:
-			return int64(v), nil
-		case int16:
-			return int64(v), nil
-		case int32:
-			return int64(v), nil
-		case int64:
-			return v, nil
-		}
-		return nil, fmt.Errorf("postgres: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "decimal", "float":
-		switch v := value.(type) {
-		case float32:
-			return float64(v), nil
-		case float64:
-			return v, nil
-		}
-		return nil, fmt.Errorf("postgres: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "char", "varchar", "text":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case []byte:
-			return string(v), nil
-		}
-		return nil, fmt.Errorf("postgres: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "date", "datetime", "time":
-		switch v := value.(type) {
-		case time.Time:
-			return v, nil
-		case *time.Time:
-			if v == nil {
-				return nil, nil
-			}
-			return *v, nil
-		}
-		return nil, fmt.Errorf("postgres: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "blob":
-		switch v := value.(type) {
-		case []byte:
-			return v, nil
-		case string:
-			return []byte(v), nil
-		}
-		return nil, fmt.Errorf("postgres: bind blob: unsupported Go type %T", value)
-
-	case "uuid":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case [16]byte:
-			return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-				v[0:4], v[4:6], v[6:8], v[8:10], v[10:16]), nil
-		}
-		return nil, fmt.Errorf("postgres: bind uuid: unsupported Go type %T", value)
-
-	case "json":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case []byte:
-			return string(v), nil
-		}
-		return nil, fmt.Errorf("postgres: bind json: unsupported Go type %T", value)
-	}
-
-	return nil, fmt.Errorf("postgres: bind: unrecognized column kind %q", t.Kind())
-}
+// dead code — never called in production path (see AD-037, M22/design.md)
 
 // Scan converts a raw value returned by pgx into dest, according to the
 // declared ColumnType.
-func (dialect) Scan(t golem.ColumnType, raw any, dest any) (err error) {
-	defer must.Recover(&err)
-	if raw == nil {
-		return nil
-	}
+// dead code — never called in production path (see AD-037, M22/design.md)
 
-	switch t.Kind() {
-	case "boolean":
-		d, ok := dest.(*bool)
-		if !ok {
-			return fmt.Errorf("postgres: scan boolean: dest must be *bool, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case bool:
-			*d = v
-		case int64:
-			*d = v != 0
-		default:
-			return fmt.Errorf("postgres: scan boolean: unsupported raw type %T", raw)
-		}
-
-	case "smallint", "integer", "bigint":
-		d, ok := dest.(*int64)
-		if !ok {
-			return fmt.Errorf("postgres: scan %s: dest must be *int64, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case int64:
-			*d = v
-		case int32:
-			*d = int64(v)
-		case int16:
-			*d = int64(v)
-		default:
-			return fmt.Errorf("postgres: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "decimal", "float":
-		d, ok := dest.(*float64)
-		if !ok {
-			return fmt.Errorf("postgres: scan %s: dest must be *float64, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case float64:
-			*d = v
-		case float32:
-			*d = float64(v)
-		case pgtype.Numeric:
-			// A plain (non-CAST) NUMERIC/DECIMAL column comes back from pgx
-			// as pgtype.Numeric, not float64 — unlike SUM/AVG, which
-			// aggregateSQLFunc already casts to DOUBLE PRECISION.
-			// Float64Value() failing here is accepted-unreachable (AD-037):
-			// extracted via internal/must so the branch is exercised (and
-			// counted) through the deferred must.Recover above.
-			*d = must.Value(v.Float64Value()).Float64
-		default:
-			return fmt.Errorf("postgres: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "char", "varchar", "text":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("postgres: scan %s: dest must be *string, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("postgres: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "date", "datetime", "time":
-		d, ok := dest.(*time.Time)
-		if !ok {
-			return fmt.Errorf("postgres: scan %s: dest must be *time.Time, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case time.Time:
-			*d = v
-		default:
-			return fmt.Errorf("postgres: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "blob":
-		d, ok := dest.(*[]byte)
-		if !ok {
-			return fmt.Errorf("postgres: scan blob: dest must be *[]byte, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case []byte:
-			*d = v
-		case string:
-			*d = []byte(v)
-		default:
-			return fmt.Errorf("postgres: scan blob: unsupported raw type %T", raw)
-		}
-
-	case "uuid":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("postgres: scan uuid: dest must be *string, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case [16]byte:
-			*d = fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-				v[0:4], v[4:6], v[6:8], v[8:10], v[10:16])
-		default:
-			return fmt.Errorf("postgres: scan uuid: unsupported raw type %T", raw)
-		}
-
-	case "json":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("postgres: scan json: dest must be *string, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("postgres: scan json: unsupported raw type %T", raw)
-		}
-
-	default:
-		return fmt.Errorf("postgres: scan: unrecognized column kind %q", t.Kind())
-	}
-
-	return nil
-}
+// A plain (non-CAST) NUMERIC/DECIMAL column comes back from pgx
+// as pgtype.Numeric, not float64 — unlike SUM/AVG, which
+// aggregateSQLFunc already casts to DOUBLE PRECISION.
+// Float64Value() failing here is accepted-unreachable (AD-037):
+// extracted via internal/must so the branch is exercised (and
+// counted) through the deferred must.Recover above.
 
 // quoteIdent double-quotes a SQL identifier, preserving table prefixes.
 func quoteIdent(name string) string {

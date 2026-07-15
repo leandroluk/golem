@@ -2,7 +2,6 @@ package golem
 
 import (
 	"context"
-	"database/sql/driver"
 
 	"github.com/leandroluk/golem/internal/stmt"
 )
@@ -12,8 +11,6 @@ import (
 // It also provides statement compilation and execution mappings.
 // Adapters (postgres, and later mysql/mssql/oracle) implement this.
 type Dialect interface {
-	Bind(t ColumnType, value any) (driver.Value, error)
-	Scan(t ColumnType, raw any, dest any) error
 
 	// Insert executes an INSERT for the given statement and returns the
 	// resulting row as a column-name-keyed map.

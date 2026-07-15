@@ -3,13 +3,11 @@ package mssql
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	mssqllib "github.com/microsoft/go-mssqldb"
 
@@ -33,212 +31,11 @@ var _ golem.Dialect = (*dialect)(nil)
 // (SQL Server's implicit string conversion applies to parameters, not just
 // literals) — no byte-level handling needed for writes, only for reads
 // (see normalizeCell).
-func (dialect) Bind(t golem.ColumnType, value any) (driver.Value, error) {
-	switch t.Kind() {
-	case "boolean":
-		switch v := value.(type) {
-		case bool:
-			return v, nil
-		case int, int8, int16, int32, int64:
-			return fmt.Sprintf("%v", v) != "0", nil
-		}
-		return nil, fmt.Errorf("mssql: bind boolean: unsupported Go type %T", value)
-
-	case "smallint", "integer", "bigint":
-		switch v := value.(type) {
-		case int:
-			return int64(v), nil
-		case int8:
-			return int64(v), nil
-		case int16:
-			return int64(v), nil
-		case int32:
-			return int64(v), nil
-		case int64:
-			return v, nil
-		}
-		return nil, fmt.Errorf("mssql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "decimal", "float":
-		switch v := value.(type) {
-		case float32:
-			return float64(v), nil
-		case float64:
-			return v, nil
-		}
-		return nil, fmt.Errorf("mssql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "char", "varchar", "text":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case []byte:
-			return string(v), nil
-		}
-		return nil, fmt.Errorf("mssql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "date", "datetime", "time":
-		switch v := value.(type) {
-		case time.Time:
-			return v, nil
-		case *time.Time:
-			if v == nil {
-				return nil, nil
-			}
-			return *v, nil
-		}
-		return nil, fmt.Errorf("mssql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "blob":
-		switch v := value.(type) {
-		case []byte:
-			return v, nil
-		case string:
-			return []byte(v), nil
-		}
-		return nil, fmt.Errorf("mssql: bind blob: unsupported Go type %T", value)
-
-	case "uuid":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case [16]byte:
-			return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-				v[0:4], v[4:6], v[6:8], v[8:10], v[10:16]), nil
-		}
-		return nil, fmt.Errorf("mssql: bind uuid: unsupported Go type %T", value)
-
-	case "json":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case []byte:
-			return string(v), nil
-		}
-		return nil, fmt.Errorf("mssql: bind json: unsupported Go type %T", value)
-	}
-
-	return nil, fmt.Errorf("mssql: bind: unrecognized column kind %q", t.Kind())
-}
+// dead code — never called in production path (see AD-037, M22/design.md)
 
 // Scan converts a raw value returned by database/sql into dest, according
 // to the declared ColumnType.
-func (dialect) Scan(t golem.ColumnType, raw any, dest any) error {
-	if raw == nil {
-		return nil
-	}
-
-	switch t.Kind() {
-	case "boolean":
-		d, ok := dest.(*bool)
-		if !ok {
-			return fmt.Errorf("mssql: scan boolean: dest must be *bool, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case bool:
-			*d = v
-		default:
-			return fmt.Errorf("mssql: scan boolean: unsupported raw type %T", raw)
-		}
-
-	case "smallint", "integer", "bigint":
-		d, ok := dest.(*int64)
-		if !ok {
-			return fmt.Errorf("mssql: scan %s: dest must be *int64, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case int64:
-			*d = v
-		default:
-			return fmt.Errorf("mssql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "decimal", "float":
-		d, ok := dest.(*float64)
-		if !ok {
-			return fmt.Errorf("mssql: scan %s: dest must be *float64, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case float64:
-			*d = v
-		default:
-			return fmt.Errorf("mssql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "char", "varchar", "text":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("mssql: scan %s: dest must be *string, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("mssql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "date", "datetime", "time":
-		d, ok := dest.(*time.Time)
-		if !ok {
-			return fmt.Errorf("mssql: scan %s: dest must be *time.Time, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case time.Time:
-			*d = v
-		default:
-			return fmt.Errorf("mssql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "blob":
-		d, ok := dest.(*[]byte)
-		if !ok {
-			return fmt.Errorf("mssql: scan blob: dest must be *[]byte, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case []byte:
-			*d = v
-		case string:
-			*d = []byte(v)
-		default:
-			return fmt.Errorf("mssql: scan blob: unsupported raw type %T", raw)
-		}
-
-	case "uuid":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("mssql: scan uuid: dest must be *string, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("mssql: scan uuid: unsupported raw type %T", raw)
-		}
-
-	case "json":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("mssql: scan json: dest must be *string, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("mssql: scan json: unsupported raw type %T", raw)
-		}
-
-	default:
-		return fmt.Errorf("mssql: scan: unrecognized column kind %q", t.Kind())
-	}
-
-	return nil
-}
+// dead code — never called in production path (see AD-037, M22/design.md)
 
 // quoteIdent square-bracket-quotes a SQL identifier, preserving table
 // prefixes — T-SQL's own quoting convention.

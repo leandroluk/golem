@@ -3,7 +3,6 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -31,93 +30,7 @@ var _ golem.Dialect = (*dialect)(nil)
 // actually needs a different Go-value representation than Postgres's
 // version — MySQL has no native UUID type, so a string already round-trips
 // through CHAR(36) untouched.
-func (dialect) Bind(t golem.ColumnType, value any) (driver.Value, error) {
-	switch t.Kind() {
-	case "boolean":
-		switch v := value.(type) {
-		case bool:
-			return v, nil
-		case int, int8, int16, int32, int64:
-			return fmt.Sprintf("%v", v) != "0", nil
-		}
-		return nil, fmt.Errorf("mysql: bind boolean: unsupported Go type %T", value)
-
-	case "smallint", "integer", "bigint":
-		switch v := value.(type) {
-		case int:
-			return int64(v), nil
-		case int8:
-			return int64(v), nil
-		case int16:
-			return int64(v), nil
-		case int32:
-			return int64(v), nil
-		case int64:
-			return v, nil
-		}
-		return nil, fmt.Errorf("mysql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "decimal", "float":
-		switch v := value.(type) {
-		case float32:
-			return float64(v), nil
-		case float64:
-			return v, nil
-		}
-		return nil, fmt.Errorf("mysql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "char", "varchar", "text":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case []byte:
-			return string(v), nil
-		}
-		return nil, fmt.Errorf("mysql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "date", "datetime", "time":
-		switch v := value.(type) {
-		case time.Time:
-			return v, nil
-		case *time.Time:
-			if v == nil {
-				return nil, nil
-			}
-			return *v, nil
-		}
-		return nil, fmt.Errorf("mysql: bind %s: unsupported Go type %T", t.Kind(), value)
-
-	case "blob":
-		switch v := value.(type) {
-		case []byte:
-			return v, nil
-		case string:
-			return []byte(v), nil
-		}
-		return nil, fmt.Errorf("mysql: bind blob: unsupported Go type %T", value)
-
-	case "uuid":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case [16]byte:
-			return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-				v[0:4], v[4:6], v[6:8], v[8:10], v[10:16]), nil
-		}
-		return nil, fmt.Errorf("mysql: bind uuid: unsupported Go type %T", value)
-
-	case "json":
-		switch v := value.(type) {
-		case string:
-			return v, nil
-		case []byte:
-			return string(v), nil
-		}
-		return nil, fmt.Errorf("mysql: bind json: unsupported Go type %T", value)
-	}
-
-	return nil, fmt.Errorf("mysql: bind: unrecognized column kind %q", t.Kind())
-}
+// dead code — never called in production path (see AD-037, M22/design.md)
 
 // Scan converts a raw value returned by database/sql into dest, according
 // to the declared ColumnType. go-sql-driver/mysql's default Go
@@ -125,146 +38,10 @@ func (dialect) Bind(t golem.ColumnType, value any) (driver.Value, error) {
 // []byte/string rather than a numeric wrapper type, booleans/integers as
 // int64 regardless of column width), so this accepts a broader set of raw
 // types per kind than driver/postgres's version needs to.
-func (dialect) Scan(t golem.ColumnType, raw any, dest any) error {
-	if raw == nil {
-		return nil
-	}
+// dead code — never called in production path (see AD-037, M22/design.md)
 
-	switch t.Kind() {
-	case "boolean":
-		d, ok := dest.(*bool)
-		if !ok {
-			return fmt.Errorf("mysql: scan boolean: dest must be *bool, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case bool:
-			*d = v
-		case int64:
-			*d = v != 0
-		case []byte:
-			*d = string(v) != "0" && string(v) != ""
-		default:
-			return fmt.Errorf("mysql: scan boolean: unsupported raw type %T", raw)
-		}
-
-	case "smallint", "integer", "bigint":
-		d, ok := dest.(*int64)
-		if !ok {
-			return fmt.Errorf("mysql: scan %s: dest must be *int64, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case int64:
-			*d = v
-		case int32:
-			*d = int64(v)
-		case int16:
-			*d = int64(v)
-		case []byte:
-			n, err := strconv.ParseInt(string(v), 10, 64)
-			if err != nil {
-				return fmt.Errorf("mysql: scan %s: %w", t.Kind(), err)
-			}
-			*d = n
-		default:
-			return fmt.Errorf("mysql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "decimal", "float":
-		d, ok := dest.(*float64)
-		if !ok {
-			return fmt.Errorf("mysql: scan %s: dest must be *float64, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case float64:
-			*d = v
-		case float32:
-			*d = float64(v)
-		case []byte:
-			// go-sql-driver returns DECIMAL/NUMERIC columns as []byte (a
-			// decimal-text representation), not a numeric wrapper type.
-			f, err := strconv.ParseFloat(string(v), 64)
-			if err != nil {
-				return fmt.Errorf("mysql: scan %s: %w", t.Kind(), err)
-			}
-			*d = f
-		default:
-			return fmt.Errorf("mysql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "char", "varchar", "text":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("mysql: scan %s: dest must be *string, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("mysql: scan %s: unsupported raw type %T", t.Kind(), raw)
-		}
-
-	case "date", "datetime", "time":
-		d, ok := dest.(*time.Time)
-		if !ok {
-			return fmt.Errorf("mysql: scan %s: dest must be *time.Time, got %T", t.Kind(), dest)
-		}
-		switch v := raw.(type) {
-		case time.Time:
-			*d = v
-		default:
-			return fmt.Errorf("mysql: scan %s: unsupported raw type %T (did ParseTime get disabled?)", t.Kind(), raw)
-		}
-
-	case "blob":
-		d, ok := dest.(*[]byte)
-		if !ok {
-			return fmt.Errorf("mysql: scan blob: dest must be *[]byte, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case []byte:
-			*d = v
-		case string:
-			*d = []byte(v)
-		default:
-			return fmt.Errorf("mysql: scan blob: unsupported raw type %T", raw)
-		}
-
-	case "uuid":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("mysql: scan uuid: dest must be *string, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("mysql: scan uuid: unsupported raw type %T", raw)
-		}
-
-	case "json":
-		d, ok := dest.(*string)
-		if !ok {
-			return fmt.Errorf("mysql: scan json: dest must be *string, got %T", dest)
-		}
-		switch v := raw.(type) {
-		case string:
-			*d = v
-		case []byte:
-			*d = string(v)
-		default:
-			return fmt.Errorf("mysql: scan json: unsupported raw type %T", raw)
-		}
-
-	default:
-		return fmt.Errorf("mysql: scan: unrecognized column kind %q", t.Kind())
-	}
-
-	return nil
-}
+// go-sql-driver returns DECIMAL/NUMERIC columns as []byte (a
+// decimal-text representation), not a numeric wrapper type.
 
 // quoteIdent backtick-quotes a SQL identifier, preserving table prefixes.
 func quoteIdent(name string) string {
