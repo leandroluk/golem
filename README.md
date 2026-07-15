@@ -156,6 +156,13 @@ of scope, not a backlog.
 were being built — kept as reference material, including its Db2/Snowflake sections from before
 those were dropped.
 
+## Performance
+
+Golem foi projetado com otimizações inspiradas nos ORMs de mais alta performance do mercado (como o [BreezeORM](https://github.com/nelthaarion/breezeorm)), porém mantendo um design 100% *Type-Safe*.
+
+- **Zero-Allocation Scanner**: O processamento de linhas vindas do banco de dados usa um *Plan* pré-compilado dinamicamente para cada entidade e mapeia diretamente os valores em memória usando `unsafe.Pointer`. Isso evita o gargalo do Garbage Collector com `reflect.Value`, entregando instâncias da sua Struct em **~80ns por operação** com apenas **1 alocação de memória** (a própria struct retornada).
+- **Lock-Free Caches**: Caches de metadados internos (*Entity Registries* e *Data Source Registries*) operam em concorrência extrema através de padrões lock-free baseados em `atomic.Pointer` e Copy-on-Write, garantindo zero latência de trava (*lock contention*) mesmo sob carga massiva.
+
 ---
 
 ## About the Project

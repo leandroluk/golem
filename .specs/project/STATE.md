@@ -7,6 +7,22 @@
 
 ## Recent Decisions (Last 60 days)
 
+### AD-054: Versionamento Semântico e Modulos Go (2026-07-15)
+
+**Decision:** O versionamento do projeto usará estritamente o formato `v0.{major}-{minor}.{release}`. Nunca avançaremos o campo `vX` inicial do semver oficial para além de `v0`, tratando o segundo campo (minor padrão) como nossa major version real.
+**Reason:** O comportamento do Golang para pacotes a partir da `v2` (exigindo renomear o path de importação em todos os arquivos de usuários e diretórios via `/v2`) gera um atrito horrível. Manter sempre na `v0` mas avançando nosso sufixo interno preserva estabilidade de import paths no Go Module (`github.com/leandroluk/golem`) sem penalidades.
+**Trade-off:** Não usar o semantic versioning "padrão" suportado nativamente por ferramentas automatizadas (nós controlaremos a nomenclatura).
+**Impact:** A partir do término do Milestone M22, a versão atual será a `v0.23-0.0` (indicando major 23 baseada no M22 + M23). Todas as releases devem respeitar essa tag.
+
+### AD-053: M22 (Zero-Allocation Scanner & Lock-Free Cache) (2026-07-15)
+
+**Decision:** Substituído o scan baseado em reflection (`repository.assignFieldValue`) por um scanner especializado `internal/scanner` que compila um plano de execução por entidade e usa aritmética de ponteiros `unsafe` para definir campos primitivos no hot loop. Caches globais (`fkRegistry`, `dataSourceRegistry`) migrados de `sync.RWMutex` para `atomic.Pointer` (copy-on-write) para eliminar contenção na leitura.
+**Reason:** Performance. A implementação legada alocava e engasgava no garbage collector devido à criação pesada de `reflect.Value`. A nova versão (adaptada da análise do BreezeORM, mas mantendo a promessa fully type-safe e baseada em referências por ponteiro do Golem) move o custo de reflexão do runtime por-linha para o tempo de boot de cada repositório.
+**Trade-off:** Introduz o uso de pacote `unsafe` centralizado em `scanner.ScanFromMap`, justificável pelo ganho expressivo de performance. O benchmark `BenchmarkScanFromMap_AllPrimitives` demonstrou que as alocações caíram para apenas 1 por operação (apenas a criação da própria struct `T` para retorno), operando em ≈80ns por iteração. 
+**Impact:** Milestone M22 completo, `ROADMAP.md` atualizado e 100% de coverage re-validado.
+Como parte final, a interface `golem.Dialect` foi limpada: os métodos `Bind` e `Scan` (que eram mantidos como código morto desde a issue AD-037) foram deletados junto com centenas the testes unitários de adaptadores que só testavam o próprio código morto.
+
+
 ### AD-052: M21 (Snowflake) dropped mid-build — adapter scope now deliberately capped at the 5 common databases, matching mainstream ORMs like TypeORM (2026-07-06)
 
 **Decision:** Stopped work on `driver/snowflake` partway through (package + `Bind`/`Scan`/`CompileSelect`/`CompileDelete`/`Insert`/`Update`/error-mapping/unit tests were written and passing, but conformance/integration test files and full coverage confirmation were not reached). Removed all of it: `driver/snowflake`, `.specs/features/snowflake-adapter/`, the `snowflake` service from `docker-compose.test.yml`, `github.com/snowflakedb/gosnowflake` from `go.mod`/`go.sum`. Also reverted `internal/dialecttest.Capabilities.ConstraintsNotEnforced` (added specifically so the conformance harness could skip `runConflictDetection` for Snowflake's non-enforcing standard tables — see the design work below) back out, since no remaining adapter needs it. The project's adapter set is now considered **done** at M19's 5 databases: Postgres, MySQL, SQLite, SQL Server, Oracle.

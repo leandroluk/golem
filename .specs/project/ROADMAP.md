@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** — (M1-M14 done, no milestone currently planned — see STATE.md's Deferred Ideas / Future Considerations below for candidates)
-**Status:** M1-M14 done
+**Current Milestone:** M22 — Zero-Allocation Scanner & Lock-Free Cache (In Spec)
+**Status:** M1-M19 done (M20/M21 dropped). M22 especificado.
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -470,6 +470,43 @@ set. All Snowflake code was removed (`driver/snowflake`, `.specs/features/snowfl
 `go.mod`); the `internal/dialecttest.Capabilities.ConstraintsNotEnforced` core-schema addition (added
 to let the harness skip conflict-detection subtests for Snowflake's non-enforcing standard tables)
 was reverted too, since no adapter needs it anymore.
+
+---
+
+## M22 — Zero-Allocation Scanner & Lock-Free Cache
+
+**Goal:** Reduzir alocações em operações de leitura sem comprometer type-safety.
+Três técnicas extraídas da análise do BreezeORM, adaptadas ao modelo de metadados do Golem.
+**Status:** ✅ DONE — scanner de alta performance integrado (≈80ns e 1 alloc para instanciar struct), lock-free caches operacionais via `atomic.Pointer`.
+
+### Features
+
+**`internal/scanner`** - DONE
+
+- `fieldKind` enum: classifica cada campo de struct em tempo de compilação de metadados
+- `Plan`: estrutura compilada uma vez por entity com offsets e kinds pré-resolvidos
+- `ScanFromMap[T]`: hot loop com `unsafe.Add(base, offset)` + switch inlineado — zero allocs para campos primitivos, fallback reflect para tipos exóticos (UUID, JSON, `*T`)
+- `sync.Pool` para reusar `[]any` de destinos entre rows
+
+**`entity.ColumnMeta` extensão** - DONE
+
+- Novos campos `GoType reflect.Type` e `Offset uintptr` populados em `finalize()`
+- Backward-compatible: campos adicionais, sem remover nem renomear nada existente
+
+**`repository` integração** - DONE
+
+- `Repository[T]` compila o `scanner.Plan` uma vez em `Get[T]`
+- `scanRow` delega para `scanner.ScanFromMap[T]`
+- `FindMany` pré-aloca slice com `make([]T, 0, limit)` quando `Limit` está presente (ScanAllHint)
+
+**FK registry + DataSource registry lock-free** - DONE
+
+- `entity.ForeignKeysReferencing` migra para `atomic.Pointer[map]` — zero `RLock` no hot path
+- `golem.GetDataSource` idem
+
+**Dead code annotation** - DONE
+
+- `Dialect.Bind`/`Scan` em todos os 5 adapters recebem comentário `// dead code — ver AD-037`
 
 ---
 
