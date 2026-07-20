@@ -126,6 +126,23 @@ func TestNewDataSource_ErrorDuplicateName(t *testing.T) {
 	}
 }
 
+func TestMustNewDataSource_Success(t *testing.T) {
+	ds := MustNewDataSource(WithConnector(&mockConnector{}), DataSourceName(t.Name()))
+	defer ds.Close()
+	if ds.Name() != t.Name() {
+		t.Fatalf("Name() = %q, want %q", ds.Name(), t.Name())
+	}
+}
+
+func TestMustNewDataSource_PanicsOnError(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic when no connector configured")
+		}
+	}()
+	MustNewDataSource(DataSourceName(t.Name()))
+}
+
 func TestDataSource_Connect_Error(t *testing.T) {
 	ds := newTestDataSource(t, WithConnector(&mockConnector{err: errors.New("connect error")}))
 	err := ds.Connect()

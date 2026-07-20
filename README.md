@@ -248,6 +248,17 @@ func main() {
 > }
 > ```
 
+> **`MustNewDataSource`** — panics instead of returning an error, for call sites (`main()`, test setup, a DI
+> container's provider constructor) where a failed `DataSource` is unrecoverable and you'd just `panic(err)`
+> yourself anyway:
+>
+> ```go
+> dataSource := golem.MustNewDataSource(
+>   postgres.New(func(o *postgres.Options) { o.DSN = dsn }),
+> )
+> defer dataSource.Close()
+> ```
+
 ### Declaring schemas
 
 > `golem.ColumnType` (`golem.BIGINT()`, `golem.VARCHAR(50)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.DATETIME()`,

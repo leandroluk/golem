@@ -36,6 +36,17 @@ func main() {
 
 `NewDataSource` only builds the value and validates options — no network call happens until `Connect()`. `Close()` releases the underlying pool; safe to call even if `Connect()` was never called or failed.
 
+### MustNewDataSource
+
+`golem.MustNewDataSource(opts...)` is `NewDataSource` without the error return — it panics instead. Useful where a failed `DataSource` is unrecoverable anyway (`main()`, test setup, a DI container's provider constructor):
+
+```go
+dataSource := golem.MustNewDataSource(
+	postgres.New(func(o *postgres.Options) { o.DSN = dsn }),
+)
+defer dataSource.Close()
+```
+
 ## Adapter options
 
 Every adapter accepts either a full `DSN` string, discrete connection fields, or both (see "DSN precedence" below). `Logging`/`Logger` are common to all 5 — see [Custom logger](../README.md#custom-logger).

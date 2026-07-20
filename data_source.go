@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/leandroluk/golem/internal/must"
 )
 
 // DataSource owns the connect/close lifecycle for one logical database
@@ -64,6 +66,14 @@ func NewDataSource(opts ...Option) (*DataSource, error) {
 	newMap[cfg.name] = ds
 	dataSourceRegistry.Store(&newMap)
 	return ds, nil
+}
+
+// MustNewDataSource is like NewDataSource but panics instead of returning an
+// error — a convenience for call sites (main(), test setup, a Provider
+// constructor) where a failed DataSource is unrecoverable and the caller
+// would just panic on the error anyway.
+func MustNewDataSource(opts ...Option) *DataSource {
+	return must.Value(NewDataSource(opts...))
 }
 
 // GetDataSource returns the DataSource registered under name (defaults to
