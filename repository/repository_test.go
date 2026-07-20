@@ -76,6 +76,57 @@ var softDeleteSubjectEntity = entity.New(func(s *softDeleteSubject, b *entity.Ta
 })
 
 // -----------------------------------------------------------------------
+// driver.Valuer test entity: a field type golem knows nothing about,
+// proving toDriverValue calls Value() instead of using the field's raw Go
+// value as the driver.Value.
+// -----------------------------------------------------------------------
+
+type fakeValuerField struct{ inner string }
+
+func (f fakeValuerField) Value() (driver.Value, error) {
+	return "wrapped:" + f.inner, nil
+}
+
+// Scan lets the Insert result (which round-trips through the same column)
+// be read back without erroring -- Insert scans the Dialect's returned row
+// into a fresh T after writing, so a write-only Valuer would fail there.
+func (f *fakeValuerField) Scan(src any) error {
+	s, _ := src.(string)
+	f.inner = strings.TrimPrefix(s, "wrapped:")
+	return nil
+}
+
+type valuerSubject struct {
+	ID    int64
+	Field fakeValuerField
+}
+
+var valuerSubjectEntity = entity.New(func(s *valuerSubject, b *entity.Table) {
+	b.TableName("valuersubject")
+	b.Col(&s.ID, golem.BIGINT())
+	b.Col(&s.Field, golem.TEXT())
+	b.PrimaryKey(&s.ID)
+})
+
+type fakeValuerErrField struct{ x int }
+
+func (f fakeValuerErrField) Value() (driver.Value, error) {
+	return nil, errors.New("valuer boom")
+}
+
+type valuerErrSubject struct {
+	ID    int64
+	Field fakeValuerErrField
+}
+
+var valuerErrSubjectEntity = entity.New(func(s *valuerErrSubject, b *entity.Table) {
+	b.TableName("valuererrsubject")
+	b.Col(&s.ID, golem.BIGINT())
+	b.Col(&s.Field, golem.TEXT())
+	b.PrimaryKey(&s.ID)
+})
+
+// -----------------------------------------------------------------------
 // Fakes: golem.Connector + golem.Dialect
 // -----------------------------------------------------------------------
 
@@ -279,6 +330,35 @@ func TestRepository_Insert_CallsDialectWithCorrectTableAndColumns(t *testing.T) 
 
 	if got.ID != 42 {
 		t.Errorf("got.ID = %d, want 42", got.ID)
+	}
+}
+
+func TestRepository_Insert_ValuerField_CallsValueInsteadOfRawStruct(t *testing.T) {
+	d := &fakeDialect{
+		insertResult: map[string]any{"id": int64(1), "field": "wrapped:abc"},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, valuerSubjectEntity)
+
+	in := &valuerSubject{Field: fakeValuerField{inner: "abc"}}
+	if _, err := repo.Insert(context.Background(), in); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	call := d.insertCalls[0]
+	if len(call.Values) != 1 || call.Values[0] != "wrapped:abc" {
+		t.Fatalf("values = %v, want [wrapped:abc]", call.Values)
+	}
+}
+
+func TestRepository_Insert_ValuerFieldError_Propagates(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, valuerErrSubjectEntity)
+
+	in := &valuerErrSubject{Field: fakeValuerErrField{x: 1}}
+	if _, err := repo.Insert(context.Background(), in); err == nil {
+		t.Fatal("expected error from Value()")
 	}
 }
 

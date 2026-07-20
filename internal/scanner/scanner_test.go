@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"database/sql"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -41,6 +42,25 @@ type testStruct struct {
 }
 
 type customType struct{ X int }
+
+// fakeScannerField implements database/sql.Scanner -- a field type golem
+// knows nothing about, proving assignReflect delegates to Scan(raw) instead
+// of trying (and failing) a direct field.Set.
+type fakeScannerField struct{ inner string }
+
+func (f *fakeScannerField) Scan(src any) error {
+	s, ok := src.(string)
+	if !ok {
+		return fmt.Errorf("fakeScannerField: cannot scan %T", src)
+	}
+	f.inner = "scanned:" + s
+	return nil
+}
+
+type scannerTestStruct struct {
+	ID    int64
+	Field fakeScannerField
+}
 
 // buildMeta builds an EntityMeta for testStruct using entity.New.
 func buildMeta(t testing.TB) entity.EntityMeta {
@@ -390,6 +410,42 @@ func TestScanFromMap_FallbackReflect_CustomType(t *testing.T) {
 	}
 	if ts.CustomVal.X != 42 {
 		t.Errorf("customVal: %+v", ts.CustomVal)
+	}
+}
+
+func TestScanFromMap_SqlScanner_DelegatesToScan(t *testing.T) {
+	meta := entity.New(func(ts *scannerTestStruct, b *entity.Table) {
+		b.TableName("scannerteststruct")
+		b.Col(&ts.ID, golem.BIGINT())
+		b.Col(&ts.Field, golem.TEXT())
+		b.PrimaryKey(&ts.ID)
+	}).Describe()
+	p := Compile(meta)
+
+	row := map[string]any{"id": int64(1), "field": "abc"}
+	ts, err := ScanFromMap[scannerTestStruct](p, row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ts.Field.inner != "scanned:abc" {
+		t.Errorf("Field.inner = %q, want %q", ts.Field.inner, "scanned:abc")
+	}
+}
+
+func TestScanFromMap_SqlScanner_PropagatesScanError(t *testing.T) {
+	meta := entity.New(func(ts *scannerTestStruct, b *entity.Table) {
+		b.TableName("scannerteststruct2")
+		b.Col(&ts.ID, golem.BIGINT())
+		b.Col(&ts.Field, golem.TEXT())
+		b.PrimaryKey(&ts.ID)
+	}).Describe()
+	p := Compile(meta)
+
+	// fakeScannerField.Scan only accepts a string -- an int64 makes it error.
+	row := map[string]any{"id": int64(1), "field": int64(99)}
+	_, err := ScanFromMap[scannerTestStruct](p, row)
+	if err == nil {
+		t.Fatal("expected error from Scan")
 	}
 }
 

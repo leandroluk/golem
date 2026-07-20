@@ -491,6 +491,49 @@ func main() {
 
 ```
 
+### Custom field types (Valuer/Scanner)
+
+A struct field doesn't have to be a plain Go scalar. If its type implements `database/sql/driver.Valuer`,
+golem calls `Value()` to get the value to write instead of using the field's raw Go value as-is; if it
+implements `sql.Scanner`, golem calls `Scan(raw)` to populate it instead of trying a direct assignment.
+Both are the standard library's own contracts — golem has zero knowledge of, or dependency on, whatever
+type implements them:
+
+```go
+type Money struct {
+  Cents int64
+}
+
+func (m Money) Value() (driver.Value, error) {
+  return m.Cents, nil
+}
+
+func (m *Money) Scan(src any) error {
+  v, ok := src.(int64)
+  if !ok {
+    return fmt.Errorf("Money: cannot scan %T", src)
+  }
+  m.Cents = v
+  return nil
+}
+
+type Order struct {
+  ID    int64
+  Total Money // stored as a plain BIGINT column, wrapped in Go
+}
+
+var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
+  b.Col(&o.ID, golem.BIGINT())
+  b.Col(&o.Total, golem.BIGINT())
+  b.PrimaryKey(&o.ID)
+})
+```
+
+This is the seam a dirty-tracking/optional-field wrapper (a `gonest.Accessor[T]`-shaped type, or your own)
+plugs into: implement `Value()`/`Scan()` on a small adapter type wrapping it, use that adapter type as the
+struct field instead of the wrapper directly, and golem round-trips it exactly like any other column, no
+extra configuration needed.
+
 ### Many-to-many relations (junction entity)
 
 > Inspired by https://typeorm.io/docs/relations/relations, but without the `@JoinTable`/`@JoinColumn`

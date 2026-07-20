@@ -312,6 +312,16 @@ func assignReflect(fp unsafe.Pointer, goType reflect.Type, raw any) error {
 		return nil
 	}
 	field := reflect.NewAt(goType, fp).Elem()
+
+	// A field type implementing database/sql.Scanner owns its own decoding
+	// -- e.g. a dirty-tracking wrapper around a plain Go value, coming from
+	// any other package golem knows nothing about. field.Addr() already
+	// points at the exact struct memory being scanned into (fp itself), so
+	// Scan writes straight into the live field, no extra copy.
+	if scanner, ok := field.Addr().Interface().(sql.Scanner); ok {
+		return scanner.Scan(raw)
+	}
+
 	rawVal := reflect.ValueOf(raw)
 	if !rawVal.IsValid() {
 		return nil
