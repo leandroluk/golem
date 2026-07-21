@@ -1,6 +1,6 @@
 # Declaring schemas
 
-Entities are plain Go structs — no tags, no code generation. `golem.NewEntity[T](func(t *T, b *golem.Table) {...})` declares the mapping in a callback: `t` is a pointer to a zero-value `T` used purely to take field addresses, and `b` is the builder that records what each address means.
+Entities are plain Go structs — no tags, no code generation. `golem.NewTable[T](func(t *T, b *golem.Table) {...})` declares the mapping in a callback: `t` is a pointer to a zero-value `T` used purely to take field addresses, and `b` is the builder that records what each address means.
 
 ```go
 package main
@@ -21,7 +21,7 @@ type User struct {
 	Age       uint8
 }
 
-var UserEntity = golem.NewEntity[User](func(t *User, b *golem.Table) {
+var UserEntity = golem.NewTable[User](func(t *User, b *golem.Table) {
 	// table name; if omitted, uses the lowercased struct name (e.g. "User" -> "user")
 	b.TableName("users")
 	// table schema; if omitted, uses whichever schema is currently selected on the connection
@@ -68,7 +68,7 @@ A field doesn't have to be a plain Go scalar. Every `DataSource` has a `golem.Pa
    	Total gonest.Accessor[int64] // Get()/Set(T) duck-typed automatically
    }
 
-   var OrderEntity = golem.NewEntity(func(o *Order, b *golem.Table) {
+   var OrderEntity = golem.NewTable(func(o *Order, b *golem.Table) {
    	b.Col(&o.ID, golem.BIGINT())
    	b.Col(&o.Total, golem.BIGINT())
    	b.PrimaryKey(&o.ID)
@@ -101,39 +101,39 @@ dataSource := golem.MustNewDataSource(
 
 Scope — table-level (lives outside `Col` because it can span more than one column, or has no single field to attach to):
 
-| Method | Description |
-| --- | --- |
-| `TableName(name string)` | table name; defaults to the struct name |
-| `SchemaName(name string)` | table schema; defaults to whichever schema is currently selected on the connection |
-| `PrimaryKey(fieldPtrs ...any)` | primary key; accepts 1+ fields (composite) |
-| `Unique(fieldPtrs ...any)` | `UNIQUE` constraint; accepts 1+ fields (composite) |
-| `Index(fieldPtrs ...any) *golem.Index` | secondary index over 1+ fields |
+| Method                                 | Description                                                                        |
+| -------------------------------------- | ---------------------------------------------------------------------------------- |
+| `TableName(name string)`               | table name; defaults to the struct name                                            |
+| `SchemaName(name string)`              | table schema; defaults to whichever schema is currently selected on the connection |
+| `PrimaryKey(fieldPtrs ...any)`         | primary key; accepts 1+ fields (composite)                                         |
+| `Unique(fieldPtrs ...any)`             | `UNIQUE` constraint; accepts 1+ fields (composite)                                 |
+| `Index(fieldPtrs ...any) *golem.Index` | secondary index over 1+ fields                                                     |
 
 Scope — column-level:
 
-| Method | Description |
-| --- | --- |
-| `Col(fieldPtr any, t golem.ColumnType) *golem.Column` | maps a struct field to a column with an explicit type |
-| `ForeignKey(fieldPtr any, target *golem.Entity[T], opts ...*golem.ForeignKeyOptions)` | foreign key pointing at another entity's PK |
-| `CreateDate(fieldPtr any) *golem.Column` | marks the field as "created at" — filled in automatically with the insert's timestamp |
-| `UpdateDate(fieldPtr any) *golem.Column` | marks the field as "updated at" — filled in automatically with each update's timestamp |
-| `DeleteDate(fieldPtr any) *golem.Column` | marks the field as "soft-deleted at" — a non-nil value means the row is deleted; see [Query builder](query-builder.md)'s `.WithDeleted()` |
+| Method                                                                                | Description                                                                                                                               |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Col(fieldPtr any, t golem.ColumnType) *golem.Column`                                 | maps a struct field to a column with an explicit type                                                                                     |
+| `ForeignKey(fieldPtr any, target *golem.Entity[T], opts ...*golem.ForeignKeyOptions)` | foreign key pointing at another entity's PK                                                                                               |
+| `CreateDate(fieldPtr any) *golem.Column`                                              | marks the field as "created at" — filled in automatically with the insert's timestamp                                                     |
+| `UpdateDate(fieldPtr any) *golem.Column`                                              | marks the field as "updated at" — filled in automatically with each update's timestamp                                                    |
+| `DeleteDate(fieldPtr any) *golem.Column`                                              | marks the field as "soft-deleted at" — a non-nil value means the row is deleted; see [Query builder](query-builder.md)'s `.WithDeleted()` |
 
 `*golem.Column` (returned by `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) chains:
 
-| Method | Description |
-| --- | --- |
-| `.Name(name string)` | column name; defaults to the struct field's name |
-| `.Nullable()` | allows `NULL` |
-| `.Default(value any)` | default value (or dialect expression) |
+| Method                                 | Description                                                                                                                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.Name(name string)`                   | column name; defaults to the struct field's name                                                                                                                                 |
+| `.Nullable()`                          | allows `NULL`                                                                                                                                                                    |
+| `.Default(value any)`                  | default value (or dialect expression)                                                                                                                                            |
 | `.DefaultFunc(fn func() (any, error))` | computed in Go code at insert time (UUIDs, slugs, a value derived from another field, …) — only applied when the field is still zero-valued; a returned error cancels the insert |
 
 `*golem.Index` (returned by `Index`) chains:
 
-| Method | Description |
-| --- | --- |
+| Method               | Description                                                       |
+| -------------------- | ----------------------------------------------------------------- |
 | `.Name(name string)` | index name; defaults to a generated one (`idx_<table>_<columns>`) |
-| `.Unique()` | unique index |
+| `.Unique()`          | unique index                                                      |
 
 ## Foreign keys
 
@@ -147,7 +147,7 @@ type Post struct {
 	Content     string
 }
 
-var PostEntity = golem.NewEntity[Post](func(t *Post, b *golem.Table) {
+var PostEntity = golem.NewTable[Post](func(t *Post, b *golem.Table) {
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.OwnerUserID, golem.BIGINT())
 	b.Col(&t.Title, golem.VARCHAR(50))
@@ -163,11 +163,11 @@ var PostEntity = golem.NewEntity[Post](func(t *Post, b *golem.Table) {
 
 `OnDelete` accepts:
 
-| Value | Behavior |
-| --- | --- |
-| `golem.OnDeleteCascade` | deleting the parent also deletes (or soft-deletes) referencing children |
-| `golem.OnDeleteSetNull` | deleting the parent sets the FK column to `NULL` on referencing children |
-| `golem.OnDeleteRestrict` | blocks the delete with `golem.ErrForeignKeyViolation` if a referencing row exists |
+| Value                                              | Behavior                                                                          |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `golem.OnDeleteCascade`                            | deleting the parent also deletes (or soft-deletes) referencing children           |
+| `golem.OnDeleteSetNull`                            | deleting the parent sets the FK column to `NULL` on referencing children          |
+| `golem.OnDeleteRestrict`                           | blocks the delete with `golem.ErrForeignKeyViolation` if a referencing row exists |
 | `golem.OnDeleteDefault` / `golem.OnDeleteNoAction` | no golem-level behavior; if a real DB constraint exists outside golem, it decides |
 
 See [Relations & cascades](relations.md) for the full picture, including many-to-many junction entities.

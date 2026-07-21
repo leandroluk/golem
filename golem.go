@@ -110,9 +110,9 @@ var (
 	ForeignKeysReferencing = entity.ForeignKeysReferencing
 )
 
-// NewEntity declares an entity's schema. fn resolves every field-pointer
+// NewTable declares an entity's schema. fn resolves every field-pointer
 // argument by memory offset against the same zero-value T instance.
-func NewEntity[T any](fn func(t *T, b *Table)) *Entity[T] { return entity.New(fn) }
+func NewTable[T any](fn func(t *T, b *Table)) *Entity[T] { return entity.New(fn) }
 
 // AddHook registers lifecycle hooks (BeforeCreate/AfterCreate/... ) against e.
 func AddHook[T any](e *Entity[T]) *HookBuilder[T] { return entity.AddHook(e) }

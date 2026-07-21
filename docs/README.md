@@ -30,7 +30,7 @@ Golem mirrors TypeORM's `DataSource` / `Repository` pattern (already familiar if
 
 ## Features
 
-- Field-pointer schema declaration (`golem.NewEntity[T]`, `b.Col(&t.Field, golem.VARCHAR(50))`, …) — no struct tags, no codegen
+- Field-pointer schema declaration (`golem.NewTable[T]`, `b.Col(&t.Field, golem.VARCHAR(50))`, …) — no struct tags, no codegen
 - Typed `Repository[T]` for all CRUD operations (`Insert`, `InsertMany`, `SaveOne`, `SaveMany`, `Update`, `Delete`, `Restore`, `FindOne`, `FindMany`, `Count`, `Exists`)
 - Declarative query criteria via closures (`golem.Eq`, `golem.Gt`, `golem.In`, `golem.Like`, …) — no string-built WHERE clauses
 - Automatic `CreateDate` / `UpdateDate` / soft-delete (`DeleteDate`) timestamp handling
@@ -86,7 +86,7 @@ func main() {
 From here:
 
 - [Connecting](guides/connecting.md) — every adapter's `Options`, DSN precedence rules, `GetDataSource`
-- [Declaring schemas](guides/schema.md) — `golem.NewEntity`, columns, keys, indexes, foreign keys, hooks
+- [Declaring schemas](guides/schema.md) — `golem.NewTable`, columns, keys, indexes, foreign keys, hooks
 - [Repository (CRUD)](guides/repository.md) — `Insert`, `SaveOne`, `Update`, `Delete`, `FindOne`/`FindMany`, `Count`/`Exists`
 - [Query builder](guides/query-builder.md) — `Where`, `golem.*` operators, `OrderBy`, pagination, soft delete
 - [Joins](guides/joins.md), [Preload](guides/preload.md), [Aggregations](guides/aggregations.md), [Locking](guides/locking.md)

@@ -109,79 +109,79 @@ essa tabela.
 
 **`entity` → `golem`**
 
-| Hoje (`entity.X`) | Vira (`golem.X`) | Motivo do nome |
-|---|---|---|
-| `type Entity[T any]` | `type Entity[T any]` | sem colisão |
-| `func New[T any](...) *Entity[T]` | `func NewEntity[T any](...) *Entity[T]` | `New` bare colide com `query.New`/`repository.Get` achatados — ver REQ-004 |
-| `type Table` | `type Table` | sem colisão |
-| `type Column` | `type Column` | sem colisão (`ColumnType` já existe, nome diferente) |
-| `type ColumnMeta` | `type ColumnMeta` | sem colisão |
-| `type ForeignKeyMeta` | `type ForeignKeyMeta` | sem colisão |
-| `type IndexMeta` | `type IndexMeta` | sem colisão |
-| `type EntityMeta` | `type EntityMeta` | sem colisão |
-| `type Index` | `type Index` | sem colisão |
-| `type FKRegistration` | `type FKRegistration` | sem colisão |
-| `type HookBuilder[T any]` | `type HookBuilder[T any]` | sem colisão |
-| `func ResolveField(...) (string, error)` | `func ResolveField(...) (string, error)` | sem colisão |
-| `func ForeignKeysReferencing(...) []FKRegistration` | `func ForeignKeysReferencing(...) []FKRegistration` | sem colisão |
-| `func AddHook[T any](e *Entity[T]) *HookBuilder[T]` | `func AddHook[T any](e *Entity[T]) *HookBuilder[T]` | sem colisão |
+| Hoje (`entity.X`)                                   | Vira (`golem.X`)                                    | Motivo do nome                                                             |
+| --------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
+| `type Entity[T any]`                                | `type Entity[T any]`                                | sem colisão                                                                |
+| `func New[T any](...) *Entity[T]`                   | `func NewTable[T any](...) *Entity[T]`              | `New` bare colide com `query.New`/`repository.Get` achatados — ver REQ-004 |
+| `type Table`                                        | `type Table`                                        | sem colisão                                                                |
+| `type Column`                                       | `type Column`                                       | sem colisão (`ColumnType` já existe, nome diferente)                       |
+| `type ColumnMeta`                                   | `type ColumnMeta`                                   | sem colisão                                                                |
+| `type ForeignKeyMeta`                               | `type ForeignKeyMeta`                               | sem colisão                                                                |
+| `type IndexMeta`                                    | `type IndexMeta`                                    | sem colisão                                                                |
+| `type EntityMeta`                                   | `type EntityMeta`                                   | sem colisão                                                                |
+| `type Index`                                        | `type Index`                                        | sem colisão                                                                |
+| `type FKRegistration`                               | `type FKRegistration`                               | sem colisão                                                                |
+| `type HookBuilder[T any]`                           | `type HookBuilder[T any]`                           | sem colisão                                                                |
+| `func ResolveField(...) (string, error)`            | `func ResolveField(...) (string, error)`            | sem colisão                                                                |
+| `func ForeignKeysReferencing(...) []FKRegistration` | `func ForeignKeysReferencing(...) []FKRegistration` | sem colisão                                                                |
+| `func AddHook[T any](e *Entity[T]) *HookBuilder[T]` | `func AddHook[T any](e *Entity[T]) *HookBuilder[T]` | sem colisão                                                                |
 
 **`repository` → `golem`**
 
-| Hoje (`repository.X`) | Vira (`golem.X`) | Motivo do nome |
-|---|---|---|
-| `type Repository[T any]` | `type Repository[T any]` | sem colisão |
-| `func Get[T any](conn Conn, e *Entity[T]) *Repository[T]` | `func NewRepository[T any](conn Conn, e *Entity[T]) *Repository[T]` | `Get` bare no root é ambíguo demais (get o quê?) — segue o padrão `New<Coisa>` já estabelecido |
-| `func Aggregate[T, R any](ctx, r, fn) ([]R, error)` | `func RunAggregate[T, R any](ctx, r, fn) ([]R, error)` | **colisão real** com `query.Aggregate[T,R]` (tipo) — Go não aceita tipo e função com mesmo nome no mesmo pacote |
-| `func Preload[T, J any](...) (map[any][]J, error)` | `func Preload[T, J any](...) (map[any][]J, error)` | sem colisão |
+| Hoje (`repository.X`)                                     | Vira (`golem.X`)                                                    | Motivo do nome                                                                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `type Repository[T any]`                                  | `type Repository[T any]`                                            | sem colisão                                                                                                     |
+| `func Get[T any](conn Conn, e *Entity[T]) *Repository[T]` | `func NewRepository[T any](conn Conn, e *Entity[T]) *Repository[T]` | `Get` bare no root é ambíguo demais (get o quê?) — segue o padrão `New<Coisa>` já estabelecido                  |
+| `func Aggregate[T, R any](ctx, r, fn) ([]R, error)`       | `func RunAggregate[T, R any](ctx, r, fn) ([]R, error)`              | **colisão real** com `query.Aggregate[T,R]` (tipo) — Go não aceita tipo e função com mesmo nome no mesmo pacote |
+| `func Preload[T, J any](...) (map[any][]J, error)`        | `func Preload[T, J any](...) (map[any][]J, error)`                  | sem colisão                                                                                                     |
 
 **`relation` → `golem`**
 
-| Hoje (`relation.X`) | Vira (`golem.X`) | Motivo do nome |
-|---|---|---|
-| `type OnDeleteAction string` | `type OnDeleteAction string` | sem colisão |
-| `type ForeignKeyOptions` | `type ForeignKeyOptions` | sem colisão |
-| `func NewForeignKeyOptions() *ForeignKeyOptions` | `func NewForeignKeyOptions() *ForeignKeyOptions` | sem colisão |
+| Hoje (`relation.X`)                              | Vira (`golem.X`)                                 | Motivo do nome |
+| ------------------------------------------------ | ------------------------------------------------ | -------------- |
+| `type OnDeleteAction string`                     | `type OnDeleteAction string`                     | sem colisão    |
+| `type ForeignKeyOptions`                         | `type ForeignKeyOptions`                         | sem colisão    |
+| `func NewForeignKeyOptions() *ForeignKeyOptions` | `func NewForeignKeyOptions() *ForeignKeyOptions` | sem colisão    |
 
 **`op` → `golem`** (nomes nus, decisão explícita — ver pergunta respondida)
 
-| Hoje (`op.X`) | Vira (`golem.X`) |
-|---|---|
-| `type Condition` | `type Condition` |
+| Hoje (`op.X`)                               | Vira (`golem.X`)                            |
+| ------------------------------------------- | ------------------------------------------- |
+| `type Condition`                            | `type Condition`                            |
 | `func Eq/Gt/Gte/Lt/Lte/In/Like/Or/Not(...)` | `func Eq/Gt/Gte/Lt/Lte/In/Like/Or/Not(...)` |
-| `type Order` | `type Order` |
-| `func Asc/Desc(fieldPtr any) Order` | `func Asc/Desc(fieldPtr any) Order` |
+| `type Order`                                | `type Order`                                |
+| `func Asc/Desc(fieldPtr any) Order`         | `func Asc/Desc(fieldPtr any) Order`         |
 
 **`query` → `golem`**
 
-| Hoje (`query.X`) | Vira (`golem.X`) | Motivo do nome |
-|---|---|---|
-| `type AggMapping` | `type AggMapping` | sem colisão |
-| `type Aggregate[T, R any]` | `type Aggregate[T, R any]` | **fica com o nome bare** — a função de mesmo nome em `repository` foi a que precisou renomear (ver acima) |
-| `func NewAggregate[T, R any]() *Aggregate[T, R]` | `func NewAggregate[T, R any]() *Aggregate[T, R]` | sem colisão |
-| `type LockStrength string` | `type LockStrength string` | sem colisão |
-| `type LockWait string` | `type LockWait string` | sem colisão |
-| `type Query[T any]` | `type Query[T any]` | sem colisão |
-| `func New[T any]() *Query[T]` | `func NewQuery[T any]() *Query[T]` | `New` bare colide com `entity.New` achatado |
-| `type SetClause` | `type SetClause` | sem colisão |
-| `type Update[T any]` | `type Update[T any]` | sem colisão (é tipo; `Repository[T].Update(...)` é método, namespace diferente) |
-| `func NewUpdate[T any]() *Update[T]` | `func NewUpdate[T any]() *Update[T]` | sem colisão |
-| `type Count[T any]` | `type Count[T any]` | sem colisão |
-| `func NewCount[T any]() *Count[T]` | `func NewCount[T any]() *Count[T]` | sem colisão |
-| `type JoinOn` | `type JoinOn` | sem colisão |
-| `type JoinData` | `type JoinData` | sem colisão |
-| `type Join[T any]` | `type Join[T any]` | sem colisão (funções `Inner`/`Left`/`Right`/`Full` do pacote `join` não usam esse nome) |
-| `func NewJoin[T any]() *Join[T]` | `func NewJoin[T any]() *Join[T]` | sem colisão |
+| Hoje (`query.X`)                                 | Vira (`golem.X`)                                 | Motivo do nome                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `type AggMapping`                                | `type AggMapping`                                | sem colisão                                                                                               |
+| `type Aggregate[T, R any]`                       | `type Aggregate[T, R any]`                       | **fica com o nome bare** — a função de mesmo nome em `repository` foi a que precisou renomear (ver acima) |
+| `func NewAggregate[T, R any]() *Aggregate[T, R]` | `func NewAggregate[T, R any]() *Aggregate[T, R]` | sem colisão                                                                                               |
+| `type LockStrength string`                       | `type LockStrength string`                       | sem colisão                                                                                               |
+| `type LockWait string`                           | `type LockWait string`                           | sem colisão                                                                                               |
+| `type Query[T any]`                              | `type Query[T any]`                              | sem colisão                                                                                               |
+| `func New[T any]() *Query[T]`                    | `func NewQuery[T any]() *Query[T]`               | `New` bare colide com `entity.New` achatado                                                               |
+| `type SetClause`                                 | `type SetClause`                                 | sem colisão                                                                                               |
+| `type Update[T any]`                             | `type Update[T any]`                             | sem colisão (é tipo; `Repository[T].Update(...)` é método, namespace diferente)                           |
+| `func NewUpdate[T any]() *Update[T]`             | `func NewUpdate[T any]() *Update[T]`             | sem colisão                                                                                               |
+| `type Count[T any]`                              | `type Count[T any]`                              | sem colisão                                                                                               |
+| `func NewCount[T any]() *Count[T]`               | `func NewCount[T any]() *Count[T]`               | sem colisão                                                                                               |
+| `type JoinOn`                                    | `type JoinOn`                                    | sem colisão                                                                                               |
+| `type JoinData`                                  | `type JoinData`                                  | sem colisão                                                                                               |
+| `type Join[T any]`                               | `type Join[T any]`                               | sem colisão (funções `Inner`/`Left`/`Right`/`Full` do pacote `join` não usam esse nome)                   |
+| `func NewJoin[T any]() *Join[T]`                 | `func NewJoin[T any]() *Join[T]`                 | sem colisão                                                                                               |
 
 **`join` → `golem`** (prefixado `Join*` — decisão explícita, diferente do `op`: `Inner`/`Left`/`Right`/`Full`
 sozinhos no root são palavras genéricas demais, sem contexto óbvio de que são join)
 
-| Hoje (`join.X`) | Vira (`golem.X`) |
-|---|---|
+| Hoje (`join.X`)                                                | Vira (`golem.X`)                                                   |
+| -------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `func Inner[T, J any](q *Query[T], target *Entity[J], fn ...)` | `func JoinInner[T, J any](q *Query[T], target *Entity[J], fn ...)` |
-| `func Left[T, J any](...)` | `func JoinLeft[T, J any](...)` |
-| `func Right[T, J any](...)` | `func JoinRight[T, J any](...)` |
-| `func Full[T, J any](...)` | `func JoinFull[T, J any](...)` |
+| `func Left[T, J any](...)`                                     | `func JoinLeft[T, J any](...)`                                     |
+| `func Right[T, J any](...)`                                    | `func JoinRight[T, J any](...)`                                    |
+| `func Full[T, J any](...)`                                     | `func JoinFull[T, J any](...)`                                     |
 
 **Aceitação:** `go vet ./...` limpo (nenhum identificador duplicado), `go doc golem` lista todos os
 ~50 símbolos acima, nenhum a menos.
@@ -190,7 +190,7 @@ sozinhos no root são palavras genéricas demais, sem contexto óbvio de que sã
 
 ### REQ-004 — `entity.Table`'s callback signature e uso cruzado entre pacotes
 
-`entity.New[T](func(t *T, b *entity.Table) {...})` vira `golem.NewEntity[T](func(t *T, b *golem.Table) {...})`.
+`entity.New[T](func(t *T, b *entity.Table) {...})` vira `golem.NewTable[T](func(t *T, b *golem.Table) {...})`.
 Qualquer lugar que hoje importa 2+ dos 6 pacotes pra compor uma chamada (ex: `join.Inner` recebe
 `*query.Query[T]` e `*entity.Entity[J]`) continua funcionando igual, porque os tipos internos
 (`internal/query.Query[T]`, `internal/entity.Entity[J]`) são os MESMOS por baixo do alias —
@@ -199,7 +199,7 @@ novo tipo), então a assinatura de `golem.Inner[T, J any](q *golem.Query[T], tar
 compila sem nenhuma conversão.
 
 **Aceitação:** `golem.JoinInner`/`JoinLeft`/`JoinRight`/`JoinFull` aceitam diretamente o retorno de
-`golem.NewQuery[T]()` e `golem.NewEntity[J](...)` sem cast.
+`golem.NewQuery[T]()` e `golem.NewTable[J](...)` sem cast.
 
 ---
 
@@ -218,12 +218,12 @@ não retorna nada fora de `internal/` e do próprio `go.mod`/`CHANGELOG` histór
 
 ## Fora de Escopo
 
-| Item | Motivo |
-|---|---|
-| Mover `driver/*` pra `internal/` | Decisão explícita — ver Contexto. Cada driver carrega dependência de terceiro exclusiva, reexport único forçaria todo consumidor a compilar os 5 juntos. |
-| Migrar o projeto consumidor `erc` pros novos nomes (`golem.NewEntity` etc.) | É mudança no repo `erc`, não no `golem` — fica pro `erc` depois que essa release sair. |
-| Deprecar com aviso/manter os 6 pacotes antigos como alias temporário | Usuário não pediu transição gradual; é breaking direto, mesmo estilo de M23. |
-| Renomear `driver/*`'s próprios símbolos (`postgres.New`, `postgres.Options`) | Só entra em escopo se um dia `driver/*` também for achatado — não é o caso aqui. |
+| Item                                                                         | Motivo                                                                                                                                                   |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mover `driver/*` pra `internal/`                                             | Decisão explícita — ver Contexto. Cada driver carrega dependência de terceiro exclusiva, reexport único forçaria todo consumidor a compilar os 5 juntos. |
+| Migrar o projeto consumidor `erc` pros novos nomes (`golem.NewTable` etc.)   | É mudança no repo `erc`, não no `golem` — fica pro `erc` depois que essa release sair.                                                                   |
+| Deprecar com aviso/manter os 6 pacotes antigos como alias temporário         | Usuário não pediu transição gradual; é breaking direto, mesmo estilo de M23.                                                                             |
+| Renomear `driver/*`'s próprios símbolos (`postgres.New`, `postgres.Options`) | Só entra em escopo se um dia `driver/*` também for achatado — não é o caso aqui.                                                                         |
 
 ---
 
@@ -239,14 +239,14 @@ não retorna nada fora de `internal/` e do próprio `go.mod`/`CHANGELOG` histór
 
 ## Requirement Traceability
 
-| Requirement ID | Fase | Status |
-| --- | --- | --- |
-| M24-REQ-000 | Execute | Verified |
-| M24-REQ-001 | Execute | Verified |
-| M24-REQ-002 | Execute | Verified |
-| M24-REQ-003 | Execute | Verified |
-| M24-REQ-004 | Execute | Verified |
-| M24-REQ-005 | Execute | Verified |
+| Requirement ID | Fase    | Status   |
+| -------------- | ------- | -------- |
+| M24-REQ-000    | Execute | Verified |
+| M24-REQ-001    | Execute | Verified |
+| M24-REQ-002    | Execute | Verified |
+| M24-REQ-003    | Execute | Verified |
+| M24-REQ-004    | Execute | Verified |
+| M24-REQ-005    | Execute | Verified |
 
 **Coverage:** 6 total, 0 mapeados pra tasks ainda, 6 não-mapeados ⚠️
 

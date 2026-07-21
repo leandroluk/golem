@@ -177,7 +177,7 @@ type HookBuilder[T any] = entity.HookBuilder[T]
 var ResolveField = entity.ResolveField
 var ForeignKeysReferencing = entity.ForeignKeysReferencing
 
-func NewEntity[T any](fn func(t *T, b *Table)) *Entity[T] { return entity.New(fn) }
+func NewTable[T any](fn func(t *T, b *Table)) *Entity[T] { return entity.New(fn) }
 func AddHook[T any](e *Entity[T]) *HookBuilder[T]         { return entity.AddHook(e) }
 
 // ---- internal/repository ----
@@ -255,7 +255,7 @@ Notas de implementação:
 - `var (A, B = pkg.A, pkg.B)` (var-alias múltiplo numa linha) é só açúcar sintático — cada
   identificador continua individualmente substituível/documentável; usar bloco `var (...)` com 1
   linha por grupo semântico (como no rascunho acima) só por legibilidade, não é regra da linguagem.
-- Funções genéricas (`NewEntity`, `NewRepository`, `RunAggregate`, `Preload`, `NewAggregate`,
+- Funções genéricas (`NewTable`, `NewRepository`, `RunAggregate`, `Preload`, `NewAggregate`,
   `NewQuery`, `NewUpdate`, `NewCount`, `NewJoin`, `JoinInner/Left/Right/Full`) precisam ser função
   wrapper de verdade (delegando por chamada), não `var`-alias — mesma exceção forçada pela
   linguagem já documentada no `gonest.go` pra `Parse[T]`/`MustParse[T]`.
@@ -294,29 +294,29 @@ de mexer em qualquer arquivo dentro de `driver/`.
 
 ## Arquivos Afetados
 
-| De | Para |
-|---|---|
-| `column_type.go`, `conn.go`, `connector.go`, `data_source.go`, `dialect.go`, `errors.go`, `logger.go`, `options.go`, `parser.go` (+ testes) | `internal/core/*` |
-| `entity/*` | `internal/entity/*` |
-| `repository/*` | `internal/repository/*` |
-| `relation/*` | `internal/relation/*` |
-| `op/*` | `internal/op/*` |
-| `query/*` | `internal/query/*` |
-| `join/*` | `internal/join/*` |
-| `golem.go` | reescrito do zero (reexport puro) |
-| `driver/*` | inalterado (só verificado) |
-| `.examples/*`, `README.md`, `docs/guides/*.md` | imports/snippets atualizados |
+| De                                                                                                                                          | Para                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `column_type.go`, `conn.go`, `connector.go`, `data_source.go`, `dialect.go`, `errors.go`, `logger.go`, `options.go`, `parser.go` (+ testes) | `internal/core/*`                 |
+| `entity/*`                                                                                                                                  | `internal/entity/*`               |
+| `repository/*`                                                                                                                              | `internal/repository/*`           |
+| `relation/*`                                                                                                                                | `internal/relation/*`             |
+| `op/*`                                                                                                                                      | `internal/op/*`                   |
+| `query/*`                                                                                                                                   | `internal/query/*`                |
+| `join/*`                                                                                                                                    | `internal/join/*`                 |
+| `golem.go`                                                                                                                                  | reescrito do zero (reexport puro) |
+| `driver/*`                                                                                                                                  | inalterado (só verificado)        |
+| `.examples/*`, `README.md`, `docs/guides/*.md`                                                                                              | imports/snippets atualizados      |
 
 ---
 
 ## Riscos e Mitigações
 
-| Risco | Mitigação |
-|---|---|
-| Esquecer algum símbolo exportado na hora de reexportar (regressão silenciosa de API) | Checklist = a tabela completa do `spec.md` REQ-003 + tudo que já era público no root — cruzar linha por linha antes de considerar C3 pronto. |
-| `go doc` de tipo genérico alias (`type X[T any] = pkg.X[T]`) ter comportamento/formatação diferente do tipo original | Verificar na prática (`go doc golem.Entity`) depois de implementar, não assumir que fica idêntico. |
-| Alias genérico exigir versão de Go mais nova que a que os 5 `driver/*`/consumidores usam | Confirmar `go.mod`'s `go 1.25.7` é consistente em todo o módulo antes de começar (já é um módulo único, mas confirmar mesmo). |
-| `internal/core` acabar precisando de algo de `internal/entity`/etc. no futuro (tentação de import de volta) | Regra dura: se acontecer, é sinal de que a coisa não deveria estar em `internal/core` — mover pro pacote-folha certo, nunca importar de volta. |
+| Risco                                                                                                                | Mitigação                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Esquecer algum símbolo exportado na hora de reexportar (regressão silenciosa de API)                                 | Checklist = a tabela completa do `spec.md` REQ-003 + tudo que já era público no root — cruzar linha por linha antes de considerar C3 pronto.   |
+| `go doc` de tipo genérico alias (`type X[T any] = pkg.X[T]`) ter comportamento/formatação diferente do tipo original | Verificar na prática (`go doc golem.Entity`) depois de implementar, não assumir que fica idêntico.                                             |
+| Alias genérico exigir versão de Go mais nova que a que os 5 `driver/*`/consumidores usam                             | Confirmar `go.mod`'s `go 1.25.7` é consistente em todo o módulo antes de começar (já é um módulo único, mas confirmar mesmo).                  |
+| `internal/core` acabar precisando de algo de `internal/entity`/etc. no futuro (tentação de import de volta)          | Regra dura: se acontecer, é sinal de que a coisa não deveria estar em `internal/core` — mover pro pacote-folha certo, nunca importar de volta. |
 
 ---
 

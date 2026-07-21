@@ -1,6 +1,6 @@
 # Aggregations
 
-`golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` follows the same principle as [Preload](preload.md): `R` is any struct (doesn't need `golem.NewEntity`), resolved by field pointer against `t` (source, `T`) and `res` (destination, `R`) — no tags.
+`golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` follows the same principle as [Preload](preload.md): `R` is any struct (doesn't need `golem.NewTable`), resolved by field pointer against `t` (source, `T`) and `res` (destination, `R`) — no tags.
 
 ```go
 package main
@@ -43,18 +43,18 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 
 ## `golem.Aggregate[T, R]` reference
 
-| Method | Description |
-| --- | --- |
-| `GroupBy(sourceFieldPtr, destFieldPtr)` | groups by a source column, writes its value into the destination field |
-| `Sum(sourceFieldPtr, destFieldPtr)` | `SUM(column)`, written to the destination field as `float64` |
-| `Avg(sourceFieldPtr, destFieldPtr)` | `AVG(column)`, written to the destination field as `float64` |
-| `Count(sourceFieldPtr, destFieldPtr)` | `COUNT(column)` |
-| `CountAll(destFieldPtr)` | `COUNT(*)` — no source column |
-| `Where(conditions ...golem.Condition)` | filters **before** grouping, resolved against `T` — same `golem.*` set as [Query builder](query-builder.md) |
+| Method                                  | Description                                                                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GroupBy(sourceFieldPtr, destFieldPtr)` | groups by a source column, writes its value into the destination field                                                                       |
+| `Sum(sourceFieldPtr, destFieldPtr)`     | `SUM(column)`, written to the destination field as `float64`                                                                                 |
+| `Avg(sourceFieldPtr, destFieldPtr)`     | `AVG(column)`, written to the destination field as `float64`                                                                                 |
+| `Count(sourceFieldPtr, destFieldPtr)`   | `COUNT(column)`                                                                                                                              |
+| `CountAll(destFieldPtr)`                | `COUNT(*)` — no source column                                                                                                                |
+| `Where(conditions ...golem.Condition)`  | filters **before** grouping, resolved against `T` — same `golem.*` set as [Query builder](query-builder.md)                                  |
 | `Having(conditions ...golem.Condition)` | filters **after** grouping — each condition's field pointer must point to an `R` field already registered via `Sum`/`Avg`/`Count`/`CountAll` |
-| `OrderBy(orders ...golem.Order)` | accepts both `GroupBy` and aggregate fields |
-| `Limit(n)` / `Offset(n)` | pagination over the grouped result |
-| `WithDeleted()` | includes soft-deleted rows — see [Query builder](query-builder.md#soft-delete-withdeleted) |
+| `OrderBy(orders ...golem.Order)`        | accepts both `GroupBy` and aggregate fields                                                                                                  |
+| `Limit(n)` / `Offset(n)`                | pagination over the grouped result                                                                                                           |
+| `WithDeleted()`                         | includes soft-deleted rows — see [Query builder](query-builder.md#soft-delete-withdeleted)                                                   |
 
 ## Notes
 

@@ -62,7 +62,7 @@ type golemTestSubject struct {
 }
 
 func newGolemTestEntity() *Entity[golemTestSubject] {
-	return NewEntity(func(s *golemTestSubject, b *Table) {
+	return NewTable(func(s *golemTestSubject, b *Table) {
 		b.TableName("golemtestsubject")
 		b.Col(&s.ID, BIGINT())
 		b.Col(&s.Name, TEXT())
@@ -70,10 +70,10 @@ func newGolemTestEntity() *Entity[golemTestSubject] {
 	})
 }
 
-func TestNewEntity_BuildsEntity(t *testing.T) {
+func TestNewTable_BuildsEntity(t *testing.T) {
 	e := newGolemTestEntity()
 	if e == nil {
-		t.Fatal("NewEntity returned nil")
+		t.Fatal("NewTable returned nil")
 	}
 	if e.Describe().TableName != "golemtestsubject" {
 		t.Fatalf("TableName = %q", e.Describe().TableName)
@@ -154,7 +154,7 @@ type golemJoinSubject struct {
 }
 
 func newGolemJoinEntity() *Entity[golemJoinSubject] {
-	return NewEntity(func(s *golemJoinSubject, b *Table) {
+	return NewTable(func(s *golemJoinSubject, b *Table) {
 		b.TableName("golemjoinsubject")
 		b.Col(&s.ID, BIGINT())
 		b.Col(&s.SubjectID, BIGINT())

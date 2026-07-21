@@ -278,7 +278,7 @@ func main() {
 > This keeps the entity 100% portable across dialects — only the `DataSource`/adapter chosen at runtime
 > decides the actual dialect; the entity declaration never changes.
 
-`golem.Table` (received inside `golem.NewEntity`'s callback) exposes:
+`golem.Table` (received inside `golem.NewTable`'s callback) exposes:
 
 scope:
   table:
@@ -351,7 +351,7 @@ type Message struct {
   PostID       int64
 }
 
-var UserEntity = golem.NewEntity[User](func(t *User, b *golem.Table) {
+var UserEntity = golem.NewTable[User](func(t *User, b *golem.Table) {
   // table name; if omitted, uses the struct name (e.g. "User")
   b.TableName("users")
   // table schema; if omitted, uses whichever schema is currently selected on
@@ -380,7 +380,7 @@ var UserEntity = golem.NewEntity[User](func(t *User, b *golem.Table) {
 })
 
 
-var PostEntity = golem.NewEntity[Post](func(t *Post, b *golem.Table) {
+var PostEntity = golem.NewTable[Post](func(t *Post, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.CreatedAt, golem.DATETIME())
   b.Col(&t.UpdatedAt, golem.DATETIME())
@@ -415,7 +415,7 @@ var PostEntity = golem.NewEntity[Post](func(t *Post, b *golem.Table) {
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
 })
 
-var MessageEntity = golem.NewEntity[Message](func(t *Message, b *golem.Table) {
+var MessageEntity = golem.NewTable[Message](func(t *Message, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.CreatedAt, golem.DATETIME())
   b.Col(&t.UpdatedAt, golem.DATETIME())
@@ -507,7 +507,7 @@ type Order struct {
   Total gonest.Accessor[int64] // Get()/Set(T) duck-typed automatically, no wrapper needed
 }
 
-var OrderEntity = golem.NewEntity(func(o *Order, b *golem.Table) {
+var OrderEntity = golem.NewTable(func(o *Order, b *golem.Table) {
   b.Col(&o.ID, golem.BIGINT())
   b.Col(&o.Total, golem.BIGINT())
   b.PrimaryKey(&o.ID)
@@ -559,14 +559,14 @@ type QuestionToCategory struct {
   CategoryID int64
 }
 
-var CategoryEntity = golem.NewEntity[Category](func(t *Category, b *golem.Table) {
+var CategoryEntity = golem.NewTable[Category](func(t *Category, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.Name, golem.VARCHAR(50))
 
   b.PrimaryKey(&t.ID)
 })
 
-var QuestionEntity = golem.NewEntity[Question](func(t *Question, b *golem.Table) {
+var QuestionEntity = golem.NewTable[Question](func(t *Question, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.Title, golem.VARCHAR(50))
   b.Col(&t.Text, golem.TEXT())
@@ -576,7 +576,7 @@ var QuestionEntity = golem.NewEntity[Question](func(t *Question, b *golem.Table)
 
 // since QuestionToCategory references QuestionEntity/CategoryEntity but neither of them references
 // QuestionToCategory back, there's no initialization cycle — the entities can be passed in directly
-var QuestionToCategoryEntity = golem.NewEntity[QuestionToCategory](func(t *QuestionToCategory, b *golem.Table) {
+var QuestionToCategoryEntity = golem.NewTable[QuestionToCategory](func(t *QuestionToCategory, b *golem.Table) {
   b.Col(&t.QuestionID, golem.BIGINT())
   b.Col(&t.CategoryID, golem.BIGINT())
 
@@ -1032,7 +1032,7 @@ func main() {
 ### Aggregations
 
 > `golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` —
-> same principle as `Preload`: `R` is any struct (doesn't need `golem.NewEntity`), resolved by field pointer
+> same principle as `Preload`: `R` is any struct (doesn't need `golem.NewTable`), resolved by field pointer
 > against `t` (source, `T`) and `res` (destination, `R`), no tags.
 >
 > `a.GroupBy(&t.Field, &res.Field)` marks a grouping column, loading the value into the destination
