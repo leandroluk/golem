@@ -87,7 +87,6 @@ dataSource, err := golem.NewDataSource(
 	postgres.New(func(o *postgres.Options) {
 		o.DSN = "postgres://golem:golem@localhost:5432/golem_test?sslmode=disable"
 	}),
-	golem.Entities(UserEntity, PostEntity, CategoryEntity, PostToCategoryEntity),
 )
 if err != nil {
 	panic(err)

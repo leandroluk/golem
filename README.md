@@ -478,7 +478,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity, PostEntity, MessageEntity),
   )
   if err != nil {
     panic(err)
@@ -592,7 +591,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(QuestionEntity, CategoryEntity, QuestionToCategoryEntity),
   )
   if err != nil {
     panic(err)
@@ -666,7 +664,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity, PostEntity, MessageEntity),
   )
   if err != nil {
     panic(err)
@@ -789,7 +786,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity, PostEntity, MessageEntity),
   )
   if err != nil {
     panic(err)
@@ -939,7 +935,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity, PostEntity),
   )
   if err != nil {
     panic(err)
@@ -998,7 +993,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity, PostEntity),
   )
   if err != nil {
     panic(err)
@@ -1071,7 +1065,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(PostEntity),
   )
   if err != nil {
     panic(err)
@@ -1128,7 +1121,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity),
   )
   if err != nil {
     panic(err)
@@ -1201,7 +1193,6 @@ func main() {
     postgres.New(func (o *postgres.Options) {
       o.DSN = "postgres://postgres:1234@localhost:5432/db?sslmode=disable"
     }),
-    golem.Entities(UserEntity),
   )
   if err != nil {
     panic(err)

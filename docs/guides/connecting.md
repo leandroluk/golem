@@ -1,6 +1,6 @@
 # Connecting (DataSource)
 
-A `*golem.DataSource` is built with `golem.NewDataSource`, which takes one or more `golem.Option` values — always including exactly one connector (`postgres.New`, `mysql.New`, `mssql.New`, `sqlite.New`, or `oracle.New`) and, optionally, `golem.Entities(...)`.
+A `*golem.DataSource` is built with `golem.NewDataSource`, which takes one or more `golem.Option` values — always including exactly one connector (`postgres.New`, `mysql.New`, `mssql.New`, `sqlite.New`, or `oracle.New`).
 
 ```go
 package main
@@ -161,15 +161,3 @@ if err != nil {
 }
 ```
 
-## Registering entities
-
-`golem.Entities(entities ...any)` attaches your `golem.NewTable`-declared entities to the `DataSource`, so `dataSource.Connect()` can validate them upfront (e.g. that every `ForeignKey`'s target entity is also registered):
-
-```go
-dataSource, err := golem.NewDataSource(
-	postgres.New(func(o *postgres.Options) { o.DSN = dsn }),
-	golem.Entities(UserEntity, PostEntity),
-)
-```
-
-See [Declaring schemas](schema.md) for how `UserEntity`/`PostEntity` are declared.
