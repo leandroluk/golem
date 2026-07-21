@@ -12,11 +12,11 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/driver/mssql"
-	"github.com/leandroluk/golem/entity"
-	"github.com/leandroluk/golem/join"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
+	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/join"
+	"github.com/leandroluk/golem/internal/op"
+	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/repository"
 )
 
 // TestMain runs the schema migration once before any test in this package

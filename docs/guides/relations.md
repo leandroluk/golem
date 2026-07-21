@@ -1,24 +1,24 @@
 # Relations & cascades
 
-Golem has exactly one relation primitive: `ForeignKey`, declared inside `entity.New` (see [Declaring schemas](schema.md#foreign-keys)). There's no `OneToMany`/`ManyToOne`/`OneToOne`/`ManyToMany` type hierarchy — those all reduce to a foreign key at the database level, so golem doesn't hide that behind a parallel API.
+Golem has exactly one relation primitive: `ForeignKey`, declared inside `golem.NewEntity` (see [Declaring schemas](schema.md#foreign-keys)). There's no `OneToMany`/`ManyToOne`/`OneToOne`/`ManyToMany` type hierarchy — those all reduce to a foreign key at the database level, so golem doesn't hide that behind a parallel API.
 
 ## `OnDelete` behavior
 
-The third argument to `ForeignKey` is a `relation.ForeignKeyOptions`, whose only real option is `OnDelete`:
+The third argument to `ForeignKey` is a `golem.ForeignKeyOptions`, whose only real option is `OnDelete`:
 
 ```go
-b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().
-	OnDelete(relation.OnDeleteCascade))
+b.ForeignKey(&t.OwnerUserID, UserEntity, golem.NewForeignKeyOptions().
+	OnDelete(golem.OnDeleteCascade))
 ```
 
 | Value | Behavior |
 | --- | --- |
-| `relation.OnDeleteCascade` | deleting the parent also deletes (or soft-deletes) referencing children |
-| `relation.OnDeleteSetNull` | deleting the parent sets the FK column to `NULL` on referencing children |
-| `relation.OnDeleteRestrict` | blocks the delete with `golem.ErrForeignKeyViolation` if a referencing row exists |
-| `relation.OnDeleteDefault` / `relation.OnDeleteNoAction` | no golem-level behavior; a real DB constraint outside golem (if any) decides |
+| `golem.OnDeleteCascade` | deleting the parent also deletes (or soft-deletes) referencing children |
+| `golem.OnDeleteSetNull` | deleting the parent sets the FK column to `NULL` on referencing children |
+| `golem.OnDeleteRestrict` | blocks the delete with `golem.ErrForeignKeyViolation` if a referencing row exists |
+| `golem.OnDeleteDefault` / `golem.OnDeleteNoAction` | no golem-level behavior; a real DB constraint outside golem (if any) decides |
 
-This is applied by `Repository[T].Delete` at the application layer — it consults a global FK registry built from every `entity.New` call, not by relying on the database's own `FOREIGN KEY ... ON DELETE CASCADE` DDL (golem never generates DDL — see [Migrations](../README.md#migrations)). If you want the database itself to also enforce this, declare the same behavior in your own migration tool.
+This is applied by `Repository[T].Delete` at the application layer — it consults a global FK registry built from every `golem.NewEntity` call, not by relying on the database's own `FOREIGN KEY ... ON DELETE CASCADE` DDL (golem never generates DDL — see [Migrations](../README.md#migrations)). If you want the database itself to also enforce this, declare the same behavior in your own migration tool.
 
 Only `OnDelete` is exposed. Other concepts common in ORMs with a full relations API (cascade on save, orphan removal, lazy/eager toggles, `OnUpdate` cascades for mutable primary keys) were considered and cut rather than accepted-but-inert — entities have no navigational fields (see [Preload](preload.md)) and golem never generates DDL, so most of that machinery would have nothing real to attach to.
 
@@ -34,8 +34,6 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/driver/postgres"
-	"github.com/leandroluk/golem/entity"
-	"github.com/leandroluk/golem/repository"
 )
 
 type Category struct {
@@ -55,13 +53,13 @@ type QuestionToCategory struct {
 	CategoryID int64
 }
 
-var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Table) {
+var CategoryEntity = golem.NewEntity[Category](func(t *Category, b *golem.Table) {
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.Name, golem.VARCHAR(50))
 	b.PrimaryKey(&t.ID)
 })
 
-var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Table) {
+var QuestionEntity = golem.NewEntity[Question](func(t *Question, b *golem.Table) {
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.Title, golem.VARCHAR(50))
 	b.Col(&t.Text, golem.TEXT())
@@ -70,7 +68,7 @@ var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Table) {
 
 // since QuestionToCategory references QuestionEntity/CategoryEntity but neither of
 // them references it back, there's no initialization cycle
-var QuestionToCategoryEntity = entity.New[QuestionToCategory](func(t *QuestionToCategory, b *entity.Table) {
+var QuestionToCategoryEntity = golem.NewEntity[QuestionToCategory](func(t *QuestionToCategory, b *golem.Table) {
 	b.Col(&t.QuestionID, golem.BIGINT())
 	b.Col(&t.CategoryID, golem.BIGINT())
 
@@ -87,7 +85,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 	// everything runs inside a single transaction so the question is never left
 	// "orphaned" if the junction insert fails
 	return dataSource.Transaction(ctx, func(tx golem.Tx) error {
-		categories, err := repository.Get(tx, CategoryEntity).InsertMany(ctx,
+		categories, err := golem.NewRepository(tx, CategoryEntity).InsertMany(ctx,
 			&Category{Name: "ORMs"},
 			&Category{Name: "Programming"},
 		)
@@ -95,7 +93,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 			return err
 		}
 
-		question, err := repository.Get(tx, QuestionEntity).Insert(ctx, &Question{
+		question, err := golem.NewRepository(tx, QuestionEntity).Insert(ctx, &Question{
 			Title: "How do I ask about golem?",
 			Text:  "Where can I get golem-related questions answered?",
 		})
@@ -103,7 +101,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 			return err
 		}
 
-		_, err = repository.Get(tx, QuestionToCategoryEntity).InsertMany(ctx,
+		_, err = golem.NewRepository(tx, QuestionToCategoryEntity).InsertMany(ctx,
 			&QuestionToCategory{QuestionID: question.ID, CategoryID: categories[0].ID},
 			&QuestionToCategory{QuestionID: question.ID, CategoryID: categories[1].ID},
 		)

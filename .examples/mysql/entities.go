@@ -6,8 +6,8 @@ package main
 
 import (
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/entity"
-	"github.com/leandroluk/golem/relation"
+	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/relation"
 )
 
 // User is a blog author.

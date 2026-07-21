@@ -56,7 +56,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 Runs a raw read query but scans the result into type `T` directly (returns `[]T`, no `Result` needed), reusing the column→field mapping that already exists (the same names declared via `Col(...).Name(...)`) — no tags or manual scanning needed:
 
 ```go
-users, err := repository.Get(dataSource, UserEntity).Exec(ctx, "SELECT * FROM users WHERE age > $1", 18)
+users, err := golem.NewRepository(dataSource, UserEntity).Exec(ctx, "SELECT * FROM users WHERE age > $1", 18)
 ```
 
 ## Quick reference

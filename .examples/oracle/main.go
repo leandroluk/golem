@@ -10,9 +10,9 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/driver/oracle"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
+	"github.com/leandroluk/golem/internal/op"
+	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/repository"
 )
 
 const defaultDSN = "oracle://system:Golem_Test_2026@localhost:51521/FREEPDB1"

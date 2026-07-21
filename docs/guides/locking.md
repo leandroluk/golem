@@ -1,15 +1,15 @@
 # Pessimistic locking
 
-`query.Query[T]` gains four lock methods, each compiling to the dialect's row-locking clause:
+`golem.Query[T]` gains four lock methods, each compiling to the dialect's row-locking clause:
 
 | Method | Locks |
 | --- | --- |
-| `.ForUpdate(wait ...query.LockWait)` | exclusive lock — blocks other locking reads and writes |
-| `.ForNoKeyUpdate(wait ...query.LockWait)` | Postgres-only — like `ForUpdate` but doesn't block FK checks from other transactions |
-| `.ForShare(wait ...query.LockWait)` | shared lock — blocks writes, allows other shared locks |
-| `.ForKeyShare(wait ...query.LockWait)` | Postgres-only — weakest lock, only blocks changes to the key |
+| `.ForUpdate(wait ...golem.LockWait)` | exclusive lock — blocks other locking reads and writes |
+| `.ForNoKeyUpdate(wait ...golem.LockWait)` | Postgres-only — like `ForUpdate` but doesn't block FK checks from other transactions |
+| `.ForShare(wait ...golem.LockWait)` | shared lock — blocks writes, allows other shared locks |
+| `.ForKeyShare(wait ...golem.LockWait)` | Postgres-only — weakest lock, only blocks changes to the key |
 
-Each accepts an optional `query.LockWaitNoWait` or `query.LockWaitSkipLocked` (default: block until the row unlocks).
+Each accepts an optional `golem.LockWaitNoWait` or `golem.LockWaitSkipLocked` (default: block until the row unlocks).
 
 ```go
 package main
@@ -18,9 +18,6 @@ import (
 	"context"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
 )
 
 func example(ctx context.Context, dataSource *golem.DataSource) error {
@@ -28,18 +25,18 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 	// all inside the same transaction. No other transaction can lock/read this row
 	// (with FOR UPDATE too) until this transaction commits or rolls back.
 	return dataSource.Transaction(ctx, func(tx golem.Tx) error {
-		userRepo := repository.Get(tx, UserEntity)
+		userRepo := golem.NewRepository(tx, UserEntity)
 
-		user, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
-			q.Where(op.Eq(&u.ID, 42))
-			q.ForUpdate() // or q.ForUpdate(query.LockWaitSkipLocked) to skip already-locked rows
+		user, err := userRepo.FindOne(ctx, func(u *User, q *golem.Query[User]) {
+			q.Where(golem.Eq(&u.ID, 42))
+			q.ForUpdate() // or q.ForUpdate(golem.LockWaitSkipLocked) to skip already-locked rows
 		})
 		if err != nil {
 			return err
 		}
 
-		_, err = userRepo.Update(ctx, func(u *User, upd *query.Update[User]) {
-			upd.Where(op.Eq(&u.ID, user.ID))
+		_, err = userRepo.Update(ctx, func(u *User, upd *golem.Update[User]) {
+			upd.Where(golem.Eq(&u.ID, user.ID))
 			upd.Set(&u.Name, "safely updated")
 		})
 		return err
@@ -49,11 +46,11 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 
 ## Locking outside a transaction fails, on purpose
 
-A lock held by an isolated statement releases as soon as that statement finishes — before your code can act on it. So any lock variant returns an error if `conn` isn't a `golem.Tx`: `repository.Get(dataSource, ...)` directly doesn't count; it must be `repository.Get(tx, ...)` inside `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`.
+A lock held by an isolated statement releases as soon as that statement finishes — before your code can act on it. So any lock variant returns an error if `conn` isn't a `golem.Tx`: `golem.NewRepository(dataSource, ...)` directly doesn't count; it must be `golem.NewRepository(tx, ...)` inside `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`.
 
 ## Doesn't apply to aggregations
 
-`repository.Aggregate` doesn't expose locking — most databases (including Postgres) don't allow `FOR UPDATE` together with aggregate functions.
+`golem.RunAggregate` doesn't expose locking — most databases (including Postgres) don't allow `FOR UPDATE` together with aggregate functions.
 
 ## Support matrix per adapter
 

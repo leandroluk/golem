@@ -163,7 +163,7 @@ if err != nil {
 
 ## Registering entities
 
-`golem.Entities(entities ...any)` attaches your `entity.New`-declared entities to the `DataSource`, so `dataSource.Connect()` can validate them upfront (e.g. that every `ForeignKey`'s target entity is also registered):
+`golem.Entities(entities ...any)` attaches your `golem.NewEntity`-declared entities to the `DataSource`, so `dataSource.Connect()` can validate them upfront (e.g. that every `ForeignKey`'s target entity is also registered):
 
 ```go
 dataSource, err := golem.NewDataSource(

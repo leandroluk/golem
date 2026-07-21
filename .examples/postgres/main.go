@@ -18,9 +18,9 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/driver/postgres"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
+	"github.com/leandroluk/golem/internal/op"
+	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/repository"
 )
 
 // defaultDSN matches the Taskfile.yml's GOLEM_POSTGRES_TEST_DSN default exactly.

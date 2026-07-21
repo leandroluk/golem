@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M24 — Flat Root API (In Spec)
-**Status:** M1-M19, M22 e M23 done (M20/M21 dropped). M23 fechado (AD-057), tag `v0.25.0`. M24 especificado (`.specs/features/flat-root-api/spec.md`), depende de M23 (já satisfeito).
+**Current Milestone:** nenhum em aberto — M1-M19, M22, M23 e M24 done (M20/M21 dropped).
+**Status:** M23 fechado (AD-057), tag `v0.25.0`. M24 fechado (AD-058), tag `v0.26.0` — `entity`/`repository`/`relation`/`op`/`query`/`join` e o conteúdo do root migraram pra `internal/`, `golem.go` virou reexport puro.
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -519,6 +519,19 @@ usar um wrapper de dirty-tracking de terceiros (ex: `gonest.Accessor[T]`) direto
 entidade.
 **Status:** ✅ DONE (AD-057) — breaking change (`golem.Conn`, `golem.NewTx`), tag `v0.25.0`.
 `go test ./... -race` verde, `task coverage` 100.0%.
+
+---
+
+## M24 — Flat Root API
+
+**Goal:** Mover `entity`/`repository`/`relation`/`op`/`query`/`join` MAIS o conteúdo que já morava
+direto no pacote root (`Conn`, `Dialect`, `DataSource`, `Option`, `ColumnType`, `Parser`, `Logger`,
+erros) pra `internal/` — `golem.go` vira 100% casca de reexport (mesmo padrão que `gonest.go` já
+usa, AD-004 de lá). `driver/*` fica de fora por decisão explícita (cada adapter carrega dependência
+de terceiro pesada e exclusiva).
+**Status:** ✅ DONE (AD-058) — breaking change (import path de todo mundo que usava os 6 pacotes
+publicamente), tag `v0.26.0`. `go build ./...`/`go vet ./...`/`go test ./... -race` verdes, `task
+coverage` 100.0%. README + `docs/guides/*.md` atualizados pro novo formato `golem.X`.
 
 ---
 

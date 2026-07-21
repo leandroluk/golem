@@ -1,6 +1,6 @@
 # Declaring schemas
 
-Entities are plain Go structs — no tags, no code generation. `entity.New[T](func(t *T, b *entity.Table) {...})` declares the mapping in a callback: `t` is a pointer to a zero-value `T` used purely to take field addresses, and `b` is the builder that records what each address means.
+Entities are plain Go structs — no tags, no code generation. `golem.NewEntity[T](func(t *T, b *golem.Table) {...})` declares the mapping in a callback: `t` is a pointer to a zero-value `T` used purely to take field addresses, and `b` is the builder that records what each address means.
 
 ```go
 package main
@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/entity"
-	"github.com/leandroluk/golem/relation"
 )
 
 type User struct {
@@ -23,7 +21,7 @@ type User struct {
 	Age       uint8
 }
 
-var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
+var UserEntity = golem.NewEntity[User](func(t *User, b *golem.Table) {
 	// table name; if omitted, uses the lowercased struct name (e.g. "User" -> "user")
 	b.TableName("users")
 	// table schema; if omitted, uses whichever schema is currently selected on the connection
@@ -70,7 +68,7 @@ A field doesn't have to be a plain Go scalar. Every `DataSource` has a `golem.Pa
    	Total gonest.Accessor[int64] // Get()/Set(T) duck-typed automatically
    }
 
-   var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
+   var OrderEntity = golem.NewEntity(func(o *Order, b *golem.Table) {
    	b.Col(&o.ID, golem.BIGINT())
    	b.Col(&o.Total, golem.BIGINT())
    	b.PrimaryKey(&o.ID)
@@ -99,7 +97,7 @@ dataSource := golem.MustNewDataSource(
 > `DataSource` and overridable via `CustomParser`, is the supported extension point today,
 > adapter-agnostic by construction.
 
-## `entity.Table` reference
+## `golem.Table` reference
 
 Scope — table-level (lives outside `Col` because it can span more than one column, or has no single field to attach to):
 
@@ -109,19 +107,19 @@ Scope — table-level (lives outside `Col` because it can span more than one col
 | `SchemaName(name string)` | table schema; defaults to whichever schema is currently selected on the connection |
 | `PrimaryKey(fieldPtrs ...any)` | primary key; accepts 1+ fields (composite) |
 | `Unique(fieldPtrs ...any)` | `UNIQUE` constraint; accepts 1+ fields (composite) |
-| `Index(fieldPtrs ...any) *entity.Index` | secondary index over 1+ fields |
+| `Index(fieldPtrs ...any) *golem.Index` | secondary index over 1+ fields |
 
 Scope — column-level:
 
 | Method | Description |
 | --- | --- |
-| `Col(fieldPtr any, t golem.ColumnType) *entity.Column` | maps a struct field to a column with an explicit type |
-| `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)` | foreign key pointing at another entity's PK |
-| `CreateDate(fieldPtr any) *entity.Column` | marks the field as "created at" — filled in automatically with the insert's timestamp |
-| `UpdateDate(fieldPtr any) *entity.Column` | marks the field as "updated at" — filled in automatically with each update's timestamp |
-| `DeleteDate(fieldPtr any) *entity.Column` | marks the field as "soft-deleted at" — a non-nil value means the row is deleted; see [Query builder](query-builder.md)'s `.WithDeleted()` |
+| `Col(fieldPtr any, t golem.ColumnType) *golem.Column` | maps a struct field to a column with an explicit type |
+| `ForeignKey(fieldPtr any, target *golem.Entity[T], opts ...*golem.ForeignKeyOptions)` | foreign key pointing at another entity's PK |
+| `CreateDate(fieldPtr any) *golem.Column` | marks the field as "created at" — filled in automatically with the insert's timestamp |
+| `UpdateDate(fieldPtr any) *golem.Column` | marks the field as "updated at" — filled in automatically with each update's timestamp |
+| `DeleteDate(fieldPtr any) *golem.Column` | marks the field as "soft-deleted at" — a non-nil value means the row is deleted; see [Query builder](query-builder.md)'s `.WithDeleted()` |
 
-`*entity.Column` (returned by `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) chains:
+`*golem.Column` (returned by `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) chains:
 
 | Method | Description |
 | --- | --- |
@@ -130,7 +128,7 @@ Scope — column-level:
 | `.Default(value any)` | default value (or dialect expression) |
 | `.DefaultFunc(fn func() (any, error))` | computed in Go code at insert time (UUIDs, slugs, a value derived from another field, …) — only applied when the field is still zero-valued; a returned error cancels the insert |
 
-`*entity.Index` (returned by `Index`) chains:
+`*golem.Index` (returned by `Index`) chains:
 
 | Method | Description |
 | --- | --- |
@@ -139,7 +137,7 @@ Scope — column-level:
 
 ## Foreign keys
 
-`ForeignKey`'s third (optional) parameter, `relation.ForeignKeyOptions`, only exposes `OnDelete` — the one option with real runtime effect given golem's design (no DDL generation, no navigational fields for in-memory attached relations):
+`ForeignKey`'s third (optional) parameter, `golem.ForeignKeyOptions`, only exposes `OnDelete` — the one option with real runtime effect given golem's design (no DDL generation, no navigational fields for in-memory attached relations):
 
 ```go
 type Post struct {
@@ -149,17 +147,17 @@ type Post struct {
 	Content     string
 }
 
-var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
+var PostEntity = golem.NewEntity[Post](func(t *Post, b *golem.Table) {
 	b.Col(&t.ID, golem.BIGINT())
 	b.Col(&t.OwnerUserID, golem.BIGINT())
 	b.Col(&t.Title, golem.VARCHAR(50))
 	b.Col(&t.Content, golem.TEXT())
 	b.PrimaryKey(&t.ID)
 
-	b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().
+	b.ForeignKey(&t.OwnerUserID, UserEntity, golem.NewForeignKeyOptions().
 		// when a user is deleted, their posts are actually deleted too
 		// (Repository[T].Delete consults a global FK registry and applies this)
-		OnDelete(relation.OnDeleteCascade))
+		OnDelete(golem.OnDeleteCascade))
 })
 ```
 
@@ -167,25 +165,25 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
 
 | Value | Behavior |
 | --- | --- |
-| `relation.OnDeleteCascade` | deleting the parent also deletes (or soft-deletes) referencing children |
-| `relation.OnDeleteSetNull` | deleting the parent sets the FK column to `NULL` on referencing children |
-| `relation.OnDeleteRestrict` | blocks the delete with `golem.ErrForeignKeyViolation` if a referencing row exists |
-| `relation.OnDeleteDefault` / `relation.OnDeleteNoAction` | no golem-level behavior; if a real DB constraint exists outside golem, it decides |
+| `golem.OnDeleteCascade` | deleting the parent also deletes (or soft-deletes) referencing children |
+| `golem.OnDeleteSetNull` | deleting the parent sets the FK column to `NULL` on referencing children |
+| `golem.OnDeleteRestrict` | blocks the delete with `golem.ErrForeignKeyViolation` if a referencing row exists |
+| `golem.OnDeleteDefault` / `golem.OnDeleteNoAction` | no golem-level behavior; if a real DB constraint exists outside golem, it decides |
 
 See [Relations & cascades](relations.md) for the full picture, including many-to-many junction entities.
 
 ## Hooks
 
-`entity.AddHook(Entity)` returns a chainable builder — one method per hook slot, no wrapper type per hook:
+`golem.AddHook(Entity)` returns a chainable builder — one method per hook slot, no wrapper type per hook:
 
 ```go
-var _ = entity.AddHook(UserEntity).
+var _ = golem.AddHook(UserEntity).
 	BeforeCreate(func(ctx context.Context, i *User, conn golem.Conn) error {
 		fmt.Println("before creating user", i.Name)
 		return nil
 	}).
 	AfterCreate(func(ctx context.Context, i *User, conn golem.Conn) error {
-		repo := repository.Get(conn, UserEntity)
+		repo := golem.NewRepository(conn, UserEntity)
 		count, err := repo.Count(ctx)
 		fmt.Println("total users now:", count)
 		return err

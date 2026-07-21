@@ -6,9 +6,9 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/testutil"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
+	"github.com/leandroluk/golem/internal/op"
+	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/repository"
 )
 
 // runPreload proves repository.Preload (M12) against a real database.

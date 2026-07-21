@@ -1,6 +1,6 @@
 # Preload / eager loading
 
-`repository.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the relation key. It **never** attaches the result back onto `items` — there's no field like `user.Posts []Post` on the struct. Entities stay plain structs, with no navigational field.
+`golem.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the relation key. It **never** attaches the result back onto `items` — there's no field like `user.Posts []Post` on the struct. Entities stay plain structs, with no navigational field.
 
 ```go
 package main
@@ -10,25 +10,22 @@ import (
 	"fmt"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
 )
 
 func example(ctx context.Context, dataSource *golem.DataSource) error {
-	userRepo := repository.Get(dataSource, UserEntity)
+	userRepo := golem.NewRepository(dataSource, UserEntity)
 
-	users, err := userRepo.FindMany(ctx, func(u *User, q *query.Query[User]) {
-		q.Where(op.Eq(&u.Name, "John Doe"))
+	users, err := userRepo.FindMany(ctx, func(u *User, q *golem.Query[User]) {
+		q.Where(golem.Eq(&u.Name, "John Doe"))
 	})
 	if err != nil {
 		return err
 	}
 
 	// fetches the posts for each user returned above, grouped by User.ID
-	postsByUserID, err := repository.Preload(ctx, userRepo, users, PostEntity, func(p *Post, q *query.Query[Post]) {
-		q.Where(op.Eq(&p.Published, true))
-		q.OrderBy(op.Desc(&p.ID))
+	postsByUserID, err := golem.Preload(ctx, userRepo, users, PostEntity, func(p *Post, q *golem.Query[Post]) {
+		q.Where(golem.Eq(&p.Published, true))
+		q.OrderBy(golem.Desc(&p.ID))
 	})
 	if err != nil {
 		return err
@@ -50,8 +47,8 @@ The join column is discovered automatically from the `ForeignKey` already declar
 
 ## Criteria
 
-`criteria` accepts the same `func(j *J, q *query.Query[J])` shape as `FindMany` — `Where`/`OrderBy`/`Limit`/`Offset`/`WithDeleted`, all from [Query builder](query-builder.md) — always combined (AND) with the join filter `Preload` builds on its own.
+`criteria` accepts the same `func(j *J, q *golem.Query[J])` shape as `FindMany` — `Where`/`OrderBy`/`Limit`/`Offset`/`WithDeleted`, all from [Query builder](query-builder.md) — always combined (AND) with the join filter `Preload` builds on its own.
 
 ## Why there's no `Eager(true)` flag
 
-Some ORMs let you mark a relation `eager: true` so it's automatically loaded inside `FindMany`/`FindOne`. Golem doesn't, on purpose: there's no way to return data of a different type (`J` varies per foreign key) hidden behind the fixed `([]T, error)` signature without heavy reflection or breaking the API. Always call `repository.Preload` explicitly, right after the `FindMany`/`FindOne` call whose results you want to enrich.
+Some ORMs let you mark a relation `eager: true` so it's automatically loaded inside `FindMany`/`FindOne`. Golem doesn't, on purpose: there's no way to return data of a different type (`J` varies per foreign key) hidden behind the fixed `([]T, error)` signature without heavy reflection or breaking the API. Always call `golem.Preload` explicitly, right after the `FindMany`/`FindOne` call whose results you want to enrich.

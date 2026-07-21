@@ -30,12 +30,12 @@ Golem mirrors TypeORM's `DataSource` / `Repository` pattern (already familiar if
 
 ## Features
 
-- Field-pointer schema declaration (`entity.New[T]`, `b.Col(&t.Field, golem.VARCHAR(50))`, …) — no struct tags, no codegen
+- Field-pointer schema declaration (`golem.NewEntity[T]`, `b.Col(&t.Field, golem.VARCHAR(50))`, …) — no struct tags, no codegen
 - Typed `Repository[T]` for all CRUD operations (`Insert`, `InsertMany`, `SaveOne`, `SaveMany`, `Update`, `Delete`, `Restore`, `FindOne`, `FindMany`, `Count`, `Exists`)
-- Declarative query criteria via closures (`op.Eq`, `op.Gt`, `op.In`, `op.Like`, …) — no string-built WHERE clauses
+- Declarative query criteria via closures (`golem.Eq`, `golem.Gt`, `golem.In`, `golem.Like`, …) — no string-built WHERE clauses
 - Automatic `CreateDate` / `UpdateDate` / soft-delete (`DeleteDate`) timestamp handling
 - Foreign keys with real `ON DELETE` behavior (`Cascade`, `SetNull`, `Restrict`) applied by `Repository[T].Delete`, not just accepted and ignored
-- Joins (`join.Inner`/`Left`/`Right`/`Full`) with column-to-column `On` conditions
+- Joins (`golem.JoinInner`/`Left`/`Right`/`Full`) with column-to-column `On` conditions
 - `Preload` for eager-loading related rows — returns a plain `map[any][]J`, no hidden navigational fields on your structs
 - `Aggregate` — `GroupBy`/`Sum`/`Avg`/`Count`/`CountAll`/`Having` into any destination struct, resolved by field pointer
 - Pessimistic locking (`.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()`, with `NoWait`/`SkipLocked`) — declared per-dialect, unsupported strengths are rejected rather than silently ignored
@@ -86,9 +86,9 @@ func main() {
 From here:
 
 - [Connecting](guides/connecting.md) — every adapter's `Options`, DSN precedence rules, `GetDataSource`
-- [Declaring schemas](guides/schema.md) — `entity.New`, columns, keys, indexes, foreign keys, hooks
+- [Declaring schemas](guides/schema.md) — `golem.NewEntity`, columns, keys, indexes, foreign keys, hooks
 - [Repository (CRUD)](guides/repository.md) — `Insert`, `SaveOne`, `Update`, `Delete`, `FindOne`/`FindMany`, `Count`/`Exists`
-- [Query builder](guides/query-builder.md) — `Where`, `op.*` operators, `OrderBy`, pagination, soft delete
+- [Query builder](guides/query-builder.md) — `Where`, `golem.*` operators, `OrderBy`, pagination, soft delete
 - [Joins](guides/joins.md), [Preload](guides/preload.md), [Aggregations](guides/aggregations.md), [Locking](guides/locking.md)
 - [Relations & cascades](guides/relations.md) — foreign keys, `OnDelete` behavior, many-to-many junction entities
 - [Raw SQL](guides/raw-sql.md) and [typed errors](guides/errors.md)
@@ -143,7 +143,7 @@ If `Logger` is left `nil` while `Logging` is `true`, `golem.DefaultLogger()` is 
 
 ## Tips
 
-**There's no dedicated `FindByID`.** Look up by primary key with `FindOne` + `op.Eq(&t.ID, id)` — see [Repository](guides/repository.md).
+**There's no dedicated `FindByID`.** Look up by primary key with `FindOne` + `golem.Eq(&t.ID, id)` — see [Repository](guides/repository.md).
 
 **`Repository[T].Update` has no separate `UpdateOne`/`UpdateMany`.** Criteria-based updates run directly against the database (no runtime instance needed); matching 0 rows is not an error either way.
 

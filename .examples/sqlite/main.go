@@ -10,9 +10,9 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/driver/sqlite"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
+	"github.com/leandroluk/golem/internal/op"
+	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/repository"
 )
 
 const defaultDSN = "golem_example.db"

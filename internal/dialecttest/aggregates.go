@@ -6,9 +6,9 @@ import (
 
 	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/internal/testutil"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
+	"github.com/leandroluk/golem/internal/op"
+	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/repository"
 )
 
 // aggregateResult is Aggregate's destination shape — a plain struct,

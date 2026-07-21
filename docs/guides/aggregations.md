@@ -1,6 +1,6 @@
 # Aggregations
 
-`repository.Aggregate[T, R](ctx, repo, func(t *T, res *R, a *query.Aggregate[T, R]) {...}) ([]R, error)` follows the same principle as [Preload](preload.md): `R` is any struct (doesn't need `entity.New`), resolved by field pointer against `t` (source, `T`) and `res` (destination, `R`) — no tags.
+`golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` follows the same principle as [Preload](preload.md): `R` is any struct (doesn't need `golem.NewEntity`), resolved by field pointer against `t` (source, `T`) and `res` (destination, `R`) — no tags.
 
 ```go
 package main
@@ -10,9 +10,6 @@ import (
 	"fmt"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
 )
 
 type CategoryTotal struct {
@@ -22,16 +19,16 @@ type CategoryTotal struct {
 }
 
 func example(ctx context.Context, dataSource *golem.DataSource) error {
-	postRepo := repository.Get(dataSource, PostEntity)
+	postRepo := golem.NewRepository(dataSource, PostEntity)
 
 	// total views (and post count) per category, only categories with more than 1 post
-	totals, err := repository.Aggregate(ctx, postRepo, func(p *Post, res *CategoryTotal, a *query.Aggregate[Post, CategoryTotal]) {
+	totals, err := golem.RunAggregate(ctx, postRepo, func(p *Post, res *CategoryTotal, a *golem.Aggregate[Post, CategoryTotal]) {
 		a.GroupBy(&p.Category, &res.Category)
 		a.Sum(&p.Views, &res.Total)
 		a.CountAll(&res.Count)
-		a.Where(op.Eq(&p.Published, true))
-		a.Having(op.Gt(&res.Count, int64(1)))
-		a.OrderBy(op.Desc(&res.Total))
+		a.Where(golem.Eq(&p.Published, true))
+		a.Having(golem.Gt(&res.Count, int64(1)))
+		a.OrderBy(golem.Desc(&res.Total))
 	})
 	if err != nil {
 		return err
@@ -44,7 +41,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 }
 ```
 
-## `query.Aggregate[T, R]` reference
+## `golem.Aggregate[T, R]` reference
 
 | Method | Description |
 | --- | --- |
@@ -53,9 +50,9 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 | `Avg(sourceFieldPtr, destFieldPtr)` | `AVG(column)`, written to the destination field as `float64` |
 | `Count(sourceFieldPtr, destFieldPtr)` | `COUNT(column)` |
 | `CountAll(destFieldPtr)` | `COUNT(*)` — no source column |
-| `Where(conditions ...op.Condition)` | filters **before** grouping, resolved against `T` — same `op.*` set as [Query builder](query-builder.md) |
-| `Having(conditions ...op.Condition)` | filters **after** grouping — each condition's field pointer must point to an `R` field already registered via `Sum`/`Avg`/`Count`/`CountAll` |
-| `OrderBy(orders ...op.Order)` | accepts both `GroupBy` and aggregate fields |
+| `Where(conditions ...golem.Condition)` | filters **before** grouping, resolved against `T` — same `golem.*` set as [Query builder](query-builder.md) |
+| `Having(conditions ...golem.Condition)` | filters **after** grouping — each condition's field pointer must point to an `R` field already registered via `Sum`/`Avg`/`Count`/`CountAll` |
+| `OrderBy(orders ...golem.Order)` | accepts both `GroupBy` and aggregate fields |
 | `Limit(n)` / `Offset(n)` | pagination over the grouped result |
 | `WithDeleted()` | includes soft-deleted rows — see [Query builder](query-builder.md#soft-delete-withdeleted) |
 

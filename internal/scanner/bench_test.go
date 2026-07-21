@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/entity"
+	golem "github.com/leandroluk/golem/internal/core"
+	"github.com/leandroluk/golem/internal/entity"
 	"github.com/leandroluk/golem/internal/scanner"
 )
 

@@ -84,7 +84,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 ## Implementation Status
 
 - [x] M1 - Foundation (`DataSource`, `golem.Conn`, `golem.Dialect`, Postgres adapter)
-- [x] M2 - Schema Declaration (`entity.Table`, `golem.ColumnType`)
+- [x] M2 - Schema Declaration (`golem.Table`, `golem.ColumnType`)
 - [x] M3 - Repository Core CRUD (`Insert`/`InsertMany`, `FindOne`/`FindMany` — no dedicated `FindByID`, see AD-022)
 - [x] M4 - Query Builder & Read Paths
 - [x] M5 - Update/Count Builders
@@ -278,7 +278,7 @@ func main() {
 > This keeps the entity 100% portable across dialects — only the `DataSource`/adapter chosen at runtime
 > decides the actual dialect; the entity declaration never changes.
 
-`entity.Table` (received inside `entity.New`'s callback) exposes:
+`golem.Table` (received inside `golem.NewEntity`'s callback) exposes:
 
 scope:
   table:
@@ -286,15 +286,15 @@ scope:
     - `SchemaName(name string)`: table schema; defaults to whichever schema is currently selected on the connection
     - `PrimaryKey(fieldPtrs ...any)`: primary key; accepts 1+ fields (composite)
     - `Unique(fieldPtrs ...any)`: `UNIQUE` constraint; accepts 1+ fields (composite) — like `PrimaryKey`/`ForeignKey`, lives outside `Col` because uniqueness can span more than one column
-    - `Index(fieldPtrs ...any) *entity.Index`: secondary index over 1+ fields
+    - `Index(fieldPtrs ...any) *golem.Index`: secondary index over 1+ fields
   column:
-    - `Col(fieldPtr any, type golem.ColumnType) *entity.Column`: maps a struct field to a column with an explicit type
-    - `ForeignKey(fieldPtr any, target *entity.Entity[T], opts ...*relation.ForeignKeyOptions)`: foreign key pointing at another entity's PK
-    - `CreateDate(fieldPtr any) *entity.Column`: marks the field as "created at"; filled in automatically with the insert's timestamp
-    - `UpdateDate(fieldPtr any) *entity.Column`: marks the field as "updated at"; filled in automatically with each update's timestamp
-    - `DeleteDate(fieldPtr any) *entity.Column`: marks the field as "soft-deleted at" (a non-nil value means the row is deleted); `Repository[T]`'s `Delete`/`Restore` and every `Where`-capable criteria start filtering deleted rows by default — see `.WithDeleted()` in the Query Builder section
+    - `Col(fieldPtr any, type golem.ColumnType) *golem.Column`: maps a struct field to a column with an explicit type
+    - `ForeignKey(fieldPtr any, target *golem.Entity[T], opts ...*golem.ForeignKeyOptions)`: foreign key pointing at another entity's PK
+    - `CreateDate(fieldPtr any) *golem.Column`: marks the field as "created at"; filled in automatically with the insert's timestamp
+    - `UpdateDate(fieldPtr any) *golem.Column`: marks the field as "updated at"; filled in automatically with each update's timestamp
+    - `DeleteDate(fieldPtr any) *golem.Column`: marks the field as "soft-deleted at" (a non-nil value means the row is deleted); `Repository[T]`'s `Delete`/`Restore` and every `Where`-capable criteria start filtering deleted rows by default — see `.WithDeleted()` in the Query Builder section
 
-`*entity.Column` (returned by `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) chains:
+`*golem.Column` (returned by `Col`/`CreateDate`/`UpdateDate`/`DeleteDate`) chains:
 
 - `.Name(name string)`: column name; defaults to the struct field's name
 - `.Nullable()`: allows `NULL`
@@ -305,7 +305,7 @@ scope:
   (`CreateDate`/`UpdateDate` already fill in the operation's timestamp on their own — no separate
   `.AutoNow()` needed, since marking a field as "created at" and not wanting that would make no sense)
 
-`*entity.Index` (returned by `Index`) chains:
+`*golem.Index` (returned by `Index`) chains:
 
 - `.Name(name string)`: index name; defaults to a generated one (`idx_<table>_<columns>`)
 - `.Unique()`: unique index
@@ -317,9 +317,6 @@ import (
   "context"
 
   "github.com/leandroluk/golem"
-  relation "github.com/leandroluk/golem/relation"
-  entity "github.com/leandroluk/golem/entity"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -354,7 +351,7 @@ type Message struct {
   PostID       int64
 }
 
-var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
+var UserEntity = golem.NewEntity[User](func(t *User, b *golem.Table) {
   // table name; if omitted, uses the struct name (e.g. "User")
   b.TableName("users")
   // table schema; if omitted, uses whichever schema is currently selected on
@@ -383,7 +380,7 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
 })
 
 
-var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
+var PostEntity = golem.NewEntity[Post](func(t *Post, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.CreatedAt, golem.DATETIME())
   b.Col(&t.UpdatedAt, golem.DATETIME())
@@ -402,15 +399,15 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   // AD-024), Cascade/Persistence/OrphanedRowAction/CreateForeignKeyConstraints/Deferrable/
   // Lazy/Eager/OnUpdate would never have real behavior to hang off of — cut instead of
   // being merely accepted and ignored (see AD-032 in .specs/project/STATE.md)
-  b.ForeignKey(&t.OwnerUserID, UserEntity, relation.NewForeignKeyOptions().
+  b.ForeignKey(&t.OwnerUserID, UserEntity, golem.NewForeignKeyOptions().
     // when a user is deleted, their posts are actually deleted too
     // (Repository[T].Delete consults a global FK registry and applies this)
     // other options are:
-    // - relation.OnDeleteDefault (does nothing at the golem level; if a real DB constraint exists outside golem, it decides)
-    // - relation.OnDeleteRestrict (blocks the delete with golem.ErrForeignKeyViolation if a referencing post exists)
-    // - relation.OnDeleteSetNull
-    // - relation.OnDeleteNoAction (same effect as OnDeleteDefault at the golem level)
-    OnDelete(relation.OnDeleteCascade))
+    // - golem.OnDeleteDefault (does nothing at the golem level; if a real DB constraint exists outside golem, it decides)
+    // - golem.OnDeleteRestrict (blocks the delete with golem.ErrForeignKeyViolation if a referencing post exists)
+    // - golem.OnDeleteSetNull
+    // - golem.OnDeleteNoAction (same effect as OnDeleteDefault at the golem level)
+    OnDelete(golem.OnDeleteCascade))
 
   // declares special fields, i.e. created-at/updated-at timestamp fields
   b.CreateDate(&t.CreatedAt)
@@ -418,7 +415,7 @@ var PostEntity = entity.New[Post](func(t *Post, b *entity.Table) {
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
 })
 
-var MessageEntity = entity.New[Message](func(t *Message, b *entity.Table) {
+var MessageEntity = golem.NewEntity[Message](func(t *Message, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.CreatedAt, golem.DATETIME())
   b.Col(&t.UpdatedAt, golem.DATETIME())
@@ -436,7 +433,7 @@ var MessageEntity = entity.New[Message](func(t *Message, b *entity.Table) {
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
 })
 
-// entity.AddHook(Entity) returns a chainable builder (same style as ForeignKeyOptions/JoinTable):
+// golem.AddHook(Entity) returns a chainable builder (same style as ForeignKeyOptions/JoinTable):
 // each method fixes one hook slot, with no need for a wrapper type per hook (no BeforeCreateHook,
 // AfterCreateHook, etc). Available slots, all sharing the same signature
 // func(ctx context.Context, i *T, conn golem.Conn) error:
@@ -449,7 +446,7 @@ var MessageEntity = entity.New[Message](func(t *Message, b *entity.Table) {
 // error from any one of them rolls back everything — including the very insert/update/delete that
 // triggered the hook.
 
-var _ = entity.AddHook(UserEntity).
+var _ = golem.AddHook(UserEntity).
   // example hook before creating a user:
   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
     fmt.Println("before creating user ", i.Name)
@@ -457,7 +454,7 @@ var _ = entity.AddHook(UserEntity).
   }).
   // example side-query inside the hook, in the same transaction (conn) that created the user:
   AfterCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
-    repo := repository.Get(conn, UserEntity)
+    repo := golem.NewRepository(conn, UserEntity)
     count, err := repo.Count(ctx)
     fmt.Println("total users now:", count)
     return err
@@ -465,7 +462,7 @@ var _ = entity.AddHook(UserEntity).
 
 /**
  * Note: registering the same hook slot twice triggers a panic naming the slot, e.g:
- * entity.AddHook(UserEntity).
+ * golem.AddHook(UserEntity).
  *   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
  *     fmt.Println("before creating user ", i.Name)
  *     return nil
@@ -510,7 +507,7 @@ type Order struct {
   Total gonest.Accessor[int64] // Get()/Set(T) duck-typed automatically, no wrapper needed
 }
 
-var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
+var OrderEntity = golem.NewEntity(func(o *Order, b *golem.Table) {
   b.Col(&o.ID, golem.BIGINT())
   b.Col(&o.Total, golem.BIGINT())
   b.PrimaryKey(&o.ID)
@@ -542,8 +539,6 @@ import (
   "context"
 
   "github.com/leandroluk/golem"
-  entity "github.com/leandroluk/golem/entity"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -564,14 +559,14 @@ type QuestionToCategory struct {
   CategoryID int64
 }
 
-var CategoryEntity = entity.New[Category](func(t *Category, b *entity.Table) {
+var CategoryEntity = golem.NewEntity[Category](func(t *Category, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.Name, golem.VARCHAR(50))
 
   b.PrimaryKey(&t.ID)
 })
 
-var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Table) {
+var QuestionEntity = golem.NewEntity[Question](func(t *Question, b *golem.Table) {
   b.Col(&t.ID, golem.BIGINT())
   b.Col(&t.Title, golem.VARCHAR(50))
   b.Col(&t.Text, golem.TEXT())
@@ -581,7 +576,7 @@ var QuestionEntity = entity.New[Question](func(t *Question, b *entity.Table) {
 
 // since QuestionToCategory references QuestionEntity/CategoryEntity but neither of them references
 // QuestionToCategory back, there's no initialization cycle — the entities can be passed in directly
-var QuestionToCategoryEntity = entity.New[QuestionToCategory](func(t *QuestionToCategory, b *entity.Table) {
+var QuestionToCategoryEntity = golem.NewEntity[QuestionToCategory](func(t *QuestionToCategory, b *golem.Table) {
   b.Col(&t.QuestionID, golem.BIGINT())
   b.Col(&t.CategoryID, golem.BIGINT())
 
@@ -609,10 +604,10 @@ func main() {
   // inside a single transaction so the question is never left "orphaned" if the junction insert fails
   ctx := context.Background()
 
-  // repository.Get only needs the connection (golem.Tx here, *golem.DataSource outside a transaction) —
+  // golem.NewRepository only needs the connection (golem.Tx here, *golem.DataSource outside a transaction) —
   // both implement golem.Conn
   err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
-    categories, err := repository.Get(tx, CategoryEntity).InsertMany(ctx,
+    categories, err := golem.NewRepository(tx, CategoryEntity).InsertMany(ctx,
       &Category{Name: "ORMs"},
       &Category{Name: "Programming"},
     )
@@ -620,7 +615,7 @@ func main() {
       return err
     }
 
-    question, err := repository.Get(tx, QuestionEntity).Insert(ctx, &Question{
+    question, err := golem.NewRepository(tx, QuestionEntity).Insert(ctx, &Question{
       Title: "How do I ask about golem?",
       Text:  "Where can I get golem-related questions answered?",
     })
@@ -628,7 +623,7 @@ func main() {
       return err
     }
 
-    _, err = repository.Get(tx, QuestionToCategoryEntity).InsertMany(ctx,
+    _, err = golem.NewRepository(tx, QuestionToCategoryEntity).InsertMany(ctx,
       &QuestionToCategory{QuestionID: question.ID, CategoryID: categories[0].ID},
       &QuestionToCategory{QuestionID: question.ID, CategoryID: categories[1].ID},
     )
@@ -651,7 +646,7 @@ func main() {
 > TypeORM's `dataSource.getRepository(User)`, without a parallel `dataSource.manager`). Transactions are
 > the `DataSource`'s responsibility.
 >
-> `repository.Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T]` takes a `golem.Conn` —
+> `golem.NewRepository[T any](conn golem.Conn, e *golem.Entity[T]) *Repository[T]` takes a `golem.Conn` —
 > an interface implemented by both `*golem.DataSource` and `golem.Tx`. Outside a transaction, pass the
 > `dataSource`; inside one, pass the `tx` — the repository doesn't know (and doesn't need to know) which one it is.
 
@@ -663,9 +658,6 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
-  op "github.com/leandroluk/golem/op"
-  query "github.com/leandroluk/golem/query"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -683,9 +675,9 @@ func main() {
 
   ctx := context.Background()
 
-  // repository.Get[T] infers T from UserEntity's type (*entity.Entity[User]), no need to write
-  // repository.Get[User](...). dataSource implements golem.Conn, so it runs on its pool
-  users := repository.Get(dataSource, UserEntity)
+  // golem.NewRepository[T] infers T from UserEntity's type (*golem.Entity[User]), no need to write
+  // golem.NewRepository[User](...). dataSource implements golem.Conn, so it runs on its pool
+  users := golem.NewRepository(dataSource, UserEntity)
 
   // Insert: always 1 new entity, returned with its PK filled in
   user, err := users.Insert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
@@ -700,9 +692,9 @@ func main() {
     panic(err)
   }
 
-  // lookup by primary key: FindOne + op.Eq (no dedicated FindByID, see AD-022)
-  found, err := users.FindOne(ctx, func(t *User, q *query.Query[User]) {
-    q.Where(op.Eq(&t.ID, user.ID))
+  // lookup by primary key: FindOne + golem.Eq (no dedicated FindByID, see AD-022)
+  found, err := users.FindOne(ctx, func(t *User, q *golem.Query[User]) {
+    q.Where(golem.Eq(&t.ID, user.ID))
   })
   if err != nil {
     panic(err)
@@ -714,7 +706,7 @@ func main() {
     panic(err)
   }
 
-  // Count/Exists take their own criteria type (query.Count[T], Where only) — detailed in the "Query
+  // Count/Exists take their own criteria type (golem.Count[T], Where only) — detailed in the "Query
   // Builder" section below; with no argument at all, they count/check the whole table
   total, err := users.Count(ctx)
   if err != nil {
@@ -733,12 +725,12 @@ func main() {
   }
 
   // Transactions live on DataSource, not on Repository. Inside the callback, tx (which also
-  // implements golem.Conn) replaces dataSource when building repository.Get
+  // implements golem.Conn) replaces dataSource when building golem.NewRepository
   err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
-    if _, err := repository.Get(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "first post"}); err != nil {
+    if _, err := golem.NewRepository(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "first post"}); err != nil {
       return err
     }
-    _, err := repository.Get(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "first message"})
+    _, err := golem.NewRepository(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "first message"})
     return err
   })
   if err != nil {
@@ -757,29 +749,29 @@ func main() {
 > | `InsertMany(ctx, entities ...*T) ([]T, error)` | N rows | inserts several at once |
 > | `SaveOne(ctx, e *T) (T, error)` | 1 row | re-persists a runtime instance you already have (e.g. from a previous `Insert`/`FindOne`), by PK |
 > | `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once |
-> | `Update(ctx, criteria func(t *T, u *query.Update[T])) ([]T, error)` | N rows | updates directly in the database by criteria (`Where`+`Set`), no runtime instance needed; 0 matched rows is not an error — there's no separate `UpdateOne`/`UpdateMany`, both did exactly the same query |
+> | `Update(ctx, criteria func(t *T, u *golem.Update[T])) ([]T, error)` | N rows | updates directly in the database by criteria (`Where`+`Set`), no runtime instance needed; 0 matched rows is not an error — there's no separate `UpdateOne`/`UpdateMany`, both did exactly the same query |
 > | `Delete(ctx, entities ...*T) error` | — | delete by PK; if the entity has `DeleteDate`, sets the timestamp (soft delete) instead of removing the row |
 > | `Restore(ctx, entities ...*T) error` | — | undoes a soft delete (clears `DeleteDate`) by PK; a no-op if `DeleteDate` isn't declared |
-> | `FindMany(ctx, criteria ...func(t *T, q *query.Query[T])) ([]T, error)` | N rows | optional criteria; without one, brings back the whole table. Detailed in the Query Builder section |
-> | `FindOne(ctx, criteria ...func(t *T, q *query.Query[T])) (T, error)` | 1 row | same as `FindMany`, capped to 1 |
-> | `Count(ctx, criteria ...func(t *T, c *query.Count[T])) (int64, error)` | count | optional criteria (`Where` only); without one, counts the whole table |
-> | `Exists(ctx, criteria ...func(t *T, c *query.Count[T])) (bool, error)` | bool | shortcut for `Count > 0` without fetching a row, same criteria as `Count` |
+> | `FindMany(ctx, criteria ...func(t *T, q *golem.Query[T])) ([]T, error)` | N rows | optional criteria; without one, brings back the whole table. Detailed in the Query Builder section |
+> | `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (T, error)` | 1 row | same as `FindMany`, capped to 1 |
+> | `Count(ctx, criteria ...func(t *T, c *golem.Count[T])) (int64, error)` | count | optional criteria (`Where` only); without one, counts the whole table |
+> | `Exists(ctx, criteria ...func(t *T, c *golem.Count[T])) (bool, error)` | bool | shortcut for `Count > 0` without fetching a row, same criteria as `Count` |
 >
 > `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})` opens the transaction; any
-> `repository.Get(tx, Entity)` created inside the callback runs on it (`tx` implements `golem.Conn`, just
+> `golem.NewRepository(tx, Entity)` created inside the callback runs on it (`tx` implements `golem.Conn`, just
 > like `dataSource`). If the callback returns an error, the whole transaction is rolled back.
 
 ### Query Builder
 
 > Criteria via a declarative closure: the callback receives `t *T` (the same field pointer as `Col`/
-> `ForeignKey`/`PrimaryKey`) and `q *query.Query[T]`. `Where` conditions are variadic with AND semantics.
+> `ForeignKey`/`PrimaryKey`) and `q *golem.Query[T]`. `Where` conditions are variadic with AND semantics.
 > Call order inside the callback doesn't matter — the query is only built once the callback returns.
 >
 > If the entity has `DeleteDate` (soft delete), every query filters out deleted rows by default (an
 > implicit `WHERE deleted_at IS NULL`) — like every ORM with soft delete does. `.WithDeleted()` turns that
-> filter off for that query. It exists on any builder with `Where` underneath: `query.Query[T]`
-> (`FindMany`/`FindOne`), `query.Count[T]` (`Count`/`Exists`), `query.Update[T]` (`Update`)
-> and `query.Join[T]` (inside `join.*`). On entities without `DeleteDate`, `.WithDeleted()` is a no-op.
+> filter off for that query. It exists on any builder with `Where` underneath: `golem.Query[T]`
+> (`FindMany`/`FindOne`), `golem.Count[T]` (`Count`/`Exists`), `golem.Update[T]` (`Update`)
+> and `golem.Join[T]` (via JoinInner/JoinLeft/JoinRight/JoinFull). On entities without `DeleteDate`, `.WithDeleted()` is a no-op.
 
 ```go
 package ex
@@ -789,10 +781,7 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
-  op "github.com/leandroluk/golem/op"
-  query "github.com/leandroluk/golem/query"
   postgres "github.com/leandroluk/golem/driver/postgres"
-  repository "github.com/leandroluk/golem/repository"
 )
 
 func main() {
@@ -809,9 +798,9 @@ func main() {
 
   ctx := context.Background()
 
-  // repository.Get[T] infers T from UserEntity's type (*entity.Entity[User]), no need to write
-  // repository.Get[User](...). dataSource implements golem.Conn, so it runs on its pool
-  userRepo := repository.Get(dataSource, UserEntity)
+  // golem.NewRepository[T] infers T from UserEntity's type (*golem.Entity[User]), no need to write
+  // golem.NewRepository[User](...). dataSource implements golem.Conn, so it runs on its pool
+  userRepo := golem.NewRepository(dataSource, UserEntity)
 
   // Insert: always 1 new entity, returned with its PK filled in
   user, err := userRepo.Insert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
@@ -836,8 +825,8 @@ func main() {
   // Update: no instance at all — just Where+Set, updates directly in the database. There's no
   // separate UpdateOne/UpdateMany — the criteria can match 1 row or several, the method is the
   // same, and 0 matched rows is not an error.
-  updated, err := userRepo.Update(ctx, func(t *User, u *query.Update[User]) {
-    u.Where(op.Eq(&t.ID, user.ID))
+  updated, err := userRepo.Update(ctx, func(t *User, u *golem.Update[User]) {
+    u.Where(golem.Eq(&t.ID, user.ID))
     u.Set(&t.Name, "John Doe")
     u.Set(&t.Email, "john.doe@email.com")
     u.Set(&t.Age, 30)
@@ -848,8 +837,8 @@ func main() {
   _ = updated
 
   // same method, criteria that can match (and update) more than one row
-  users, err = userRepo.Update(ctx, func(t *User, u *query.Update[User]) {
-    u.Where(op.Eq(&t.Age, 30))
+  users, err = userRepo.Update(ctx, func(t *User, u *golem.Update[User]) {
+    u.Where(golem.Eq(&t.Age, 30))
     u.Set(&t.Age, 31)
   })
   if err != nil {
@@ -857,15 +846,15 @@ func main() {
   }
   _ = users
 
-  found, err := userRepo.FindOne(ctx, func (t *User, q *query.Query[User]) {
+  found, err := userRepo.FindOne(ctx, func (t *User, q *golem.Query[User]) {
     q.Select(&t.Name, &t.Email, &t.Age)
     q.Where(
-      // other conditions available here: op.Or, op.In, op.Like, etc — op.Not(op.In(...)) composes negation, no dedicated NotIn
-      op.Eq(&t.Name, "John Doe"),
-      op.Eq(&t.Email, "john.doe@email.com"),
-      op.Eq(&t.Age, 30),
+      // other conditions available here: golem.Or, golem.In, golem.Like, etc — golem.Not(golem.In(...)) composes negation, no dedicated NotIn
+      golem.Eq(&t.Name, "John Doe"),
+      golem.Eq(&t.Email, "john.doe@email.com"),
+      golem.Eq(&t.Age, 30),
     )
-    q.OrderBy(op.Desc(&t.ID))
+    q.OrderBy(golem.Desc(&t.ID))
     q.Limit(10)
     q.Offset(0)
     // without this, users with DeletedAt set wouldn't show up in this FindOne
@@ -875,28 +864,28 @@ func main() {
     panic(err)
   }
 
-  admins, err := userRepo.FindMany(ctx, func (t *User, q *query.Query[User]) {
+  admins, err := userRepo.FindMany(ctx, func (t *User, q *golem.Query[User]) {
     // if q.Select isn't passed, every column is always returned
     q.Where(
-      // other conditions available here: op.Or, op.In, op.Like, etc — op.Not(op.In(...)) composes negation, no dedicated NotIn
-      op.Eq(&t.Name, "John Doe"),
-      op.Eq(&t.Email, "john.doe@email.com"),
-      op.Eq(&t.Age, 30),
+      // other conditions available here: golem.Or, golem.In, golem.Like, etc — golem.Not(golem.In(...)) composes negation, no dedicated NotIn
+      golem.Eq(&t.Name, "John Doe"),
+      golem.Eq(&t.Email, "john.doe@email.com"),
+      golem.Eq(&t.Age, 30),
     )
     // declaration order doesn't matter, the query is built once the function returns
     q.Limit(10)
     q.Offset(0)
-    q.OrderBy(op.Desc(&t.ID))
+    q.OrderBy(golem.Desc(&t.ID))
   })
   if err != nil {
     panic(err)
   }
   _ = admins
 
-  // Count/Exists take their own criteria type (query.Count[T], Where only); with no argument at
+  // Count/Exists take their own criteria type (golem.Count[T], Where only); with no argument at
   // all, they count/check the whole table
-  adultCount, err := userRepo.Count(ctx, func (t *User, c *query.Count[User]) {
-    c.Where(op.Gte(&t.Age, 18))
+  adultCount, err := userRepo.Count(ctx, func (t *User, c *golem.Count[User]) {
+    c.Where(golem.Gte(&t.Age, 18))
   })
   if err != nil {
     panic(err)
@@ -908,12 +897,12 @@ func main() {
   }
 
   // Transactions live on DataSource, not on Repository. Inside the callback, tx (which also
-  // implements golem.Conn) replaces dataSource when building repository.Get
+  // implements golem.Conn) replaces dataSource when building golem.NewRepository
   err = dataSource.Transaction(ctx, func(tx golem.Tx) error {
-    if _, err := repository.Get(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "first post"}); err != nil {
+    if _, err := golem.NewRepository(tx, PostEntity).Insert(ctx, &Post{OwnerUserID: user.ID, Title: "first post"}); err != nil {
       return err
     }
-    _, err := repository.Get(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "first message"})
+    _, err := golem.NewRepository(tx, MessageEntity).Insert(ctx, &Message{SenderUserID: user.ID, Content: "first message"})
     return err
   })
   if err != nil {
@@ -924,16 +913,16 @@ func main() {
 
 ### Joins
 
-> `golem/join` package: `join.Inner`/`join.Left`/`join.Right`/`join.Full` (SQL's `JOIN` names — `Left`/
+> `golem/join` package: `golem.JoinInner`/`golem.JoinLeft`/`golem.JoinRight`/`golem.JoinFull` (SQL's `JOIN` names — `Left`/
 > `Right`/`Full` are already "outer" by definition, no need for a separate generic `Outer`). Each one
-> takes the outer `*query.Query[T]` (to register itself on it), the entity on the side entering the join
-> (`T` inferred from it, same as `repository.Get`), and a callback for the new side. We name the builders
+> takes the outer `*golem.Query[T]` (to register itself on it), the entity on the side entering the join
+> (`T` inferred from it, same as `golem.NewRepository`), and a callback for the new side. We name the builders
 > `q0` (outer), `q1` (join), etc, to make each level explicit.
 >
 > `q1.On(fieldPtr, fieldPtr)` compares column to column (both sides are field addresses) — different from
-> `op.Eq(fieldPtr, value)`, which compares a column to a literal value in `Where`. That's why it's a
-> separate method instead of reusing `op.Eq` for both cases. `q1.Where(...)` also exists, to filter the
-> side that entered the join (with normal `op.*`, literal values) without mixing it with the outer query's `Where`.
+> `golem.Eq(fieldPtr, value)`, which compares a column to a literal value in `Where`. That's why it's a
+> separate method instead of reusing `golem.Eq` for both cases. `q1.Where(...)` also exists, to filter the
+> side that entered the join (with normal `golem.*`, literal values) without mixing it with the outer query's `Where`.
 
 ```go
 package ex
@@ -942,10 +931,6 @@ import (
   "context"
 
   "github.com/leandroluk/golem"
-  op "github.com/leandroluk/golem/op"
-  join "github.com/leandroluk/golem/join"
-  query "github.com/leandroluk/golem/query"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -964,12 +949,12 @@ func main() {
   ctx := context.Background()
 
   // users who have at least 1 published post (INNER: only rows matching the On condition make it in)
-  users, err := repository.Get(dataSource, UserEntity).FindMany(ctx, func (u *User, q0 *query.Query[User]) {
-    join.Inner(q0, PostEntity, func (p *Post, q1 *query.Join[Post]) {
+  users, err := golem.NewRepository(dataSource, UserEntity).FindMany(ctx, func (u *User, q0 *golem.Query[User]) {
+    golem.JoinInner(q0, PostEntity, func (p *Post, q1 *golem.Join[Post]) {
       q1.On(&p.OwnerUserID, &u.ID)
-      q1.Where(op.Eq(&p.Published, true))
+      q1.Where(golem.Eq(&p.Published, true))
     })
-    q0.Where(op.Eq(&u.Name, "John Doe"))
+    q0.Where(golem.Eq(&u.Name, "John Doe"))
   })
   if err != nil {
     panic(err)
@@ -980,7 +965,7 @@ func main() {
 
 ### Preload / Eager Loading
 
-> `repository.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to
+> `golem.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to
 > `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the
 > relation key — it NEVER attaches the result back onto `items` (there's no field like `user.Posts
 > []Post` on the struct; see AD-001/AD-024 in `.specs/project/STATE.md` — this is deliberate, entities
@@ -989,12 +974,12 @@ func main() {
 > The join column is discovered automatically from the `ForeignKey` already declared between the two
 > entities (works in both directions: `Preload(ctx, userRepo, users, PostEntity)` — loads each user's
 > posts — or `Preload(ctx, postRepo, posts, UserEntity)` — loads each post's owner). `criteria` accepts
-> the same `func(j *J, q *query.Query[J])` as `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
+> the same `func(j *J, q *golem.Query[J])` as `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
 > always combined (AND) with the join filter `Preload` already builds on its own.
 >
 > There's no flag like `Eager(true)` that automatically triggers `Preload` inside `FindMany`/`FindOne` —
 > there's no way to return data of different types (`J` varies by FK) hidden behind the fixed
-> `([]T, error)` signature without heavy reflection or breaking the API. Always call `repository.Preload`
+> `([]T, error)` signature without heavy reflection or breaking the API. Always call `golem.Preload`
 > explicitly. Details: `.specs/features/preload-eager-loading/design.md`.
 
 ```go
@@ -1005,9 +990,6 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
-  op "github.com/leandroluk/golem/op"
-  query "github.com/leandroluk/golem/query"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -1024,19 +1006,19 @@ func main() {
   defer dataSource.Close()
 
   ctx := context.Background()
-  userRepo := repository.Get(dataSource, UserEntity)
+  userRepo := golem.NewRepository(dataSource, UserEntity)
 
-  users, err := userRepo.FindMany(ctx, func (u *User, q *query.Query[User]) {
-    q.Where(op.Eq(&u.Name, "John Doe"))
+  users, err := userRepo.FindMany(ctx, func (u *User, q *golem.Query[User]) {
+    q.Where(golem.Eq(&u.Name, "John Doe"))
   })
   if err != nil {
     panic(err)
   }
 
   // fetches the posts for each user returned above, grouped by User.ID
-  postsByUserID, err := repository.Preload(ctx, userRepo, users, PostEntity, func (p *Post, q *query.Query[Post]) {
-    q.Where(op.Eq(&p.Published, true))
-    q.OrderBy(op.Desc(&p.ID))
+  postsByUserID, err := golem.Preload(ctx, userRepo, users, PostEntity, func (p *Post, q *golem.Query[Post]) {
+    q.Where(golem.Eq(&p.Published, true))
+    q.OrderBy(golem.Desc(&p.ID))
   })
   if err != nil {
     panic(err)
@@ -1049,8 +1031,8 @@ func main() {
 
 ### Aggregations
 
-> `repository.Aggregate[T, R](ctx, repo, func(t *T, res *R, a *query.Aggregate[T, R]) {...}) ([]R, error)` —
-> same principle as `Preload`: `R` is any struct (doesn't need `entity.New`), resolved by field pointer
+> `golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` —
+> same principle as `Preload`: `R` is any struct (doesn't need `golem.NewEntity`), resolved by field pointer
 > against `t` (source, `T`) and `res` (destination, `R`), no tags.
 >
 > `a.GroupBy(&t.Field, &res.Field)` marks a grouping column, loading the value into the destination
@@ -1075,9 +1057,6 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
-  op "github.com/leandroluk/golem/op"
-  query "github.com/leandroluk/golem/query"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -1100,16 +1079,16 @@ func main() {
   defer dataSource.Close()
 
   ctx := context.Background()
-  postRepo := repository.Get(dataSource, PostEntity)
+  postRepo := golem.NewRepository(dataSource, PostEntity)
 
   // total (and count) of posts per category, only categories with more than 1 post
-  totals, err := repository.Aggregate(ctx, postRepo, func (p *Post, res *CategoryTotal, a *query.Aggregate[Post, CategoryTotal]) {
+  totals, err := golem.RunAggregate(ctx, postRepo, func (p *Post, res *CategoryTotal, a *golem.Aggregate[Post, CategoryTotal]) {
     a.GroupBy(&p.Category, &res.Category)
     a.Sum(&p.Views, &res.Total)
     a.CountAll(&res.Count)
-    a.Where(op.Eq(&p.Published, true))
-    a.Having(op.Gt(&res.Count, int64(1)))
-    a.OrderBy(op.Desc(&res.Total))
+    a.Where(golem.Eq(&p.Published, true))
+    a.Having(golem.Gt(&res.Count, int64(1)))
+    a.OrderBy(golem.Desc(&res.Total))
   })
   if err != nil {
     panic(err)
@@ -1122,16 +1101,16 @@ func main() {
 
 ### Pessimistic Locking
 
-> `query.Query[T]` gains `.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()` — they
+> `golem.Query[T]` gains `.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()` — they
 > become `SELECT ... FOR UPDATE`/`FOR NO KEY UPDATE`/`FOR SHARE`/`FOR KEY SHARE` on Postgres. Each one
-> accepts an optional `query.LockWaitNoWait` or `query.LockWaitSkipLocked` (default: blocks until the row unlocks).
+> accepts an optional `golem.LockWaitNoWait` or `golem.LockWaitSkipLocked` (default: blocks until the row unlocks).
 >
 > **Locking a read outside a transaction is a no-op disguised as success** — the lock releases as soon
 > as the isolated statement finishes, so `FindMany`/`FindOne` with `.ForUpdate()` (or any variant) return
-> an error if `conn` isn't a `golem.Tx` (`repository.Get(dataSource, ...)` directly doesn't count; it
-> must be `repository.Get(tx, ...)` inside `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`).
+> an error if `conn` isn't a `golem.Tx` (`golem.NewRepository(dataSource, ...)` directly doesn't count; it
+> must be `golem.NewRepository(tx, ...)` inside `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`).
 >
-> Doesn't apply to `repository.Aggregate` — Postgres itself doesn't allow `FOR UPDATE` together with
+> Doesn't apply to `golem.RunAggregate` — Postgres itself doesn't allow `FOR UPDATE` together with
 > aggregate functions.
 
 ```go
@@ -1141,9 +1120,6 @@ import (
   "context"
 
   "github.com/leandroluk/golem"
-  op "github.com/leandroluk/golem/op"
-  query "github.com/leandroluk/golem/query"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -1165,18 +1141,18 @@ func main() {
   // all inside the same transaction — no other transaction can lock/read this row
   // (with FOR UPDATE too) until this transaction commits or rolls back.
   err = dataSource.Transaction(ctx, func (tx golem.Tx) error {
-    userRepo := repository.Get(tx, UserEntity)
+    userRepo := golem.NewRepository(tx, UserEntity)
 
-    user, err := userRepo.FindOne(ctx, func (u *User, q *query.Query[User]) {
-      q.Where(op.Eq(&u.ID, 42))
-      q.ForUpdate() // or q.ForUpdate(query.LockWaitSkipLocked) to skip already-locked rows
+    user, err := userRepo.FindOne(ctx, func (u *User, q *golem.Query[User]) {
+      q.Where(golem.Eq(&u.ID, 42))
+      q.ForUpdate() // or q.ForUpdate(golem.LockWaitSkipLocked) to skip already-locked rows
     })
     if err != nil {
       return err
     }
 
-    _, err = userRepo.Update(ctx, func (u *User, upd *query.Update[User]) {
-      upd.Where(op.Eq(&u.ID, user.ID))
+    _, err = userRepo.Update(ctx, func (u *User, upd *golem.Update[User]) {
+      upd.Where(golem.Eq(&u.ID, user.ID))
       upd.Set(&u.Name, "safely updated")
     })
     return err
@@ -1217,7 +1193,6 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
-  repository "github.com/leandroluk/golem/repository"
   postgres "github.com/leandroluk/golem/driver/postgres"
 )
 
@@ -1256,7 +1231,7 @@ func main() {
   }
 
   // Exec on Repository[T]: same idea, but scans the result into the entity's type
-  users, err := repository.Get(dataSource, UserEntity).Exec(ctx, "SELECT * FROM users WHERE age > $1", 18)
+  users, err := golem.NewRepository(dataSource, UserEntity).Exec(ctx, "SELECT * FROM users WHERE age > $1", 18)
   if err != nil {
     panic(err)
   }
@@ -1298,14 +1273,11 @@ import (
   "fmt"
 
   "github.com/leandroluk/golem"
-  "github.com/leandroluk/golem/op"
-  "github.com/leandroluk/golem/query"
-  repository "github.com/leandroluk/golem/repository"
 )
 
-func handle(ctx context.Context, userRepo *repository.Repository[User]) {
-  user, err := userRepo.FindOne(ctx, func(t *User, q *query.Query[User]) {
-    q.Where(op.Eq(&t.ID, 999))
+func handle(ctx context.Context, userRepo *golem.Repository[User]) {
+  user, err := userRepo.FindOne(ctx, func(t *User, q *golem.Query[User]) {
+    q.Where(golem.Eq(&t.ID, 999))
   })
   if errors.Is(err, golem.ErrNotFound) {
     fmt.Println("user does not exist")

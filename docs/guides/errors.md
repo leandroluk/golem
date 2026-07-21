@@ -22,14 +22,11 @@ import (
 	"fmt"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/op"
-	"github.com/leandroluk/golem/query"
-	"github.com/leandroluk/golem/repository"
 )
 
-func handle(ctx context.Context, userRepo *repository.Repository[User]) {
-	user, err := userRepo.FindOne(ctx, func(t *User, q *query.Query[User]) {
-		q.Where(op.Eq(&t.ID, 999))
+func handle(ctx context.Context, userRepo *golem.Repository[User]) {
+	user, err := userRepo.FindOne(ctx, func(t *User, q *golem.Query[User]) {
+		q.Where(golem.Eq(&t.ID, 999))
 	})
 	if errors.Is(err, golem.ErrNotFound) {
 		fmt.Println("user does not exist")

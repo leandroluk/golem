@@ -4,8 +4,8 @@ import (
 	"time"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/entity"
-	"github.com/leandroluk/golem/relation"
+	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/relation"
 )
 
 // Widget covers every golem.ColumnType kind in one entity, for

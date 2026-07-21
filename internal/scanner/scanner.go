@@ -17,8 +17,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/entity"
+	golem "github.com/leandroluk/golem/internal/core"
+	"github.com/leandroluk/golem/internal/entity"
 )
 
 // fieldKind classifies a struct field's Go type into a scanner category

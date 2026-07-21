@@ -2,7 +2,7 @@
 
 **ID:** M24
 **Scope:** Large
-**Status:** Specify
+**Status:** ✅ DONE (AD-058)
 **Breaking:** Sim — remove 6 pacotes públicos (`entity`, `repository`, `relation`, `op`, `query`, `join`) MAIS tudo que hoje já mora direto no root (`Conn`, `Dialect`, `DataSource`, `Option`, `ColumnType`, `Result`, `Tx`, `Parser`/M23, `Logger`, erros) — tudo migra pra `internal/core` + `internal/<pkg>`, `golem.go` (root) vira 100% casca de reexport, sem lógica própria (ver REQ-000)
 **Versão alvo:** a definir na fase de Tasks (depende de M23 fechar antes — ambas breaking, faz sentido publicar juntas ou em sequência imediata)
 
@@ -241,12 +241,12 @@ não retorna nada fora de `internal/` e do próprio `go.mod`/`CHANGELOG` histór
 
 | Requirement ID | Fase | Status |
 | --- | --- | --- |
-| M24-REQ-000 | Design | Pending |
-| M24-REQ-001 | Design | Pending |
-| M24-REQ-002 | Design | Pending |
-| M24-REQ-003 | Design | Pending |
-| M24-REQ-004 | Design | Pending |
-| M24-REQ-005 | Design | Pending |
+| M24-REQ-000 | Execute | Verified |
+| M24-REQ-001 | Execute | Verified |
+| M24-REQ-002 | Execute | Verified |
+| M24-REQ-003 | Execute | Verified |
+| M24-REQ-004 | Execute | Verified |
+| M24-REQ-005 | Execute | Verified |
 
 **Coverage:** 6 total, 0 mapeados pra tasks ainda, 6 não-mapeados ⚠️
 
@@ -254,9 +254,9 @@ não retorna nada fora de `internal/` e do próprio `go.mod`/`CHANGELOG` histór
 
 ## Success Criteria
 
-- [ ] `go build ./...` e `go test ./... -race` verdes, todos os pacotes + os 5 adapters.
-- [ ] `go doc golem` lista todos os ~50 símbolos da tabela do REQ-003 MAIS tudo que já era público no root (`Conn`, `Dialect`, `NewDataSource`, `ColumnType`, `Parser`, etc. — sem regressão nenhuma).
-- [ ] Nenhum `_test.go`/exemplo/README fora de `internal/` importa `entity`/`repository`/`relation`/`op`/`query`/`join` diretamente.
-- [ ] `internal/core` não é importado por nenhum dos outros 6 pacotes internos ao contrário (`go list -deps` confirma).
-- [ ] `driver/postgres` (e os outros 4) continuam pacotes públicos, inalterados nesta migração — nem o import deles muda (continuam `import "github.com/leandroluk/golem"`, que resolve certo via alias).
-- [ ] Tag publicada após merge, número decidido na fase de Tasks (depende do estado do M23 no momento).
+- [x] `go build ./...` e `go test ./... -race` verdes, todos os pacotes + os 5 adapters.
+- [x] `go doc golem` lista todos os ~50 símbolos da tabela do REQ-003 MAIS tudo que já era público no root (`Conn`, `Dialect`, `NewDataSource`, `ColumnType`, `Parser`, etc. — sem regressão nenhuma).
+- [x] Nenhum `_test.go`/exemplo/README fora de `internal/` importa `entity`/`repository`/`relation`/`op`/`query`/`join` diretamente.
+- [x] `internal/core` não é importado por nenhum dos outros 6 pacotes internos ao contrário (`go list -deps` confirma).
+- [x] `driver/postgres` (e os outros 4) continuam pacotes públicos, inalterados nesta migração — nem o import deles muda (continuam `import "github.com/leandroluk/golem"`, que resolve certo via alias).
+- [x] Tag publicada após merge, número decidido na fase de Tasks (depende do estado do M23 no momento).
