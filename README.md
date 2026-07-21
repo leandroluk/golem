@@ -491,35 +491,23 @@ func main() {
 
 ```
 
-### Custom field types (Valuer/Scanner)
+### Custom field types (Parser)
 
-A struct field doesn't have to be a plain Go scalar. If its type implements `database/sql/driver.Valuer`,
-golem calls `Value()` to get the value to write instead of using the field's raw Go value as-is; if it
-implements `sql.Scanner`, golem calls `Scan(raw)` to populate it instead of trying a direct assignment.
-Both are the standard library's own contracts — golem has zero knowledge of, or dependency on, whatever
-type implements them:
+A struct field doesn't have to be a plain Go scalar. Every `DataSource` has a `golem.Parser`
+(`ToSQL(reflect.Value) (driver.Value, error)` / `FromSQL(dst reflect.Value, raw any) error`) that
+converts field values to/from `driver.Value` — `golem.DefaultParser` unless you override it via
+`golem.CustomParser` at `NewDataSource` time. The default already resolves, in order: `driver.Valuer`/
+`sql.Scanner` if the field type implements them; a `Get() T` / `Set(T)` method pair found by NAME via
+reflection (works for a generic wrapper type, any `T`, without it implementing anything golem
+defines — this is what lets a third-party dirty-tracking wrapper like `gonest.Accessor[T]` work as a
+struct field directly, with zero adapter type in between); pointer dereference; native passthrough
+(`string`/`bool`/`time.Time`/`[]byte`/numeric); and a JSON fallback for anything else (maps, structs —
+jsonb columns).
 
 ```go
-type Money struct {
-  Cents int64
-}
-
-func (m Money) Value() (driver.Value, error) {
-  return m.Cents, nil
-}
-
-func (m *Money) Scan(src any) error {
-  v, ok := src.(int64)
-  if !ok {
-    return fmt.Errorf("Money: cannot scan %T", src)
-  }
-  m.Cents = v
-  return nil
-}
-
 type Order struct {
   ID    int64
-  Total Money // stored as a plain BIGINT column, wrapped in Go
+  Total gonest.Accessor[int64] // Get()/Set(T) duck-typed automatically, no wrapper needed
 }
 
 var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
@@ -529,10 +517,16 @@ var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
 })
 ```
 
-This is the seam a dirty-tracking/optional-field wrapper (a `gonest.Accessor[T]`-shaped type, or your own)
-plugs into: implement `Value()`/`Scan()` on a small adapter type wrapping it, use that adapter type as the
-struct field instead of the wrapper directly, and golem round-trips it exactly like any other column, no
-extra configuration needed.
+Need something the default doesn't cover? Decorate it instead of replacing it wholesale:
+
+```go
+dataSource := golem.MustNewDataSource(
+  postgres.New(func(o *postgres.Options) { o.DSN = dsn }),
+  golem.CustomParser(func(base golem.Parser) golem.Parser {
+    return myParser{base: base} // your own ToSQL/FromSQL, falling back to base for everything else
+  }),
+)
+```
 
 ### Many-to-many relations (junction entity)
 

@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** M22 — Zero-Allocation Scanner & Lock-Free Cache (In Spec)
-**Status:** M1-M19 done (M20/M21 dropped). M22 especificado.
+**Current Milestone:** M24 — Flat Root API (In Spec)
+**Status:** M1-M19, M22 e M23 done (M20/M21 dropped). M23 fechado (AD-057), tag `v0.25.0`. M24 especificado (`.specs/features/flat-root-api/spec.md`), depende de M23 (já satisfeito).
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -507,6 +507,18 @@ Três técnicas extraídas da análise do BreezeORM, adaptadas ao modelo de meta
 **Dead code annotation** - DONE
 
 - `Dialect.Bind`/`Scan` em todos os 5 adapters recebem comentário `// dead code — ver AD-037`
+
+---
+
+## M23 — Custom Field Parser
+
+**Goal:** Substituir a detecção `driver.Valuer`/`sql.Scanner` fixa (AD-055) por um `golem.Parser`
+plugável por `DataSource` (`golem.CustomParser` Option), com duck-typing `Get()/Set(T)` por
+reflection no default — elimina a necessidade de um tipo-wrapper extra no lado do consumidor pra
+usar um wrapper de dirty-tracking de terceiros (ex: `gonest.Accessor[T]`) direto como campo de
+entidade.
+**Status:** ✅ DONE (AD-057) — breaking change (`golem.Conn`, `golem.NewTx`), tag `v0.25.0`.
+`go test ./... -race` verde, `task coverage` 100.0%.
 
 ---
 

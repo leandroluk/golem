@@ -14,6 +14,8 @@ func (fakeConn) isConn() {}
 
 func (fakeConn) Dialect() Dialect { return nil }
 
+func (fakeConn) Parser() Parser { return nil }
+
 func (fakeConn) Exec(ctx context.Context, sql string, args ...any) (Result, error) {
 	return nil, nil
 }

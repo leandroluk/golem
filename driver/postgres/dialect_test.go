@@ -723,7 +723,7 @@ func TestDialect_GetExecutor_UsesTxWhenPresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	tx := golem.NewTx(d, &pgTx{tx: pgxTx, d: d})
+	tx := golem.NewTx(d, &pgTx{tx: pgxTx, d: d}, golem.DefaultParser)
 
 	mock.ExpectQuery("SELECT 1").WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 

@@ -38,7 +38,7 @@ func Get[T any](conn golem.Conn, e *entity.Entity[T]) *Repository[T] {
 		conn:     conn,
 		meta:     meta,
 		entity:   e,
-		scanPlan: scanner.Compile(meta),
+		scanPlan: scanner.Compile(meta, conn.Parser()),
 	}
 }
 
@@ -58,26 +58,6 @@ func (r *Repository[T]) pkColumnSet() map[string]bool {
 		s[pk] = true
 	}
 	return s
-}
-
-// toDriverValue converts a struct field's reflect.Value into the
-// driver.Value the SQL layer expects. If the field's type implements
-// database/sql/driver.Valuer -- checked via the field's address first,
-// since Value() commonly has a pointer receiver, then the value itself --
-// its Value() is called instead of using the field's raw Go value as-is.
-// This is the seam that lets a field type (e.g. a dirty-tracking wrapper
-// around a plain Go value, coming from any other package) own its own DB
-// encoding without golem needing to know that type exists.
-func toDriverValue(fieldVal reflect.Value) (driver.Value, error) {
-	if fieldVal.CanAddr() {
-		if valuer, ok := fieldVal.Addr().Interface().(driver.Valuer); ok {
-			return valuer.Value()
-		}
-	}
-	if valuer, ok := fieldVal.Interface().(driver.Valuer); ok {
-		return valuer.Value()
-	}
-	return fieldVal.Interface(), nil
 }
 
 // resolveFieldPtrAny resolves a field pointer to a field name using offset
@@ -237,7 +217,7 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 		if fieldVal.IsZero() {
 			continue
 		}
-		dv, err := toDriverValue(fieldVal)
+		dv, err := r.conn.Parser().ToSQL(fieldVal)
 		if err != nil {
 			return zero, fmt.Errorf("repository: insert: column %q: %w", col.Name, err)
 		}
@@ -502,7 +482,7 @@ func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
 
 	for _, col := range r.meta.Columns {
 		fieldVal := v.FieldByName(col.FieldName)
-		dv, err := toDriverValue(fieldVal)
+		dv, err := r.conn.Parser().ToSQL(fieldVal)
 		if err != nil {
 			return zero, fmt.Errorf("repository: save: column %q: %w", col.Name, err)
 		}
@@ -668,7 +648,7 @@ func (r *Repository[T]) beginCascadeTx(ctx context.Context, fkRegs []entity.FKRe
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("repository: delete: begin cascade tx: %w", err)
 	}
-	tx := golem.NewTx(r.conn.Dialect(), txConn)
+	tx := golem.NewTx(r.conn.Dialect(), txConn, r.conn.Parser())
 	return tx, func() error { return tx.Commit(ctx) }, func() { _ = tx.Rollback(ctx) }, nil
 }
 
@@ -789,7 +769,7 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 		for _, col := range r.meta.Columns {
 			if pkSet[col.Name] {
 				fieldVal := v.FieldByName(col.FieldName)
-				dv, err := toDriverValue(fieldVal)
+				dv, err := r.conn.Parser().ToSQL(fieldVal)
 				if err != nil {
 					return fmt.Errorf("repository: delete: column %q: %w", col.Name, err)
 				}
@@ -892,7 +872,7 @@ func (r *Repository[T]) Restore(ctx context.Context, items ...*T) error {
 		for _, col := range r.meta.Columns {
 			if pkSet[col.Name] {
 				fieldVal := v.FieldByName(col.FieldName)
-				dv, err := toDriverValue(fieldVal)
+				dv, err := r.conn.Parser().ToSQL(fieldVal)
 				if err != nil {
 					return fmt.Errorf("repository: restore: column %q: %w", col.Name, err)
 				}

@@ -13,6 +13,10 @@ type Conn interface {
 	// mechanism repository (a separate package) uses to reach the Dialect
 	// given only a Conn value.
 	Dialect() Dialect
+	// Parser returns the Parser active for this connection -- same
+	// mechanism as Dialect, letting repository/scanner reach it given only
+	// a Conn value.
+	Parser() Parser
 	// Exec executes a raw SQL statement with optional arguments.
 	Exec(ctx context.Context, sql string, args ...any) (Result, error)
 }
@@ -34,12 +38,20 @@ type TxConn interface {
 type txImpl struct {
 	dialect Dialect
 	txConn  TxConn
+	parser  Parser
 }
+
+var _ Conn = (*txImpl)(nil)
+var _ Tx = (*txImpl)(nil)
 
 func (*txImpl) isConn() { return }
 
 func (t *txImpl) Dialect() Dialect {
 	return t.dialect
+}
+
+func (t *txImpl) Parser() Parser {
+	return t.parser
 }
 
 func (t *txImpl) Commit(ctx context.Context) error {
@@ -54,9 +66,10 @@ func (t *txImpl) Underlying() any {
 	return t.txConn
 }
 
-// NewTx wraps a dialect-specific TxConn into a golem.Tx.
-func NewTx(dialect Dialect, txConn TxConn) Tx {
-	return &txImpl{dialect: dialect, txConn: txConn}
+// NewTx wraps a dialect-specific TxConn into a golem.Tx, carrying the same
+// Parser as the DataSource that started the transaction.
+func NewTx(dialect Dialect, txConn TxConn, parser Parser) Tx {
+	return &txImpl{dialect: dialect, txConn: txConn, parser: parser}
 }
 
 func (t *txImpl) Exec(ctx context.Context, sql string, args ...any) (Result, error) {

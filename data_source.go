@@ -17,6 +17,7 @@ type DataSource struct {
 	connector Connector
 	dialect   Dialect
 	connected bool
+	parser    Parser
 }
 
 var _ Conn = (*DataSource)(nil)
@@ -50,6 +51,9 @@ func NewDataSource(opts ...Option) (*DataSource, error) {
 	if cfg.connector == nil {
 		return nil, fmt.Errorf("golem: no connector configured (pass e.g. postgres.New(...) to NewDataSource)")
 	}
+	if cfg.parser == nil {
+		cfg.parser = DefaultParser
+	}
 
 	dataSourceRegistryMu.Lock()
 	defer dataSourceRegistryMu.Unlock()
@@ -62,7 +66,7 @@ func NewDataSource(opts ...Option) (*DataSource, error) {
 	for k, v := range oldMap {
 		newMap[k] = v
 	}
-	ds := &DataSource{name: cfg.name, connector: cfg.connector}
+	ds := &DataSource{name: cfg.name, connector: cfg.connector, parser: cfg.parser}
 	newMap[cfg.name] = ds
 	dataSourceRegistry.Store(&newMap)
 	return ds, nil
@@ -101,6 +105,11 @@ func (ds *DataSource) Name() string { return ds.name }
 // Dialect returns the active Dialect established by the last successful
 // Connect(). Returns nil if never connected.
 func (ds *DataSource) Dialect() Dialect { return ds.dialect }
+
+// Parser returns the Parser this DataSource uses to convert struct field
+// values to/from driver.Value -- DefaultParser unless overridden via
+// CustomParser at NewDataSource time.
+func (ds *DataSource) Parser() Parser { return ds.parser }
 
 // Connect establishes the connection via the configured Connector and stores
 // the resulting Dialect. Idempotent: calling Connect again on an already-
@@ -158,7 +167,7 @@ func (ds *DataSource) Transaction(ctx context.Context, fn func(tx Tx) error) err
 	if err != nil {
 		return err
 	}
-	tx := NewTx(dialect, txConn)
+	tx := NewTx(dialect, txConn, ds.parser)
 
 	defer func() {
 		if r := recover(); r != nil {

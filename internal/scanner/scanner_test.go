@@ -100,7 +100,7 @@ func buildMeta(t testing.TB) entity.EntityMeta {
 
 func TestCompile_ProducesNonNilPlan(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	if p == nil {
 		t.Fatal("Compile returned nil")
 	}
@@ -111,7 +111,7 @@ func TestCompile_ProducesNonNilPlan(t *testing.T) {
 
 func TestScanFromMap_PrimitiveInt(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"int64val": int64(42)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -124,7 +124,7 @@ func TestScanFromMap_PrimitiveInt(t *testing.T) {
 
 func TestScanFromMap_AllPrimitives(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	now := time.Now().Truncate(time.Second)
 	row := map[string]any{
 		"intval":     int(1),
@@ -194,7 +194,7 @@ func TestScanFromMap_AllPrimitives(t *testing.T) {
 
 func TestScanFromMap_NullWrappers(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	now := time.Now().Truncate(time.Second)
 	row := map[string]any{
 		"nullstr":   sql.NullString{String: "x", Valid: true},
@@ -226,7 +226,7 @@ func TestScanFromMap_NullWrappers(t *testing.T) {
 
 func TestScanFromMap_NullWrappersFromRaw(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	now := time.Now().Truncate(time.Second)
 	row := map[string]any{
 		"nullstr":   "raw",
@@ -258,7 +258,7 @@ func TestScanFromMap_NullWrappersFromRaw(t *testing.T) {
 
 func TestScanFromMap_MissingColumn(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -271,7 +271,7 @@ func TestScanFromMap_MissingColumn(t *testing.T) {
 
 func TestScanFromMap_NilValue(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"int64val": nil}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -284,7 +284,7 @@ func TestScanFromMap_NilValue(t *testing.T) {
 
 func TestScanFromMap_PtrStr(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"ptrstr": "ptr-value"}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -297,7 +297,7 @@ func TestScanFromMap_PtrStr(t *testing.T) {
 
 func TestScanFromMap_PtrBool_FromInt(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"ptrbool": int64(1)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -310,7 +310,7 @@ func TestScanFromMap_PtrBool_FromInt(t *testing.T) {
 
 func TestScanFromMap_PtrInt64_Convertible(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"ptrint64": int64(77)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -323,7 +323,7 @@ func TestScanFromMap_PtrInt64_Convertible(t *testing.T) {
 
 func TestScanFromMap_Bool_FromInt(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"boolval": int64(1)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -336,7 +336,7 @@ func TestScanFromMap_Bool_FromInt(t *testing.T) {
 
 func TestScanFromMap_Bool_FromUint(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"boolval": uint8(0)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -349,7 +349,7 @@ func TestScanFromMap_Bool_FromUint(t *testing.T) {
 
 func TestScanFromMap_Float_FromInt(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"float64val": int64(3)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -362,7 +362,7 @@ func TestScanFromMap_Float_FromInt(t *testing.T) {
 
 func TestScanFromMap_Float32_FromFloat32(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"float32val": float32(1.5)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -375,7 +375,7 @@ func TestScanFromMap_Float32_FromFloat32(t *testing.T) {
 
 func TestScanFromMap_Int_FromUint(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"intval": uint(5)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -388,7 +388,7 @@ func TestScanFromMap_Int_FromUint(t *testing.T) {
 
 func TestScanFromMap_Uint_FromInt(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"uintval": int(9)}
 	ts, err := ScanFromMap[testStruct](p, row)
 	if err != nil {
@@ -401,7 +401,7 @@ func TestScanFromMap_Uint_FromInt(t *testing.T) {
 
 func TestScanFromMap_FallbackReflect_CustomType(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	// customType is kindOther — goes through assignReflect
 	row := map[string]any{"customval": customType{X: 42}}
 	ts, err := ScanFromMap[testStruct](p, row)
@@ -420,7 +420,7 @@ func TestScanFromMap_SqlScanner_DelegatesToScan(t *testing.T) {
 		b.Col(&ts.Field, golem.TEXT())
 		b.PrimaryKey(&ts.ID)
 	}).Describe()
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 
 	row := map[string]any{"id": int64(1), "field": "abc"}
 	ts, err := ScanFromMap[scannerTestStruct](p, row)
@@ -439,7 +439,7 @@ func TestScanFromMap_SqlScanner_PropagatesScanError(t *testing.T) {
 		b.Col(&ts.Field, golem.TEXT())
 		b.PrimaryKey(&ts.ID)
 	}).Describe()
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 
 	// fakeScannerField.Scan only accepts a string -- an int64 makes it error.
 	row := map[string]any{"id": int64(1), "field": int64(99)}
@@ -451,7 +451,7 @@ func TestScanFromMap_SqlScanner_PropagatesScanError(t *testing.T) {
 
 func TestScanFromMap_Error_Unconvertible(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	// CustomVal field (customType) can't receive a string
 	row := map[string]any{"customval": "not-a-customType"}
 	_, err := ScanFromMap[testStruct](p, row)
@@ -462,7 +462,7 @@ func TestScanFromMap_Error_Unconvertible(t *testing.T) {
 
 func TestScanFromMap_String_TypeMismatch_FallsToReflect(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	// stringval expects string but we pass int64 — falls to reflect convertible path
 	row := map[string]any{"stringval": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
@@ -473,7 +473,7 @@ func TestScanFromMap_String_TypeMismatch_FallsToReflect(t *testing.T) {
 
 func TestScanFromMap_NullStr_TypeMismatch_FallsToReflect(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	// nullstr expects sql.NullString but we pass customType — fails
 	row := map[string]any{"nullstr": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
@@ -484,7 +484,7 @@ func TestScanFromMap_NullStr_TypeMismatch_FallsToReflect(t *testing.T) {
 
 func TestScanFromMap_NullInt_TypeMismatch_FallsToReflect(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"nullint": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
 	if err == nil {
@@ -494,7 +494,7 @@ func TestScanFromMap_NullInt_TypeMismatch_FallsToReflect(t *testing.T) {
 
 func TestScanFromMap_NullFloat_TypeMismatch_FallsToReflect(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"nullfloat": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
 	if err == nil {
@@ -504,7 +504,7 @@ func TestScanFromMap_NullFloat_TypeMismatch_FallsToReflect(t *testing.T) {
 
 func TestScanFromMap_NullBool_TypeMismatch_FallsToReflect(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"nullbool": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
 	if err == nil {
@@ -514,7 +514,7 @@ func TestScanFromMap_NullBool_TypeMismatch_FallsToReflect(t *testing.T) {
 
 func TestScanFromMap_NullTime_TypeMismatch_FallsToReflect(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"nulltime": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
 	if err == nil {
@@ -524,7 +524,7 @@ func TestScanFromMap_NullTime_TypeMismatch_FallsToReflect(t *testing.T) {
 
 func TestScanFromMap_BytesTypeMismatch(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	// customType is not convertible to []byte
 	row := map[string]any{"bytesval": customType{X: 1}}
 	_, err := ScanFromMap[testStruct](p, row)
@@ -535,7 +535,7 @@ func TestScanFromMap_BytesTypeMismatch(t *testing.T) {
 
 func TestScanFromMap_TimeMismatch(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	row := map[string]any{"timeval": "not-a-time"}
 	_, err := ScanFromMap[testStruct](p, row)
 	if err == nil {
@@ -581,7 +581,7 @@ func TestClassifyGoType_AllKinds(t *testing.T) {
 
 func TestTargetsPool_Reuses(t *testing.T) {
 	meta := buildMeta(t)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	s1 := p.targetsPool.Get().(*[]any)
 	p.targetsPool.Put(s1)
 	s2 := p.targetsPool.Get().(*[]any)
@@ -593,7 +593,7 @@ func TestTargetsPool_Reuses(t *testing.T) {
 
 func BenchmarkScanFromMap_AllPrimitives(b *testing.B) {
 	meta := buildMeta(b)
-	p := Compile(meta)
+	p := Compile(meta, golem.DefaultParser)
 	now := time.Now()
 	row := map[string]any{
 		"intval":     int(1),
@@ -629,7 +629,7 @@ func init() {
 // --- coverage gap tests ---
 
 func TestAssignReflect_NilGoType(t *testing.T) {
-	if err := assignReflect(nil, nil, "any"); err != nil {
+	if err := assignReflect(nil, nil, "any", golem.DefaultParser); err != nil {
 		t.Fatalf("expected nil error for nil goType, got: %v", err)
 	}
 }
@@ -637,7 +637,7 @@ func TestAssignReflect_NilGoType(t *testing.T) {
 func TestAssignReflect_InvalidRawVal(t *testing.T) {
 	var s string
 	fp := unsafe.Pointer(&s)
-	if err := assignReflect(fp, reflect.TypeOf(""), nil); err != nil {
+	if err := assignReflect(fp, reflect.TypeOf(""), nil, golem.DefaultParser); err != nil {
 		t.Fatalf("expected nil error for nil raw, got: %v", err)
 	}
 }
@@ -646,7 +646,7 @@ func TestAssignReflect_BoolFromIntViaReflect(t *testing.T) {
 	// Exercises the goType.Kind() == reflect.Bool branch in assignReflect.
 	var b bool
 	fp := unsafe.Pointer(&b)
-	if err := assignReflect(fp, reflect.TypeOf(false), int64(1)); err != nil {
+	if err := assignReflect(fp, reflect.TypeOf(false), int64(1), golem.DefaultParser); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !b {
@@ -659,7 +659,7 @@ func TestAssignReflect_PtrConvertDifferentType(t *testing.T) {
 	// *int64 field receiving int32 — needs Convert(int64) before wrapping.
 	var p *int64
 	fp := unsafe.Pointer(&p)
-	if err := assignReflect(fp, reflect.TypeOf((*int64)(nil)), int32(7)); err != nil {
+	if err := assignReflect(fp, reflect.TypeOf((*int64)(nil)), int32(7), golem.DefaultParser); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if p == nil || *p != 7 {
@@ -720,28 +720,10 @@ func TestToBool_AllBranches(t *testing.T) {
 	}
 }
 
-func TestNumericToBoolVal_UintBranch(t *testing.T) {
-	v := reflect.ValueOf(uint(1))
-	b, ok := numericToBoolVal(v)
-	if !ok || !b {
-		t.Error("numericToBoolVal(uint(1)) failed")
-	}
-	v0 := reflect.ValueOf(uint(0))
-	b0, ok0 := numericToBoolVal(v0)
-	if !ok0 || b0 {
-		t.Error("numericToBoolVal(uint(0)) should be false")
-	}
-	vs := reflect.ValueOf("string")
-	_, okS := numericToBoolVal(vs)
-	if okS {
-		t.Error("numericToBoolVal(string) should return false")
-	}
-}
-
 func TestAssignReflect_PtrBoolFromNumeric(t *testing.T) {
 	var val *bool
 	fp := unsafe.Pointer(&val)
-	if err := assignReflect(fp, reflect.TypeOf((*bool)(nil)), int64(1)); err != nil {
+	if err := assignReflect(fp, reflect.TypeOf((*bool)(nil)), int64(1), golem.DefaultParser); err != nil {
 		t.Fatal(err)
 	}
 	if val == nil || !*val {
@@ -754,7 +736,7 @@ func TestAssignReflect_PtrBoolFromInvalid(t *testing.T) {
 	fp := unsafe.Pointer(&val)
 	// Passes a string, which is not a numeric value, to a *bool.
 	// numericToBoolVal will return ok=false, falls through to error.
-	err := assignReflect(fp, reflect.TypeOf((*bool)(nil)), "not_a_bool")
+	err := assignReflect(fp, reflect.TypeOf((*bool)(nil)), "not_a_bool", golem.DefaultParser)
 	if err == nil {
 		t.Errorf("expected error, got nil")
 	}
@@ -763,7 +745,7 @@ func TestAssignReflect_PtrBoolFromInvalid(t *testing.T) {
 func TestAssignReflect_PtrExactMatch(t *testing.T) {
 	var val *int64
 	fp := unsafe.Pointer(&val)
-	if err := assignReflect(fp, reflect.TypeOf((*int64)(nil)), int64(42)); err != nil {
+	if err := assignReflect(fp, reflect.TypeOf((*int64)(nil)), int64(42), golem.DefaultParser); err != nil {
 		t.Fatal(err)
 	}
 	if val == nil || *val != 42 {
@@ -776,7 +758,7 @@ func TestAssignReflect_ConvertibleMatch(t *testing.T) {
 	var val CustomInt
 	fp := unsafe.Pointer(&val)
 	// raw is int32(42), goType is CustomInt. ConvertibleTo is true.
-	if err := assignReflect(fp, reflect.TypeOf(CustomInt(0)), int32(42)); err != nil {
+	if err := assignReflect(fp, reflect.TypeOf(CustomInt(0)), int32(42), golem.DefaultParser); err != nil {
 		t.Fatal(err)
 	}
 	if val != CustomInt(42) {
@@ -788,7 +770,7 @@ func TestAssignReflect_NotConvertible(t *testing.T) {
 	var val int64
 	fp := unsafe.Pointer(&val)
 	// raw is string, goType is int64. ConvertibleTo is false.
-	err := assignReflect(fp, reflect.TypeOf(int64(0)), "string_val")
+	err := assignReflect(fp, reflect.TypeOf(int64(0)), "string_val", golem.DefaultParser)
 	if err == nil {
 		t.Errorf("expected error, got nil")
 	}

@@ -12,12 +12,12 @@ package scanner
 
 import (
 	"database/sql"
-	"fmt"
 	"reflect"
 	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/entity"
 )
 
@@ -126,11 +126,13 @@ type fieldAssignment struct {
 type Plan struct {
 	assignments []fieldAssignment
 	targetsPool sync.Pool
+	parser      golem.Parser
 }
 
-// Compile builds a Plan from an entity.EntityMeta. The plan is intended to
-// be stored on Repository[T] and reused for every scanRow call.
-func Compile(meta entity.EntityMeta) *Plan {
+// Compile builds a Plan from an entity.EntityMeta and the Parser resolved
+// off the golem.Conn the caller is bound to. The plan is intended to be
+// stored on Repository[T] and reused for every scanRow call.
+func Compile(meta entity.EntityMeta, parser golem.Parser) *Plan {
 	n := len(meta.Columns)
 	assignments := make([]fieldAssignment, n)
 	for i, col := range meta.Columns {
@@ -141,7 +143,7 @@ func Compile(meta entity.EntityMeta) *Plan {
 			goType:  col.GoType,
 		}
 	}
-	p := &Plan{assignments: assignments}
+	p := &Plan{assignments: assignments, parser: parser}
 	p.targetsPool.New = func() any {
 		s := make([]any, n)
 		return &s
@@ -163,7 +165,7 @@ func ScanFromMap[T any](p *Plan, row map[string]any) (T, error) {
 		if raw == nil {
 			continue
 		}
-		if err := assignFast(base, a, raw); err != nil {
+		if err := assignFast(base, a, raw, p.parser); err != nil {
 			return result, err
 		}
 	}
@@ -172,7 +174,7 @@ func ScanFromMap[T any](p *Plan, row map[string]any) (T, error) {
 
 // assignFast is the hot-loop dispatcher. It handles the fast path for all
 // primitive kinds and falls back to reflect for kindOther.
-func assignFast(base unsafe.Pointer, a *fieldAssignment, raw any) error {
+func assignFast(base unsafe.Pointer, a *fieldAssignment, raw any, parser golem.Parser) error {
 	fp := unsafe.Add(base, a.offset)
 	switch a.kind {
 	case kindInt:
@@ -301,68 +303,24 @@ func assignFast(base unsafe.Pointer, a *fieldAssignment, raw any) error {
 			return nil
 		}
 	}
-	// kindOther or type-mismatch on a primitive kind: fall back to reflect.
-	return assignReflect(fp, a.goType, raw)
+	// kindOther or type-mismatch on a primitive kind: fall back to the Parser.
+	return assignReflect(fp, a.goType, raw, parser)
 }
 
-// assignReflect is the slow-path fallback using reflect, identical to the
-// behaviour of repository.assignFieldValue for types not handled by assignFast.
-func assignReflect(fp unsafe.Pointer, goType reflect.Type, raw any) error {
+// assignReflect is the slow-path fallback for kindOther (or a raw value
+// that didn't match a primitive kind's expected Go type). field.Addr()
+// points at the exact struct memory being scanned into (fp itself), so
+// parser.FromSQL writes straight into the live field, no extra copy. All
+// the resolution logic (sql.Scanner, Get()/Set(T) duck-typing, pointer
+// alloc, numeric<->bool, convertible, JSON fallback) lives in the Parser
+// now (golem.DefaultParser by default) -- this function is just the glue
+// between the unsafe.Pointer world and reflect.Value.
+func assignReflect(fp unsafe.Pointer, goType reflect.Type, raw any, parser golem.Parser) error {
 	if goType == nil {
 		return nil
 	}
 	field := reflect.NewAt(goType, fp).Elem()
-
-	// A field type implementing database/sql.Scanner owns its own decoding
-	// -- e.g. a dirty-tracking wrapper around a plain Go value, coming from
-	// any other package golem knows nothing about. field.Addr() already
-	// points at the exact struct memory being scanned into (fp itself), so
-	// Scan writes straight into the live field, no extra copy.
-	if scanner, ok := field.Addr().Interface().(sql.Scanner); ok {
-		return scanner.Scan(raw)
-	}
-
-	rawVal := reflect.ValueOf(raw)
-	if !rawVal.IsValid() {
-		return nil
-	}
-	if rawVal.Type() == goType {
-		field.Set(rawVal)
-		return nil
-	}
-	// numeric → bool (MySQL TINYINT(1) etc.)
-	if goType.Kind() == reflect.Bool {
-		if b, ok := numericToBoolVal(rawVal); ok {
-			field.SetBool(b)
-			return nil
-		}
-	}
-	// non-NULL value into a nullable *X field
-	if goType.Kind() == reflect.Pointer {
-		elemType := goType.Elem()
-		if elemType.Kind() == reflect.Bool {
-			if b, ok := numericToBoolVal(rawVal); ok {
-				ptr := reflect.New(elemType)
-				ptr.Elem().SetBool(b)
-				field.Set(ptr)
-				return nil
-			}
-		}
-		if rawVal.Type() == elemType || rawVal.Type().ConvertibleTo(elemType) {
-			ptr := reflect.New(elemType)
-			if rawVal.Type() != elemType {
-				rawVal = rawVal.Convert(elemType)
-			}
-			ptr.Elem().Set(rawVal)
-			field.Set(ptr)
-			return nil
-		}
-	}
-	if rawVal.Type().ConvertibleTo(goType) {
-		field.Set(rawVal.Convert(goType))
-		return nil
-	}
-	return fmt.Errorf("scanner: value %v (%s) is not convertible to %s", raw, rawVal.Type(), goType)
+	return parser.FromSQL(field, raw)
 }
 
 // toInt64 extracts an integer from any common integer-shaped raw value.
@@ -440,17 +398,6 @@ func toBool(raw any) (bool, bool) {
 	}
 	if i, ok := toInt64(raw); ok {
 		return i != 0, true
-	}
-	return false, false
-}
-
-// numericToBoolVal mirrors repository.numericToBool for reflect.Value inputs.
-func numericToBoolVal(v reflect.Value) (bool, bool) {
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int() != 0, true
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return v.Uint() != 0, true
 	}
 	return false, false
 }

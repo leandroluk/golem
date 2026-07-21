@@ -1176,7 +1176,7 @@ func TestDialect_GetExecutor_UsesTxWhenPresent(t *testing.T) {
 		t.Fatalf("Begin: %v", err)
 	}
 
-	tx := golem.NewTx(d, txConn)
+	tx := golem.NewTx(d, txConn, golem.DefaultParser)
 	got := d.getExecutor(tx)
 	if got == nil {
 		t.Fatal("expected non-nil executor")

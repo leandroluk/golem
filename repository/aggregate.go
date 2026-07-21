@@ -188,7 +188,7 @@ func Aggregate[T, R any](ctx context.Context, r *Repository[T], fn func(t *T, re
 			})
 		}
 	}
-	plan := scanner.Compile(entity.EntityMeta{Columns: cols})
+	plan := scanner.Compile(entity.EntityMeta{Columns: cols}, r.conn.Parser())
 
 	results := make([]R, 0, len(rows))
 	for _, row := range rows {

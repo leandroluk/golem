@@ -55,42 +55,49 @@ var UserEntity = entity.New[User](func(t *User, b *entity.Table) {
 
 `ColumnType` is dialect-agnostic — it never turns into DDL (golem doesn't generate schema, see [Migrations](../README.md#migrations)) and doesn't depend on which adapter you connected. It's purely documentation/metadata read by things like OpenAPI generation, not something the read/write path dispatches on at runtime — repository's `Insert`/`FindMany`/etc. work directly off the field's Go type (via `internal/scanner`, reflect-based), not `ColumnType`. This keeps the entity 100% portable across dialects — only the connector chosen at `NewDataSource` time decides the actual database; the entity declaration never changes. See [Supported databases](adapters.md) for how each type maps per dialect.
 
-## Custom field types (Valuer/Scanner)
+## Custom field types (Parser)
 
-A field doesn't have to be a plain Go scalar. If its type implements `database/sql/driver.Valuer`, golem calls `Value()` to get the value to write instead of using the field's raw Go value as-is; if it implements `sql.Scanner`, golem calls `Scan(raw)` to populate it instead of a direct assignment. Both are the standard library's own contracts — golem has zero knowledge of, or dependency on, whatever type implements them:
+A field doesn't have to be a plain Go scalar. Every `DataSource` has a `golem.Parser` — `ToSQL(fieldVal reflect.Value) (driver.Value, error)` / `FromSQL(dst reflect.Value, raw any) error` — that converts field values to/from `driver.Value`. `golem.DefaultParser` unless overridden via `golem.CustomParser` at `NewDataSource` time.
+
+`DefaultParser` resolves, in this order:
+
+1. `driver.Valuer`/`sql.Scanner`, if the field type implements them (the stdlib's own contracts)
+2. a `Get() T` / `Set(T)` method pair found by NAME via reflection (duck-typing, not a fixed interface) — works for a generic wrapper type, any `T`, without it implementing anything golem defines. This is what lets a third-party dirty-tracking wrapper (e.g. `gonest.Accessor[T]`) work as a struct field directly:
+
+   ```go
+   type Order struct {
+   	ID    int64
+   	Total gonest.Accessor[int64] // Get()/Set(T) duck-typed automatically
+   }
+
+   var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
+   	b.Col(&o.ID, golem.BIGINT())
+   	b.Col(&o.Total, golem.BIGINT())
+   	b.PrimaryKey(&o.ID)
+   })
+   ```
+
+3. pointer dereference (`nil` → `nil`, non-nil → recurse into the pointee)
+4. native passthrough (`string`/`bool`/`time.Time`/`[]byte`/numeric — already `driver.Value`-compatible)
+5. named/enum type reduced to its underlying kind
+6. JSON fallback for anything else (maps, structs — jsonb columns)
+
+Need something the default doesn't cover? Decorate it instead of replacing it wholesale:
 
 ```go
-type Money struct{ Cents int64 }
-
-func (m Money) Value() (driver.Value, error) { return m.Cents, nil }
-
-func (m *Money) Scan(src any) error {
-	v, ok := src.(int64)
-	if !ok {
-		return fmt.Errorf("Money: cannot scan %T", src)
-	}
-	m.Cents = v
-	return nil
-}
-
-type Order struct {
-	ID    int64
-	Total Money // stored as a plain BIGINT column, wrapped in Go
-}
-
-var OrderEntity = entity.New(func(o *Order, b *entity.Table) {
-	b.Col(&o.ID, golem.BIGINT())
-	b.Col(&o.Total, golem.BIGINT())
-	b.PrimaryKey(&o.ID)
-})
+dataSource := golem.MustNewDataSource(
+	postgres.New(func(o *postgres.Options) { o.DSN = dsn }),
+	golem.CustomParser(func(base golem.Parser) golem.Parser {
+		return myParser{base: base} // your own ToSQL/FromSQL, falling back to base for everything else
+	}),
+)
 ```
-
-This is the seam a dirty-tracking/optional-field wrapper (a `gonest.Accessor[T]`-shaped type, or your own) plugs into: implement `Value()`/`Scan()` on a small adapter type wrapping it, use that adapter type as the struct field instead of the wrapper directly, and golem round-trips it exactly like any other column, no extra configuration needed.
 
 > **Note**: `golem.Dialect` used to expose its own `Bind(ColumnType, any) (driver.Value, error)`/
 > `Scan(ColumnType, raw any, dest any) error` per adapter — removed (never called by the actual
-> read/write path, dead code since before this feature existed). `driver.Valuer`/`sql.Scanner` on the
-> FIELD TYPE is the supported extension point today, adapter-agnostic by construction.
+> read/write path, dead code since before this feature existed). `golem.Parser`, resolved per
+> `DataSource` and overridable via `CustomParser`, is the supported extension point today,
+> adapter-agnostic by construction.
 
 ## `entity.Table` reference
 

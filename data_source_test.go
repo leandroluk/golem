@@ -113,6 +113,40 @@ func TestNewDataSource_CustomName(t *testing.T) {
 	}
 }
 
+func TestNewDataSource_Parser_DefaultsWhenOmitted(t *testing.T) {
+	ds, err := NewDataSource(WithConnector(&mockConnector{}), DataSourceName(t.Name()))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer ds.Close()
+	if ds.Parser() != DefaultParser {
+		t.Fatalf("Parser() = %v, want DefaultParser", ds.Parser())
+	}
+}
+
+type customParserStub struct{ Parser }
+
+func TestNewDataSource_CustomParser_Overrides(t *testing.T) {
+	custom := customParserStub{Parser: DefaultParser}
+	ds, err := NewDataSource(
+		WithConnector(&mockConnector{}),
+		DataSourceName(t.Name()),
+		CustomParser(func(base Parser) Parser {
+			if base != DefaultParser {
+				t.Fatalf("CustomParser fn received %v, want DefaultParser", base)
+			}
+			return custom
+		}),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer ds.Close()
+	if ds.Parser() != Parser(custom) {
+		t.Fatalf("Parser() = %v, want the custom parser", ds.Parser())
+	}
+}
+
 func TestNewDataSource_ErrorDuplicateName(t *testing.T) {
 	ds, err := NewDataSource(WithConnector(&mockConnector{}), DataSourceName(t.Name()))
 	if err != nil {
@@ -194,6 +228,23 @@ func TestDataSource_Transaction_Success(t *testing.T) {
 	err := ds.Transaction(context.Background(), func(tx Tx) error { return nil })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDataSource_Transaction_TxParser_MatchesDataSourceParser(t *testing.T) {
+	custom := customParserStub{Parser: DefaultParser}
+	ds := newTestDataSource(t, WithConnector(&mockConnector{}), CustomParser(func(Parser) Parser { return custom }))
+	ds.Connect()
+	var gotParser Parser
+	err := ds.Transaction(context.Background(), func(tx Tx) error {
+		gotParser = tx.Parser()
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotParser != ds.Parser() {
+		t.Fatalf("tx.Parser() = %v, want %v (ds.Parser())", gotParser, ds.Parser())
 	}
 }
 
@@ -314,7 +365,7 @@ func TestTxImpl_IsConn(t *testing.T) {
 
 func TestTxImpl_Exec_Error(t *testing.T) {
 	d := &mockDialect{execErr: errors.New("exec error")}
-	tx := NewTx(d, &mockTxConn{})
+	tx := NewTx(d, &mockTxConn{}, DefaultParser)
 	_, err := tx.Exec(context.Background(), "SELECT 1")
 	if err == nil || err.Error() != "exec error" {
 		t.Fatal("expected exec error")
@@ -323,7 +374,7 @@ func TestTxImpl_Exec_Error(t *testing.T) {
 
 func TestTxImpl_Exec_Success(t *testing.T) {
 	d := &mockDialect{}
-	tx := NewTx(d, &mockTxConn{})
+	tx := NewTx(d, &mockTxConn{}, DefaultParser)
 	res, err := tx.Exec(context.Background(), "SELECT 1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

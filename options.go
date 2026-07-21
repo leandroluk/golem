@@ -8,6 +8,7 @@ type Option func(*dataSourceConfig)
 type dataSourceConfig struct {
 	name      string
 	connector Connector
+	parser    Parser
 }
 
 // DataSourceName sets the DataSource's name. If never called, NewDataSource
@@ -23,4 +24,13 @@ func DataSourceName(name string) Option {
 // instead, which returns an Option built from this).
 func WithConnector(c Connector) Option {
 	return func(cfg *dataSourceConfig) { cfg.connector = c }
+}
+
+// CustomParser overrides the Parser a DataSource uses to convert struct
+// field values to/from driver.Value. fn receives DefaultParser and returns
+// the Parser to use -- return fn's argument unchanged to keep the default,
+// or wrap it (decorator) to extend it while falling back to it. If
+// CustomParser is never passed, NewDataSource uses DefaultParser as-is.
+func CustomParser(fn func(defaultParser Parser) Parser) Option {
+	return func(cfg *dataSourceConfig) { cfg.parser = fn(DefaultParser) }
 }

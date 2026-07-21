@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/leandroluk/golem"
 	"github.com/leandroluk/golem/entity"
 	"github.com/leandroluk/golem/internal/scanner"
 )
@@ -29,7 +30,7 @@ func setupUserMeta() entity.EntityMeta {
 
 func BenchmarkScanFromMap_AllPrimitives(b *testing.B) {
 	meta := setupUserMeta()
-	plan := scanner.Compile(meta)
+	plan := scanner.Compile(meta, golem.DefaultParser)
 	row := map[string]any{
 		"id":     int64(100),
 		"name":   "Test User",

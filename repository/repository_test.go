@@ -126,6 +126,22 @@ var valuerErrSubjectEntity = entity.New(func(s *valuerErrSubject, b *entity.Tabl
 	b.PrimaryKey(&s.ID)
 })
 
+// valuerErrPKSubject has the erroring Valuer AS its primary key, exercising
+// the ToSQL error path inside Delete/Restore's PK-only column loop (which
+// valuerErrSubject's non-PK Field can't reach).
+type valuerErrPKSubject struct {
+	ID        fakeValuerErrField
+	DeletedAt *time.Time
+}
+
+var valuerErrPKSubjectEntity = entity.New(func(s *valuerErrPKSubject, b *entity.Table) {
+	b.TableName("valuererrpksubject")
+	b.Col(&s.ID, golem.TEXT())
+	b.Col(&s.DeletedAt, golem.DATETIME()).Nullable()
+	b.PrimaryKey(&s.ID)
+	b.DeleteDate(&s.DeletedAt)
+})
+
 // -----------------------------------------------------------------------
 // Fakes: golem.Connector + golem.Dialect
 // -----------------------------------------------------------------------
@@ -358,6 +374,39 @@ func TestRepository_Insert_ValuerFieldError_Propagates(t *testing.T) {
 
 	in := &valuerErrSubject{Field: fakeValuerErrField{x: 1}}
 	if _, err := repo.Insert(context.Background(), in); err == nil {
+		t.Fatal("expected error from Value()")
+	}
+}
+
+func TestRepository_SaveOne_ValuerFieldError_Propagates(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, valuerErrSubjectEntity)
+
+	in := &valuerErrSubject{Field: fakeValuerErrField{x: 1}}
+	if _, err := repo.SaveOne(context.Background(), in); err == nil {
+		t.Fatal("expected error from Value()")
+	}
+}
+
+func TestRepository_Delete_ValuerFieldError_Propagates(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, valuerErrPKSubjectEntity)
+
+	in := &valuerErrPKSubject{ID: fakeValuerErrField{x: 1}}
+	if err := repo.Delete(context.Background(), in); err == nil {
+		t.Fatal("expected error from Value()")
+	}
+}
+
+func TestRepository_Restore_ValuerFieldError_Propagates(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, valuerErrPKSubjectEntity)
+
+	in := &valuerErrPKSubject{ID: fakeValuerErrField{x: 1}}
+	if err := repo.Restore(context.Background(), in); err == nil {
 		t.Fatal("expected error from Value()")
 	}
 }
@@ -1621,7 +1670,7 @@ func newFakeTxConn(t *testing.T, d *fakeDialect) golem.Conn {
 		t.Fatalf("Begin: %v", err)
 	}
 	d.beginCalls = 0
-	return golem.NewTx(d, txConn)
+	return golem.NewTx(d, txConn, golem.DefaultParser)
 }
 
 func TestRepository_FindMany_ForUpdate_InsideTx_PassesLockClause(t *testing.T) {
@@ -1873,7 +1922,7 @@ func TestRepository_Delete_AlreadyInsideTx_ReusesIt(t *testing.T) {
 		t.Fatalf("Begin: %v", err)
 	}
 	d.beginCalls = 0 // reset: only count Begin calls made *by Delete itself* below
-	tx := golem.NewTx(d, txConn)
+	tx := golem.NewTx(d, txConn, golem.DefaultParser)
 
 	repo := Get(tx, parent)
 	if err := repo.Delete(context.Background(), &cascadeParent{ID: 6}); err != nil {
@@ -2682,7 +2731,7 @@ func TestRepository_Delete_Cascade_ReusesExistingTx(t *testing.T) {
 	newCascadeChildEntity("cascade_child_reuse_tx", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
 	d := &fakeDialect{}
-	tx := golem.NewTx(d, &fakeTx{})
+	tx := golem.NewTx(d, &fakeTx{}, golem.DefaultParser)
 	repo := Get(tx, parent)
 
 	if err := repo.Delete(context.Background(), &cascadeParent{ID: 1}); err != nil {
