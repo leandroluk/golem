@@ -61,25 +61,18 @@ func (r *Repository[T]) pkColumnSet() map[string]bool {
 }
 
 // resolveFieldPtrAny resolves a field pointer to a field name using offset
-// arithmetic against a struct pointer.
+// arithmetic against a struct pointer. Thin wrapper over entity.ResolveField
+// that swallows the error into "" — every caller here already treats an
+// unresolved field as "skip this one", not a hard failure.
 func resolveFieldPtrAny(base any, fieldPtr any) string {
-	baseVal := reflect.ValueOf(base)
-	if baseVal.Kind() == reflect.Pointer {
-		baseVal = baseVal.Elem()
-	}
-	if baseVal.Kind() != reflect.Struct {
+	if base == nil || fieldPtr == nil {
 		return ""
 	}
-	baseAddr := baseVal.Addr().Pointer()
-	t := baseVal.Type()
-	fpAddr := reflect.ValueOf(fieldPtr).Pointer()
-	offset := fpAddr - baseAddr
-	for i := 0; i < t.NumField(); i++ {
-		if t.Field(i).Offset == offset {
-			return t.Field(i).Name
-		}
+	name, err := entity.ResolveField(base, fieldPtr)
+	if err != nil {
+		return ""
 	}
-	return ""
+	return name
 }
 
 // translateCondition recursively maps an op.Condition to a stmt.Predicate AST node.

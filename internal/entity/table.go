@@ -236,12 +236,9 @@ func (b *Table) finalize() {
 		defaultVal, hasDefault := pc.cb.ResolvedDefault()
 		var goType reflect.Type
 		var offset uintptr
-		for i := 0; i < structType.NumField(); i++ {
-			if structType.Field(i).Name == pc.fieldName {
-				goType = structType.Field(i).Type
-				offset = structType.Field(i).Offset
-				break
-			}
+		if sf, ok := FieldByName(structType, pc.fieldName); ok {
+			goType = sf.Type
+			offset = sf.Offset
 		}
 		columns = append(columns, ColumnMeta{
 			FieldName:   pc.fieldName,

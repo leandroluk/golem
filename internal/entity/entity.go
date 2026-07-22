@@ -14,7 +14,9 @@ import (
 // given zero (a pointer to the same zero-value T instance the caller's
 // builder callback was given). Resolution is by memory OFFSET, not by type
 // or declaration order — this is what lets two fields of the same Go type
-// (e.g. two int64 fields) be told apart correctly.
+// (e.g. two int64 fields) be told apart correctly. Fields promoted through
+// anonymous (embedded) struct values — not pointers — are resolved too, by
+// recursing into the embed with the offset adjusted for its own base.
 func ResolveField(zero any, fieldPtr any) (string, error) {
 	base := reflect.ValueOf(zero).Elem()
 	baseAddr := base.UnsafeAddr()
@@ -22,12 +24,60 @@ func ResolveField(zero any, fieldPtr any) (string, error) {
 	offset := fieldAddr - baseAddr
 
 	t := base.Type()
-	for i := 0; i < t.NumField(); i++ {
-		if t.Field(i).Offset == offset {
-			return t.Field(i).Name, nil
-		}
+	if f, ok := fieldByOffset(t, offset); ok {
+		return f.Name, nil
 	}
 	return "", fmt.Errorf("entity: field pointer does not belong to %s", t.Name())
+}
+
+// fieldByOffset finds the struct field at the given byte offset from t's
+// base address, descending into anonymous embedded structs (by value) when
+// the offset falls within one. Embeds by pointer aren't traversed — their
+// contents live at a separately allocated address, not at a fixed offset
+// from the outer struct, so offset arithmetic doesn't apply to them.
+func fieldByOffset(t reflect.Type, offset uintptr) (reflect.StructField, bool) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		// An anonymous struct embed can start at the same offset as its own
+		// first field (e.g. an embed's offset 0 coincides with that embed's
+		// ID field also at offset 0) — recurse first so the promoted field
+		// wins over the embed itself, falling back to the embed only if it
+		// turns out to have no matching field (e.g. it's empty).
+		if f.Anonymous && f.Type.Kind() == reflect.Struct && offset >= f.Offset {
+			if inner, ok := fieldByOffset(f.Type, offset-f.Offset); ok {
+				return inner, true
+			}
+		}
+		if f.Offset == offset {
+			return f, true
+		}
+	}
+	return reflect.StructField{}, false
+}
+
+// FieldByName finds a field by name in t, descending into anonymous
+// (embedded) struct fields when it's not found directly. Unlike
+// reflect.Type.FieldByName, the returned StructField's Offset is the true
+// cumulative byte offset from t's own base — reflect.Type.FieldByName
+// reports Offset relative only to the field's immediate parent type, which
+// undercounts it as soon as the field is promoted through more than one
+// embedding level next to a sibling embed.
+func FieldByName(t reflect.Type, name string) (reflect.StructField, bool) {
+	for i := 0; i < t.NumField(); i++ {
+		if f := t.Field(i); f.Name == name {
+			return f, true
+		}
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			if inner, ok := FieldByName(f.Type, name); ok {
+				inner.Offset += f.Offset
+				return inner, true
+			}
+		}
+	}
+	return reflect.StructField{}, false
 }
 
 // ColumnMeta describes a single declared column.

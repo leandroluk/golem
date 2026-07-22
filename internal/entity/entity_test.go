@@ -565,3 +565,69 @@ func TestEntity_Triggers_HookRegistered_RunsIt(t *testing.T) {
 		}
 	}
 }
+
+// Mixin types mirroring the value-embed composition pattern (Indexable /
+// Creatable / Props structs embedded by value into a domain entity).
+type MixinIndexable struct {
+	ID string
+}
+
+type MixinProps struct {
+	FirstName string
+	LastName  string
+}
+
+type WidgetWithMixins struct {
+	MixinIndexable
+	MixinProps
+}
+
+// Regression test: fields promoted through a value-embedded anonymous
+// struct must resolve to their own name and offset, not the embed's. Before
+// fieldByOffset gained recursion, any field past the embed's own first
+// field (e.g. LastName, not at the same offset as the MixinProps field
+// itself) failed to resolve at all.
+func TestNew_ResolvesFieldsPromotedThroughValueEmbeds(t *testing.T) {
+	e := New(func(w *WidgetWithMixins, b *Table) {
+		b.Col(&w.ID, golem.TEXT()).Name("id")
+		b.Col(&w.FirstName, golem.TEXT()).Name("first_name")
+		b.Col(&w.LastName, golem.TEXT()).Name("last_name")
+		b.PrimaryKey(&w.ID)
+	})
+
+	meta := e.Describe()
+	byName := make(map[string]ColumnMeta, len(meta.Columns))
+	for _, c := range meta.Columns {
+		byName[c.FieldName] = c
+	}
+
+	wantType := reflect.TypeOf("")
+	for _, fieldName := range []string{"ID", "FirstName", "LastName"} {
+		col, ok := byName[fieldName]
+		if !ok {
+			t.Fatalf("column for field %q not resolved (columns: %+v)", fieldName, meta.Columns)
+		}
+		if col.GoType != wantType {
+			t.Errorf("field %q: GoType = %v, want %v", fieldName, col.GoType, wantType)
+		}
+	}
+
+	var zero WidgetWithMixins
+	base := reflect.ValueOf(&zero).Elem()
+	wantOffset := func(fieldPtr any) uintptr {
+		return reflect.ValueOf(fieldPtr).Pointer() - base.UnsafeAddr()
+	}
+	if got, want := byName["ID"].Offset, wantOffset(&zero.ID); got != want {
+		t.Errorf("ID offset = %d, want %d", got, want)
+	}
+	if got, want := byName["FirstName"].Offset, wantOffset(&zero.FirstName); got != want {
+		t.Errorf("FirstName offset = %d, want %d", got, want)
+	}
+	if got, want := byName["LastName"].Offset, wantOffset(&zero.LastName); got != want {
+		t.Errorf("LastName offset = %d, want %d", got, want)
+	}
+
+	if len(meta.PrimaryKey) != 1 || meta.PrimaryKey[0] != "id" {
+		t.Errorf("PrimaryKey = %v, want [id]", meta.PrimaryKey)
+	}
+}

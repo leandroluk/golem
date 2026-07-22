@@ -47,6 +47,43 @@ var UserEntity = golem.NewTable[User](func(t *User, b *golem.Table) {
 })
 ```
 
+## Composing entities from mixins
+
+A field doesn't have to be declared directly on `T` — it can be promoted through an anonymous struct embedded **by value**:
+
+```go
+type Indexable[ID ~string] struct {
+	ID ID
+}
+
+type Timestamps struct {
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type UserID string
+
+type User struct {
+	Indexable[UserID] // value embed, not *Indexable[UserID]
+	Timestamps        // value embed, not *Timestamps
+	Name  string
+	Email string
+}
+
+var UserEntity = golem.NewTable[User](func(t *User, b *golem.Table) {
+	b.Col(&t.ID, golem.UUID())               // promoted from Indexable
+	b.Col(&t.CreatedAt, golem.DATETIME())    // promoted from Timestamps
+	b.Col(&t.UpdatedAt, golem.DATETIME())
+	b.Col(&t.Name, golem.VARCHAR(50))
+	b.Col(&t.Email, golem.VARCHAR(50))
+	b.PrimaryKey(&t.ID)
+})
+```
+
+Field addresses (`&t.ID`, `&t.CreatedAt`) are resolved by real memory offset regardless of how deep the promotion chain is, so this composes the same way normal Go field access does.
+
+**Must be a value embed, not a pointer embed.** `NewTable`'s callback runs against `var zero T` — a genuinely zero-valued `T` — to resolve field addresses; nothing ever constructs a "real" instance for this purpose. If a mixin is embedded by pointer (`*Indexable[UserID]` instead of `Indexable[UserID]`), that pointer is `nil` in the zero value, and taking `&t.ID` through it panics with a nil pointer dereference before the callback even reaches `b.Col`. Construct actual instances (your `NewUser(...)` constructor, say) by copying the mixin's own constructor result into the value field — `User{Indexable: *NewIndexable[UserID](), ...}` — not by holding onto the pointer it returns.
+
 ## `golem.ColumnType`
 
 `golem.BIGINT()`, `golem.VARCHAR(50)`, `golem.TEXT()`, `golem.BOOLEAN()`, `golem.DATETIME()`, `golem.UUID()`, `golem.JSON()`, etc. — the full set is `BOOLEAN`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `FLOAT`, `CHAR`, `VARCHAR`, `TEXT`, `DATE`, `DATETIME`, `TIME`, `BLOB`, `UUID`, `JSON`.

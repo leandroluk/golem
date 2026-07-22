@@ -487,6 +487,43 @@ func main() {
 
 ```
 
+#### Composing entities from mixins
+
+A field doesn't have to be declared directly on `T` — it can be promoted through an anonymous struct
+embedded **by value** (`Indexable[UserID]`, not `*Indexable[UserID]`):
+
+```go
+type Indexable[ID ~string] struct { ID ID }
+type Timestamps struct {
+  CreatedAt time.Time
+  UpdatedAt time.Time
+}
+type UserID string
+
+type User struct {
+  Indexable[UserID] // value embed
+  Timestamps        // value embed
+  Name  string
+  Email string
+}
+
+var UserEntity = golem.NewTable[User](func(t *User, b *golem.Table) {
+  b.Col(&t.ID, golem.UUID())            // promoted from Indexable
+  b.Col(&t.CreatedAt, golem.DATETIME())  // promoted from Timestamps
+  b.Col(&t.UpdatedAt, golem.DATETIME())
+  b.Col(&t.Name, golem.VARCHAR(50))
+  b.Col(&t.Email, golem.VARCHAR(50))
+  b.PrimaryKey(&t.ID)
+})
+```
+
+Field addresses are resolved by real memory offset regardless of how deep the promotion chain is, so this
+composes the same way normal Go field access does. **Must be a value embed, not a pointer embed** — `NewTable`'s
+callback runs against `var zero T`, a genuinely zero-valued `T`, to resolve field addresses; if a mixin is
+embedded by pointer, that pointer is `nil` in the zero value, and `&t.ID` through it panics with a nil pointer
+dereference before the callback even reaches `b.Col`. See [docs/guides/schema.md](docs/guides/schema.md#composing-entities-from-mixins)
+for the full writeup.
+
 ### Custom field types (Parser)
 
 A struct field doesn't have to be a plain Go scalar. Every `DataSource` has a `golem.Parser`
