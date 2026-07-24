@@ -722,12 +722,12 @@ func main() {
   // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK.
   // Returns (nil, nil) if no row matches the PK anymore — that's not an error, just "gone".
   user.Age = 31
-  saved, err := users.SaveOne(ctx, &user)
+  saved, err := users.SaveOne(ctx, user)
   if err != nil {
     panic(err)
   }
   if saved != nil {
-    user = *saved
+    user = saved
   }
 
   // lookup by primary key: FindOne + golem.Eq (no dedicated FindByID, see AD-022).
@@ -790,7 +790,7 @@ func main() {
 >
 > | Method | Must* variant | Returns | Description |
 > | :- | :- | :- | :- |
-> | `Insert(ctx, e *T) (T, error)` | `MustInsert(ctx, e *T) T` | 1 row | inserts 1 new entity, returned with its PK filled in |
+> | `Insert(ctx, e *T) (*T, error)` | `MustInsert(ctx, e *T) *T` | 1 row | inserts 1 new entity, returned with its PK filled in |
 > | `InsertMany(ctx, entities ...*T) ([]T, error)` | `MustInsertMany(ctx, entities ...*T) []T` | N rows | inserts several at once |
 > | `SaveOne(ctx, e *T) (*T, error)` | `MustSaveOne(ctx, e *T) *T` | 1 row or nil | re-persists a runtime instance you already have (e.g. from a previous `Insert`/`FindOne`), by PK; returns `(nil, nil)` if no row matches the PK anymore — that's not an error |
 > | `SaveMany(ctx, entities ...*T) ([]T, error)` | `MustSaveMany(ctx, entities ...*T) []T` | N rows | like `SaveOne`, for several instances at once; entities with no matching row are skipped, not an error |
@@ -860,17 +860,17 @@ func main() {
   // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK.
   // Returns (nil, nil) if no row matches the PK anymore — that's not an error, just "gone".
   user.Age = 31
-  saved, err := userRepo.SaveOne(ctx, &user)
+  saved, err := userRepo.SaveOne(ctx, user)
   if err != nil {
     panic(err)
   }
   if saved != nil {
-    user = *saved
+    user = saved
   }
 
   // SaveMany: same idea, but for several runtime instances at once (variadic, like InsertMany).
   // Instances with no matching row are skipped, not an error.
-  users, err := userRepo.SaveMany(ctx, &user)
+  users, err := userRepo.SaveMany(ctx, user)
   if err != nil {
     panic(err)
   }

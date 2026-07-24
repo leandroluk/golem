@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current Milestone:** nenhum em aberto — M1-M19, M22-M27 done (M20/M21 dropped).
+**Current Milestone:** nenhum em aberto — M1-M19, M22-M28 done (M20/M21 dropped).
 **Status:** M25 (Predicate-Based Delete) e M26 (FindOne/SaveOne retornam `*T`, `nil` em vez de `ErrNotFound`) fechados na mesma sessão. `task coverage` 100.0%.
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
@@ -603,6 +603,28 @@ retornar erro — útil pra seed/setup scripts, testes, e call sites já dentro 
   `golem.Repository[T]` automaticamente.
 
 Full spec: `.specs/features/repository-must-variants/spec.md`.
+
+---
+
+## M28 — `Insert` returns `*T` (consistency with `FindOne`/`SaveOne`)
+
+**Goal:** `Insert` trocou `(T, error)` por `(*T, error)` — era o único método single-row de
+`Repository[T]` que retornava valor em vez de ponteiro, achado ao adicionar `MustInsert` (M27) e
+notar que `MustFindOne`/`MustSaveOne` retornam `*T` mas `MustInsert` teria que retornar `T`.
+**Status:** ✅ Done — `task coverage` 100.0%, README + `docs/guides/repository.md` +
+`.examples/*`/`internal/dialecttest/*` atualizados.
+
+### Features
+
+**`Repository[T]` wiring** - DONE
+
+- `Insert(ctx, i *T) (*T, error)`: `(nil, err)` no erro, `&res` no sucesso (era `zero, err`/`res,
+  nil`).
+- `MustInsert(ctx, i *T) *T`.
+- `InsertMany` (usa `Insert` internamente): passou a desreferenciar o `*T` retornado pra montar seu
+  `[]T` — assinatura pública de `InsertMany`/`MustInsertMany` inalterada.
+
+Full spec: `.specs/features/insert-returns-pointer/spec.md`.
 
 ---
 

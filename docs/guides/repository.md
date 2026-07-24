@@ -33,9 +33,9 @@ users, err := repo.InsertMany(ctx,
 
 ```go
 user.Age = 31
-saved, err := repo.SaveOne(ctx, &user)
+saved, err := repo.SaveOne(ctx, user)
 if saved != nil {
-	user = *saved
+	user = saved
 }
 ```
 
@@ -150,7 +150,7 @@ If the callback returns an error, the whole transaction is rolled back.
 
 | Method | Must* variant | Returns | Description |
 | --- | --- | --- | --- |
-| `Insert(ctx, e *T) (T, error)` | `MustInsert(ctx, e *T) T` | 1 row | inserts 1 new entity, returned with its PK filled in |
+| `Insert(ctx, e *T) (*T, error)` | `MustInsert(ctx, e *T) *T` | 1 row | inserts 1 new entity, returned with its PK filled in |
 | `InsertMany(ctx, entities ...*T) ([]T, error)` | `MustInsertMany(ctx, entities ...*T) []T` | N rows | inserts several at once |
 | `SaveOne(ctx, e *T) (*T, error)` | `MustSaveOne(ctx, e *T) *T` | 1 row or nil | re-persists a runtime instance you already have, by PK; `(nil, nil)` if no row matches anymore |
 | `SaveMany(ctx, entities ...*T) ([]T, error)` | `MustSaveMany(ctx, entities ...*T) []T` | N rows | like `SaveOne`, for several instances at once; not-found entities are skipped |

@@ -196,10 +196,9 @@ func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
 
 // Insert inserts a single entity. Triggers BeforeCreate/AfterCreate hooks,
 // and OnConflictCreate in case of database integrity conflicts.
-func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
-	var zero T
+func (r *Repository[T]) Insert(ctx context.Context, i *T) (*T, error) {
 	if err := r.entity.TriggerBeforeCreate(ctx, i, r.conn); err != nil {
-		return zero, err
+		return nil, err
 	}
 
 	v := reflect.ValueOf(i).Elem()
@@ -213,7 +212,7 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 		}
 		dv, err := r.conn.Parser().ToSQL(fieldVal)
 		if err != nil {
-			return zero, fmt.Errorf("repository: insert: column %q: %w", col.Name, err)
+			return nil, fmt.Errorf("repository: insert: column %q: %w", col.Name, err)
 		}
 		columns = append(columns, col.Name)
 		values = append(values, dv)
@@ -230,26 +229,26 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	if err != nil {
 		if r.conn.Dialect().IsConflict(err) {
 			if hookErr := r.entity.TriggerOnConflictCreate(ctx, i, r.conn); hookErr != nil {
-				return zero, hookErr
+				return nil, hookErr
 			}
 		}
-		return zero, fmt.Errorf("repository: insert: %w", err)
+		return nil, fmt.Errorf("repository: insert: %w", err)
 	}
 
 	res, err := r.scanRow(row)
 	if err != nil {
-		return zero, err
+		return nil, err
 	}
 
 	if err := r.entity.TriggerAfterCreate(ctx, &res, r.conn); err != nil {
-		return zero, err
+		return nil, err
 	}
 
-	return res, nil
+	return &res, nil
 }
 
 // MustInsert is like Insert but panics instead of returning a non-nil error.
-func (r *Repository[T]) MustInsert(ctx context.Context, i *T) T {
+func (r *Repository[T]) MustInsert(ctx context.Context, i *T) *T {
 	return must.Value(r.Insert(ctx, i))
 }
 
@@ -261,7 +260,7 @@ func (r *Repository[T]) InsertMany(ctx context.Context, items ...*T) ([]T, error
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, result)
+		results = append(results, *result)
 	}
 	return results, nil
 }

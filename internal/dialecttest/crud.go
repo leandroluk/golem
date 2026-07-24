@@ -97,7 +97,7 @@ func runCRUD(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema) 
 	testutil.FatalIf(t, len(inserted) != 2, "InsertMany: expected 2 rows, got %d", len(inserted))
 
 	w.Score = 100
-	saved, err := repo.SaveOne(ctx, &w)
+	saved, err := repo.SaveOne(ctx, w)
 	testutil.FatalIfError(t, err, "SaveOne")
 	testutil.ErrorIf(t, saved.Score != 100, "SaveOne: Score = %d, want 100", saved.Score)
 

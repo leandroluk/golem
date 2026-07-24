@@ -4,7 +4,9 @@
 > historical M3/M11 shape. M25 changed it to a predicate-based criteria callback — see
 > `.specs/features/predicate-based-delete/`. M26 changed `FindOne`/`SaveOne` from `(T, error)` to
 > `(*T, error)`, with `(nil, nil)` on no match instead of `golem.ErrNotFound` (now removed) — see
-> STATE.md's AD-059.
+> STATE.md's AD-059. M28 changed `Insert` the same way, from `(T, error)` to `(*T, error)`, for
+> consistency with `FindOne`/`SaveOne` (every single-row method now returns `*T`) — see STATE.md's
+> AD-061.
 
 **Driving use case:** `examples/postgres` — insert users/posts/categories/junction rows, read a few back to prove the relations round-trip through real Postgres.
 
