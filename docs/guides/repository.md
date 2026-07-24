@@ -111,6 +111,25 @@ if err := repo.Restore(ctx, found); err != nil {
 
 `Delete` returns every row that matched (`[]T`). `Restore` is variadic — pass several entities to restore them all by their respective primary keys.
 
+## Must* variants
+
+Every method above has a `Must`-prefixed sibling with the identical parameters and the identical
+non-error return value(s), minus `error` — instead of returning a non-nil error it panics with it.
+Useful for setup/seed scripts, tests, and any call site already inside a `recover()` boundary,
+where handwriting `if err != nil { panic(err) }` at every call adds nothing:
+
+```go
+user := repo.MustInsert(ctx, &User{Name: "John Doe", Email: "john.doe@email.com", Age: 30})
+found := repo.MustFindOne(ctx, func(t *User, q *golem.Query[User]) {
+	q.Where(golem.Eq(&t.ID, user.ID))
+})
+repo.MustRestore(ctx, found)
+```
+
+`MustInsert`, `MustInsertMany`, `MustFindMany`, `MustFindOne`, `MustSaveOne`, `MustSaveMany`,
+`MustUpdate`, `MustDelete`, `MustRestore`, `MustCount`, `MustExists` — one per method in the
+[Quick reference](#quick-reference) table below.
+
 ## Transactions
 
 Transactions live on `DataSource`, not on `Repository`. Inside the callback, `tx` (which also implements `golem.Conn`) replaces `dataSource` when building `golem.NewRepository`:
@@ -129,18 +148,19 @@ If the callback returns an error, the whole transaction is rolled back.
 
 ## Quick reference
 
-| Method | Returns | Description |
-| --- | --- | --- |
-| `Insert(ctx, e *T) (T, error)` | 1 row | inserts 1 new entity, returned with its PK filled in |
-| `InsertMany(ctx, entities ...*T) ([]T, error)` | N rows | inserts several at once |
-| `SaveOne(ctx, e *T) (*T, error)` | 1 row or nil | re-persists a runtime instance you already have, by PK; `(nil, nil)` if no row matches anymore |
-| `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once; not-found entities are skipped |
-| `Update(ctx, criteria func(t *T, u *golem.Update[T])) ([]T, error)` | N rows | updates directly in the database by criteria; 0 matched rows is not an error |
-| `Delete(ctx, criteria func(t *T, d *golem.Delete[T])) ([]T, error)` | N rows | deletes by criteria; soft-deletes instead of removing the row when `DeleteDate` is declared |
-| `Restore(ctx, entities ...*T) error` | — | undoes a soft delete by PK; a no-op if `DeleteDate` isn't declared |
-| `FindMany(ctx, criteria ...func(t *T, q *golem.Query[T])) ([]T, error)` | N rows | optional criteria; no criteria returns the whole table |
-| `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (*T, error)` | 1 row or nil | same as `FindMany`, capped to 1; `(nil, nil)` when nothing matches |
-| `Count(ctx, criteria ...func(t *T, c *golem.Count[T])) (int64, error)` | count | optional criteria (`Where` only) |
-| `Exists(ctx, criteria ...func(t *T, c *golem.Count[T])) (bool, error)` | bool | shortcut for `Count > 0` |
+| Method | Must* variant | Returns | Description |
+| --- | --- | --- | --- |
+| `Insert(ctx, e *T) (T, error)` | `MustInsert(ctx, e *T) T` | 1 row | inserts 1 new entity, returned with its PK filled in |
+| `InsertMany(ctx, entities ...*T) ([]T, error)` | `MustInsertMany(ctx, entities ...*T) []T` | N rows | inserts several at once |
+| `SaveOne(ctx, e *T) (*T, error)` | `MustSaveOne(ctx, e *T) *T` | 1 row or nil | re-persists a runtime instance you already have, by PK; `(nil, nil)` if no row matches anymore |
+| `SaveMany(ctx, entities ...*T) ([]T, error)` | `MustSaveMany(ctx, entities ...*T) []T` | N rows | like `SaveOne`, for several instances at once; not-found entities are skipped |
+| `Update(ctx, criteria func(t *T, u *golem.Update[T])) ([]T, error)` | `MustUpdate(ctx, criteria) []T` | N rows | updates directly in the database by criteria; 0 matched rows is not an error |
+| `Delete(ctx, criteria func(t *T, d *golem.Delete[T])) ([]T, error)` | `MustDelete(ctx, criteria) []T` | N rows | deletes by criteria; soft-deletes instead of removing the row when `DeleteDate` is declared |
+| `Restore(ctx, entities ...*T) error` | `MustRestore(ctx, entities ...*T)` | — | undoes a soft delete by PK; a no-op if `DeleteDate` isn't declared |
+| `FindMany(ctx, criteria ...func(t *T, q *golem.Query[T])) ([]T, error)` | `MustFindMany(ctx, criteria ...) []T` | N rows | optional criteria; no criteria returns the whole table |
+| `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (*T, error)` | `MustFindOne(ctx, criteria ...) *T` | 1 row or nil | same as `FindMany`, capped to 1; `(nil, nil)` when nothing matches |
+| `Count(ctx, criteria ...func(t *T, c *golem.Count[T])) (int64, error)` | `MustCount(ctx, criteria ...) int64` | count | optional criteria (`Where` only) |
+| `Exists(ctx, criteria ...func(t *T, c *golem.Count[T])) (bool, error)` | `MustExists(ctx, criteria ...) bool` | bool | shortcut for `Count > 0` |
+| `Exec(ctx, sql string, args ...any) ([]T, error)` | `MustExec(ctx, sql, args ...) []T` | N rows | runs raw SQL, maps rows to `T` |
 
 See [Query builder](query-builder.md) for the full `Where`/`golem.*`/`OrderBy`/pagination surface used by `FindMany`, `FindOne`, `Update`, and `Count`.

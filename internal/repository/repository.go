@@ -15,6 +15,7 @@ import (
 
 	golem "github.com/leandroluk/golem/internal/core"
 	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/must"
 	"github.com/leandroluk/golem/internal/scanner"
 	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/internal/op"
@@ -247,6 +248,11 @@ func (r *Repository[T]) Insert(ctx context.Context, i *T) (T, error) {
 	return res, nil
 }
 
+// MustInsert is like Insert but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustInsert(ctx context.Context, i *T) T {
+	return must.Value(r.Insert(ctx, i))
+}
+
 // InsertMany inserts each item via sequential Insert calls, preserving order.
 func (r *Repository[T]) InsertMany(ctx context.Context, items ...*T) ([]T, error) {
 	results := make([]T, 0, len(items))
@@ -258,6 +264,11 @@ func (r *Repository[T]) InsertMany(ctx context.Context, items ...*T) ([]T, error
 		results = append(results, result)
 	}
 	return results, nil
+}
+
+// MustInsertMany is like InsertMany but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustInsertMany(ctx context.Context, items ...*T) []T {
+	return must.Value(r.InsertMany(ctx, items...))
 }
 
 // FindMany returns all rows that match the given criteria (AND semantics).
@@ -435,6 +446,11 @@ func (r *Repository[T]) FindMany(ctx context.Context, criteria ...func(*T, *quer
 	return results, nil
 }
 
+// MustFindMany is like FindMany but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustFindMany(ctx context.Context, criteria ...func(*T, *query.Query[T])) []T {
+	return must.Value(r.FindMany(ctx, criteria...))
+}
+
 // pkRowKey builds a composite dedup key from a raw result row's primary key
 // column values.
 func pkRowKey(row map[string]any, pkColumns []string) string {
@@ -457,6 +473,11 @@ func (r *Repository[T]) FindOne(ctx context.Context, criteria ...func(*T, *query
 		return nil, nil
 	}
 	return &results[0], nil
+}
+
+// MustFindOne is like FindOne but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustFindOne(ctx context.Context, criteria ...func(*T, *query.Query[T])) *T {
+	return must.Value(r.FindOne(ctx, criteria...))
 }
 
 // SaveOne re-persists an existing T: issues UPDATE WHERE <pk columns> SET
@@ -536,6 +557,11 @@ func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (*T, error) {
 	return &res, nil
 }
 
+// MustSaveOne is like SaveOne but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustSaveOne(ctx context.Context, i *T) *T {
+	return must.Value(r.SaveOne(ctx, i))
+}
+
 // SaveMany re-persists multiple instances via sequential SaveOne calls. An
 // item with no matching row is skipped, not an error.
 func (r *Repository[T]) SaveMany(ctx context.Context, items ...*T) ([]T, error) {
@@ -551,6 +577,11 @@ func (r *Repository[T]) SaveMany(ctx context.Context, items ...*T) ([]T, error) 
 		results = append(results, *result)
 	}
 	return results, nil
+}
+
+// MustSaveMany is like SaveMany but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustSaveMany(ctx context.Context, items ...*T) []T {
+	return must.Value(r.SaveMany(ctx, items...))
 }
 
 // Update applies WHERE + SET criteria and returns every updated row. Zero
@@ -606,6 +637,11 @@ func (r *Repository[T]) Update(ctx context.Context, criteria func(*T, *query.Upd
 		results = append(results, item)
 	}
 	return results, nil
+}
+
+// MustUpdate is like Update but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustUpdate(ctx context.Context, criteria func(*T, *query.Update[T])) []T {
+	return must.Value(r.Update(ctx, criteria))
 }
 
 // cascadeActionable reports whether action requires golem to do something at
@@ -872,6 +908,11 @@ func (r *Repository[T]) Delete(ctx context.Context, criteria func(t *T, d *query
 	return results, nil
 }
 
+// MustDelete is like Delete but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustDelete(ctx context.Context, criteria func(t *T, d *query.Delete[T])) []T {
+	return must.Value(r.Delete(ctx, criteria))
+}
+
 // Restore soft-restores (sets soft-delete column back to NULL) the given items.
 // Returns an error if soft-delete is not configured.
 func (r *Repository[T]) Restore(ctx context.Context, items ...*T) error {
@@ -930,6 +971,11 @@ func (r *Repository[T]) Restore(ctx context.Context, items ...*T) error {
 	return nil
 }
 
+// MustRestore is like Restore but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustRestore(ctx context.Context, items ...*T) {
+	must.Exec(r.Restore(ctx, items...))
+}
+
 // Count returns the number of entities matching the criteria.
 func (r *Repository[T]) Count(ctx context.Context, criteria ...func(*T, *query.Count[T])) (int64, error) {
 	var zero T
@@ -975,6 +1021,11 @@ func (r *Repository[T]) Count(ctx context.Context, criteria ...func(*T, *query.C
 		}
 	}
 	return 0, fmt.Errorf("repository: count: failed to parse result from row: %v", rows[0])
+}
+
+// MustCount is like Count but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustCount(ctx context.Context, criteria ...func(*T, *query.Count[T])) int64 {
+	return must.Value(r.Count(ctx, criteria...))
 }
 
 // Exists checks if any entity matches the criteria.
@@ -1027,6 +1078,11 @@ func (r *Repository[T]) Exists(ctx context.Context, criteria ...func(*T, *query.
 	return false, nil
 }
 
+// MustExists is like Exists but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustExists(ctx context.Context, criteria ...func(*T, *query.Count[T])) bool {
+	return must.Value(r.Exists(ctx, criteria...))
+}
+
 // Exec executes a raw SQL query and maps the returned rows to a slice of T.
 func (r *Repository[T]) Exec(ctx context.Context, sql string, args ...any) ([]T, error) {
 	res, err := r.conn.Exec(ctx, sql, args...)
@@ -1046,4 +1102,9 @@ func (r *Repository[T]) Exec(ctx context.Context, sql string, args ...any) ([]T,
 		results = append(results, item)
 	}
 	return results, nil
+}
+
+// MustExec is like Exec but panics instead of returning a non-nil error.
+func (r *Repository[T]) MustExec(ctx context.Context, sql string, args ...any) []T {
+	return must.Value(r.Exec(ctx, sql, args...))
 }

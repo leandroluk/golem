@@ -1,6 +1,6 @@
 # Roadmap
 
-**Current Milestone:** nenhum em aberto — M1-M19, M22-M26 done (M20/M21 dropped).
+**Current Milestone:** nenhum em aberto — M1-M19, M22-M27 done (M20/M21 dropped).
 **Status:** M25 (Predicate-Based Delete) e M26 (FindOne/SaveOne retornam `*T`, `nil` em vez de `ErrNotFound`) fechados na mesma sessão. `task coverage` 100.0%.
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
@@ -580,6 +580,29 @@ removido (só tinha esses 2 usos).
 - `SaveMany` (usa `SaveOne` internamente): itens sem linha correspondente são pulados no resultado,
   não geram erro.
 - `golem.ErrNotFound`/`core.ErrNotFound` removidos — eram os únicos 2 call sites.
+
+---
+
+## M27 — `Repository[T]` `Must*` variants
+
+**Goal:** todo método de `Repository[T]` que retorna `error` ganha um irmão `Must`-prefixado com os
+mesmos parâmetros e o(s) mesmo(s) retorno(s) não-erro, que panica (via `internal/must`) em vez de
+retornar erro — útil pra seed/setup scripts, testes, e call sites já dentro de um `recover()`.
+**Status:** ✅ Done — `task coverage` 100.0%, README + `docs/guides/repository.md` atualizados.
+
+### Features
+
+**`Repository[T]` wiring** - DONE
+
+- `MustInsert`, `MustInsertMany`, `MustFindMany`, `MustFindOne`, `MustSaveOne`, `MustSaveMany`,
+  `MustUpdate`, `MustDelete`, `MustRestore`, `MustCount`, `MustExists`, `MustExec` — cada um é uma
+  delegação de 1 linha (`must.Value`/`must.Exec`) pro método não-`Must` correspondente, zero lógica
+  duplicada.
+- Nenhum reexport novo em `golem.go` necessário — `golem.Repository[T]` é alias de tipo
+  (`type Repository[T any] = repository.Repository[T]`), então os novos métodos já aparecem em
+  `golem.Repository[T]` automaticamente.
+
+Full spec: `.specs/features/repository-must-variants/spec.md`.
 
 ---
 
