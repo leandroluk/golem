@@ -41,7 +41,7 @@ Golem mirrors TypeORM's `DataSource` / `Repository` pattern (already familiar if
 - Pessimistic locking (`.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()`, with `NoWait`/`SkipLocked`) — declared per-dialect, unsupported strengths are rejected rather than silently ignored
 - Transactions via `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`
 - Raw SQL escape hatch (`Exec` on both `golem.Conn` and `Repository[T]`) for anything the builder doesn't cover
-- Typed error sentinels (`golem.ErrNotFound`, `golem.ErrDuplicateKey`, `golem.ErrForeignKeyViolation`, …) — always `errors.Is`-checkable, never string-matched
+- Typed error sentinels (`golem.ErrDuplicateKey`, `golem.ErrForeignKeyViolation`, …) — always `errors.Is`-checkable, never string-matched
 - Hooks (`Before/After/OnConflict` × `Create/Update/Delete`) running inside the same transaction as the triggering operation
 - 5 production-grade adapters: **Postgres, MySQL/MariaDB, SQL Server, SQLite, Oracle** — same entity declaration, same `Repository[T]` API, only the imported `driver/*` package changes
 - 100% statement coverage across the entire codebase

@@ -1,5 +1,10 @@
 # Repository Core CRUD (M3, scoped) Design
 
+> **Note:** `Delete` isn't part of this pass's design (see spec.md's Out of Scope), and the shape it
+> later shipped with (M11, `items ...*T`) was superseded by M25's predicate-based criteria callback
+> — see `.specs/features/predicate-based-delete/`. M26 additionally changed `FindOne`/`SaveOne`
+> from `(T, error)` to `(*T, error)`, with `(nil, nil)` on no match — see STATE.md's AD-059.
+
 **Spec**: `.specs/features/repository-core-crud/spec.md`
 **Status**: Approved
 

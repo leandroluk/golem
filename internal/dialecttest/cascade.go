@@ -25,7 +25,9 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		child, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "cascade-child"})
 		testutil.FatalIfError(t, err, "Insert child")
 
-		err = parentRepo.Delete(ctx, &parent)
+		_, err = parentRepo.Delete(ctx, func(p *Parent, d *query.Delete[Parent]) {
+			d.Where(op.Eq(&p.ID, parent.ID))
+		})
 		testutil.FatalIfError(t, err, "Delete parent")
 
 		exists, err := childRepo.Exists(ctx, func(c *Child, q *query.Count[Child]) {
@@ -44,7 +46,9 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		child, err := childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "setnull-child"})
 		testutil.FatalIfError(t, err, "Insert child")
 
-		err = parentRepo.Delete(ctx, &parent)
+		_, err = parentRepo.Delete(ctx, func(p *Parent, d *query.Delete[Parent]) {
+			d.Where(op.Eq(&p.ID, parent.ID))
+		})
 		testutil.FatalIfError(t, err, "Delete parent")
 
 		found, err := childRepo.FindOne(ctx, func(c *Child, q *query.Query[Child]) {
@@ -63,7 +67,9 @@ func runCascade(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 		_, err = childRepo.Insert(ctx, &Child{ParentID: &parent.ID, Name: "restrict-child"})
 		testutil.FatalIfError(t, err, "Insert child")
 
-		err = parentRepo.Delete(ctx, &parent)
+		_, err = parentRepo.Delete(ctx, func(p *Parent, d *query.Delete[Parent]) {
+			d.Where(op.Eq(&p.ID, parent.ID))
+		})
 		testutil.FatalIf(t, !errors.Is(err, golem.ErrForeignKeyViolation), "Delete parent with referencing child: err = %v, want errors.Is(err, golem.ErrForeignKeyViolation)", err)
 
 		exists, err := parentRepo.Exists(ctx, func(p *Parent, q *query.Count[Parent]) {

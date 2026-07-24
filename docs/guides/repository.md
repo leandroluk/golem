@@ -29,14 +29,17 @@ users, err := repo.InsertMany(ctx,
 
 ## Save
 
-`SaveOne` re-persists a runtime instance you already have (from a previous `Insert`/`FindOne`), by primary key:
+`SaveOne` re-persists a runtime instance you already have (from a previous `Insert`/`FindOne`), by primary key. It returns `(nil, nil)` if no row matches the PK anymore — that's not an error:
 
 ```go
 user.Age = 31
-user, err = repo.SaveOne(ctx, &user)
+saved, err := repo.SaveOne(ctx, &user)
+if saved != nil {
+	user = *saved
+}
 ```
 
-`SaveMany` does the same for several instances at once.
+`SaveMany` does the same for several instances at once; instances with no matching row are skipped, not an error.
 
 ## Update
 
@@ -56,6 +59,7 @@ There's no separate `UpdateOne`/`UpdateMany` — the criteria can match one row 
 
 ```go
 // lookup by primary key: FindOne + golem.Eq (no dedicated FindByID)
+// FindOne returns (nil, nil) when nothing matches — not finding a row is not an error.
 found, err := repo.FindOne(ctx, func(t *User, q *golem.Query[User]) {
 	q.Where(golem.Eq(&t.ID, user.ID))
 })
@@ -90,18 +94,22 @@ exists, err := repo.Exists(ctx, func(t *User, c *golem.Count[User]) {
 ## Delete / Restore
 
 ```go
-// if User has DeleteDate declared, this is a soft delete (sets it) — otherwise the row is removed
-if err := repo.Delete(ctx, &found); err != nil {
+// Delete takes a predicate (Where + WithDeleted), not entity instances — it matches then deletes.
+// If User has DeleteDate declared, this is a soft delete (sets it) — otherwise the row is removed.
+_, err := repo.Delete(ctx, func(t *User, d *golem.Delete[User]) {
+	d.Where(golem.Eq(&t.ID, found.ID))
+})
+if err != nil {
 	panic(err)
 }
 
 // undoes a soft delete: clears the DeleteDate field again
-if err := repo.Restore(ctx, &found); err != nil {
+if err := repo.Restore(ctx, found); err != nil {
 	panic(err)
 }
 ```
 
-Both are variadic — pass several entities to delete/restore them all by their respective primary keys.
+`Delete` returns every row that matched (`[]T`). `Restore` is variadic — pass several entities to restore them all by their respective primary keys.
 
 ## Transactions
 
@@ -125,13 +133,13 @@ If the callback returns an error, the whole transaction is rolled back.
 | --- | --- | --- |
 | `Insert(ctx, e *T) (T, error)` | 1 row | inserts 1 new entity, returned with its PK filled in |
 | `InsertMany(ctx, entities ...*T) ([]T, error)` | N rows | inserts several at once |
-| `SaveOne(ctx, e *T) (T, error)` | 1 row | re-persists a runtime instance you already have, by PK |
-| `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once |
+| `SaveOne(ctx, e *T) (*T, error)` | 1 row or nil | re-persists a runtime instance you already have, by PK; `(nil, nil)` if no row matches anymore |
+| `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once; not-found entities are skipped |
 | `Update(ctx, criteria func(t *T, u *golem.Update[T])) ([]T, error)` | N rows | updates directly in the database by criteria; 0 matched rows is not an error |
-| `Delete(ctx, entities ...*T) error` | — | delete by PK; soft-deletes instead of removing the row when `DeleteDate` is declared |
+| `Delete(ctx, criteria func(t *T, d *golem.Delete[T])) ([]T, error)` | N rows | deletes by criteria; soft-deletes instead of removing the row when `DeleteDate` is declared |
 | `Restore(ctx, entities ...*T) error` | — | undoes a soft delete by PK; a no-op if `DeleteDate` isn't declared |
 | `FindMany(ctx, criteria ...func(t *T, q *golem.Query[T])) ([]T, error)` | N rows | optional criteria; no criteria returns the whole table |
-| `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (T, error)` | 1 row | same as `FindMany`, capped to 1 |
+| `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (*T, error)` | 1 row or nil | same as `FindMany`, capped to 1; `(nil, nil)` when nothing matches |
 | `Count(ctx, criteria ...func(t *T, c *golem.Count[T])) (int64, error)` | count | optional criteria (`Where` only) |
 | `Exists(ctx, criteria ...func(t *T, c *golem.Count[T])) (bool, error)` | bool | shortcut for `Count > 0` |
 

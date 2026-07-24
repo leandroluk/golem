@@ -142,6 +142,19 @@ func TestNewCount_BuildsBuilder(t *testing.T) {
 	}
 }
 
+func TestNewDelete_BuildsBuilder(t *testing.T) {
+	d := NewDelete[golemTestSubject]()
+	if d == nil {
+		t.Fatal("NewDelete returned nil")
+	}
+	if d.IsWithDeleted() {
+		t.Fatal("expected IsWithDeleted() to default to false")
+	}
+	if d.WithDeleted(); !d.IsWithDeleted() {
+		t.Fatal("expected WithDeleted() to set IsWithDeleted() to true")
+	}
+}
+
 func TestNewJoin_BuildsBuilder(t *testing.T) {
 	if NewJoin[golemTestSubject]() == nil {
 		t.Fatal("NewJoin returned nil")

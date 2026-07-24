@@ -84,7 +84,6 @@ var (
 	UUID     = core.UUID
 	JSON     = core.JSON
 
-	ErrNotFound            = core.ErrNotFound
 	ErrDuplicateKey        = core.ErrDuplicateKey
 	ErrForeignKeyViolation = core.ErrForeignKeyViolation
 	ErrDataSourceNotFound  = core.ErrDataSourceNotFound
@@ -188,6 +187,7 @@ type Query[T any] = query.Query[T]
 type SetClause = query.SetClause
 type Update[T any] = query.Update[T]
 type Count[T any] = query.Count[T]
+type Delete[T any] = query.Delete[T]
 type JoinOn = query.JoinOn
 type JoinData = query.JoinData
 type Join[T any] = query.Join[T]
@@ -207,6 +207,7 @@ func NewAggregate[T, R any]() *Aggregate[T, R] { return query.NewAggregate[T, R]
 func NewQuery[T any]() *Query[T]               { return query.New[T]() }
 func NewUpdate[T any]() *Update[T]             { return query.NewUpdate[T]() }
 func NewCount[T any]() *Count[T]               { return query.NewCount[T]() }
+func NewDelete[T any]() *Delete[T]             { return query.NewDelete[T]() }
 func NewJoin[T any]() *Join[T]                 { return query.NewJoin[T]() }
 
 // ---------------------------------------------------------------------------

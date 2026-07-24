@@ -6,12 +6,13 @@ Golem exposes sentinel errors in the `golem` package for the most common cases. 
 
 | Sentinel | Meaning |
 | --- | --- |
-| `golem.ErrNotFound` | no matching row found (`FindOne`/`SaveOne` with no match) — `Update` never triggers this; matching 0 rows there is not an error |
 | `golem.ErrDuplicateKey` | `Unique` constraint violation (single or composite) |
 | `golem.ErrForeignKeyViolation` | `ForeignKey` violation — a write points at something that doesn't exist, or a delete removes something still referenced |
 | `golem.ErrDataSourceNotFound` | `golem.GetDataSource(name)` called with a name no `NewDataSource` call registered (or one already `Close()`'d) |
 
 If the driver returns an error that doesn't map to any of the above yet, the original error surfaces unchanged — golem never forces an unrecognized error into a generic "unknown" sentinel.
+
+Not finding a row isn't an error at all: `FindOne`/`SaveOne` return `(nil, nil)` when nothing matches, so "not found" is a `nil` check, not an `errors.Is` check.
 
 ```go
 package main
@@ -28,12 +29,12 @@ func handle(ctx context.Context, userRepo *golem.Repository[User]) {
 	user, err := userRepo.FindOne(ctx, func(t *User, q *golem.Query[User]) {
 		q.Where(golem.Eq(&t.ID, 999))
 	})
-	if errors.Is(err, golem.ErrNotFound) {
-		fmt.Println("user does not exist")
-		return
-	}
 	if err != nil {
 		panic(err) // a real infra error (connection dropped, etc.)
+	}
+	if user == nil {
+		fmt.Println("user does not exist")
+		return
 	}
 
 	_, err = userRepo.Insert(ctx, &User{Email: user.Email})

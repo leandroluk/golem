@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** nenhum em aberto — M1-M19, M22, M23 e M24 done (M20/M21 dropped).
-**Status:** M23 fechado (AD-057), tag `v0.25.0`. M24 fechado (AD-058), tag `v0.26.0` — `entity`/`repository`/`relation`/`op`/`query`/`join` e o conteúdo do root migraram pra `internal/`, `golem.go` virou reexport puro.
+**Current Milestone:** nenhum em aberto — M1-M19, M22-M26 done (M20/M21 dropped).
+**Status:** M25 (Predicate-Based Delete) e M26 (FindOne/SaveOne retornam `*T`, `nil` em vez de `ErrNotFound`) fechados na mesma sessão. `task coverage` 100.0%.
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -532,6 +532,54 @@ de terceiro pesada e exclusiva).
 **Status:** ✅ DONE (AD-058) — breaking change (import path de todo mundo que usava os 6 pacotes
 publicamente), tag `v0.26.0`. `go build ./...`/`go vet ./...`/`go test ./... -race` verdes, `task
 coverage` 100.0%. README + `docs/guides/*.md` atualizados pro novo formato `golem.X`.
+
+---
+
+## M25 — Predicate-Based Delete
+
+**Goal:** `Repository[T].Delete` troca `items ...*T` por um criteria callback
+`func(t *T, d *golem.Delete[T])` (mesmo shape do `Update`), pra deletar por PK (ou qualquer
+condição) sem precisar construir/carregar a entidade inteira antes.
+**Status:** ✅ Done — `task coverage` 100.0%, README + `docs/*` atualizados pro novo shape.
+
+### Features
+
+**`golem.Delete[T]`** - DONE
+
+- Novo `query.Delete[T]` (espelha `query.Count[T]`: `Where`/`WithDeleted`, sem `Set`), exportado
+  como `golem.Delete[T]`
+
+**`Repository[T]` wiring** - DONE
+
+- `Delete(ctx, criteria func(t *T, d *golem.Delete[T])) ([]T, error)` — breaking change (assinatura
+  antiga era `Delete(ctx, items ...*T) error`). Internamente: SELECT com o predicate montado
+  (reusa `buildWherePredicate`/`applySoftDeleteFilter`/`scanRow`, mesmo padrão de `FindMany`/`Update`),
+  depois reusa o loop por-linha já existente (`BeforeDelete` → cascade `OnDelete` → soft/hard delete →
+  `AfterDelete`/`OnConflictDelete`) alimentado pelas linhas retornadas da SELECT em vez de instâncias
+  passadas pelo chamador. Zero linhas casadas não é erro (mesmo precedente do `Update`, AD-031).
+
+Full spec/design/tasks: `.specs/features/predicate-based-delete/`.
+
+---
+
+## M26 — FindOne/SaveOne return `*T`, drop `golem.ErrNotFound`
+
+**Goal:** `FindOne`/`SaveOne` trocam `(T, error)` por `(*T, error)`; "não achou" deixa de ser
+`golem.ErrNotFound` e vira `(nil, nil)` — não é condição de erro, é um resultado válido (mesmo
+raciocínio já aplicado em `Update`/`Delete`: 0 linhas casadas não é erro).
+**Status:** ✅ Done — `task coverage` 100.0%, README + `docs/*` atualizados, `golem.ErrNotFound`
+removido (só tinha esses 2 usos).
+
+### Features
+
+**`Repository[T]` wiring** - DONE
+
+- `FindOne(ctx, criteria ...) (*T, error)`: `(nil, nil)` quando nada casa.
+- `SaveOne(ctx, i *T) (*T, error)`: `(nil, nil)` quando a PK não existe mais (0 linhas afetadas
+  pelo UPDATE) — antes retornava `golem.ErrNotFound`.
+- `SaveMany` (usa `SaveOne` internamente): itens sem linha correspondente são pulados no resultado,
+  não geram erro.
+- `golem.ErrNotFound`/`core.ErrNotFound` removidos — eram os únicos 2 call sites.
 
 ---
 

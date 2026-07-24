@@ -23,8 +23,11 @@ func runSoftDelete(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Sc
 	)
 	testutil.FatalIfError(t, err, "InsertMany")
 
-	err = repo.Delete(ctx, &rows[0])
+	deleted, err := repo.Delete(ctx, func(d *Deleted, del *query.Delete[Deleted]) {
+		del.Where(op.Eq(&d.ID, rows[0].ID))
+	})
 	testutil.FatalIfError(t, err, "Delete")
+	testutil.ErrorIf(t, len(deleted) != 1, "Delete: expected 1 row deleted, got %d", len(deleted))
 
 	count, err := repo.Count(ctx)
 	testutil.FatalIfError(t, err, "Count")

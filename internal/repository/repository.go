@@ -445,26 +445,27 @@ func pkRowKey(row map[string]any, pkColumns []string) string {
 	return strings.Join(parts, "\x00")
 }
 
-// FindOne returns the first row that matches the given criteria. Returns
-// golem.ErrNotFound when no rows match.
-func (r *Repository[T]) FindOne(ctx context.Context, criteria ...func(*T, *query.Query[T])) (T, error) {
-	var zero T
+// FindOne returns the first row that matches the given criteria, or nil if
+// no rows match. A nil result with a nil error means "no match" — it is not
+// an error condition.
+func (r *Repository[T]) FindOne(ctx context.Context, criteria ...func(*T, *query.Query[T])) (*T, error) {
 	results, err := r.FindMany(ctx, criteria...)
 	if err != nil {
-		return zero, err
+		return nil, err
 	}
 	if len(results) == 0 {
-		return zero, golem.ErrNotFound
+		return nil, nil
 	}
-	return results[0], nil
+	return &results[0], nil
 }
 
 // SaveOne re-persists an existing T: issues UPDATE WHERE <pk columns> SET
-// <all non-PK columns>, including zero values (unlike Insert).
-func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
-	var zero T
+// <all non-PK columns>, including zero values (unlike Insert). Returns nil,
+// nil if no row matches the entity's primary key — that is not an error
+// condition.
+func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (*T, error) {
 	if err := r.entity.TriggerBeforeUpdate(ctx, i, r.conn); err != nil {
-		return zero, err
+		return nil, err
 	}
 
 	v := reflect.ValueOf(i).Elem()
@@ -477,7 +478,7 @@ func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
 		fieldVal := v.FieldByName(col.FieldName)
 		dv, err := r.conn.Parser().ToSQL(fieldVal)
 		if err != nil {
-			return zero, fmt.Errorf("repository: save: column %q: %w", col.Name, err)
+			return nil, fmt.Errorf("repository: save: column %q: %w", col.Name, err)
 		}
 		if pkSet[col.Name] {
 			pkPreds = append(pkPreds, stmt.Comparison{
@@ -494,7 +495,7 @@ func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
 	}
 
 	if len(pkPreds) == 0 {
-		return zero, fmt.Errorf("repository: cannot save entity without primary key")
+		return nil, fmt.Errorf("repository: cannot save entity without primary key")
 	}
 
 	var wherePred stmt.Predicate
@@ -514,28 +515,29 @@ func (r *Repository[T]) SaveOne(ctx context.Context, i *T) (T, error) {
 	if err != nil {
 		if r.conn.Dialect().IsConflict(err) {
 			if hookErr := r.entity.TriggerOnConflictUpdate(ctx, i, r.conn); hookErr != nil {
-				return zero, hookErr
+				return nil, hookErr
 			}
 		}
-		return zero, fmt.Errorf("repository: save one: %w", err)
+		return nil, fmt.Errorf("repository: save one: %w", err)
 	}
 	if len(rows) == 0 {
-		return zero, golem.ErrNotFound
+		return nil, nil
 	}
 
 	res, err := r.scanRow(rows[0])
 	if err != nil {
-		return zero, err
+		return nil, err
 	}
 
 	if err := r.entity.TriggerAfterUpdate(ctx, &res, r.conn); err != nil {
-		return zero, err
+		return nil, err
 	}
 
-	return res, nil
+	return &res, nil
 }
 
-// SaveMany re-persists multiple instances via sequential SaveOne calls.
+// SaveMany re-persists multiple instances via sequential SaveOne calls. An
+// item with no matching row is skipped, not an error.
 func (r *Repository[T]) SaveMany(ctx context.Context, items ...*T) ([]T, error) {
 	results := make([]T, 0, len(items))
 	for _, item := range items {
@@ -543,17 +545,20 @@ func (r *Repository[T]) SaveMany(ctx context.Context, items ...*T) ([]T, error) 
 		if err != nil {
 			return nil, err
 		}
-		results = append(results, result)
+		if result == nil {
+			continue
+		}
+		results = append(results, *result)
 	}
 	return results, nil
 }
 
 // Update applies WHERE + SET criteria and returns every updated row. Zero
 // rows affected is not an error — UpdateOne/UpdateMany used to be separate
-// methods (single-row-with-ErrNotFound vs. multi-row-always-ok), but they
-// built and executed the identical query either way, so the split added a
-// distinction without a real difference. Callers wanting "did this actually
-// match a row" behavior can check len(result) == 0 themselves.
+// methods (single-row vs. multi-row-always-ok), but they built and executed
+// the identical query either way, so the split added a distinction without a
+// real difference. Callers wanting "did this actually match a row" behavior
+// can check len(result) == 0 themselves.
 func (r *Repository[T]) Update(ctx context.Context, criteria func(*T, *query.Update[T])) ([]T, error) {
 	var zero T
 	u := query.NewUpdate[T]()
@@ -743,29 +748,54 @@ func countValue(v any) int64 {
 // Restrict) registered by other entities' ForeignKey declarations pointing
 // at this one — see entity.ForeignKeysReferencing. Triggers BeforeDelete/
 // AfterDelete hooks, and OnConflictDelete on database integrity conflicts.
-func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
-	if len(items) == 0 {
-		return nil
-	}
+func (r *Repository[T]) Delete(ctx context.Context, criteria func(t *T, d *query.Delete[T])) ([]T, error) {
 	pkSet := r.pkColumnSet()
-	f2c := r.fieldToColumn()
-	fkRegs := entity.ForeignKeysReferencing(r.meta.TableName)
+	if len(pkSet) == 0 {
+		return nil, fmt.Errorf("repository: cannot delete entity without primary key")
+	}
 
-	for _, item := range items {
-		if err := r.entity.TriggerBeforeDelete(ctx, item, r.conn); err != nil {
-			return err
+	var zero T
+	d := query.NewDelete[T]()
+	criteria(&zero, d)
+
+	f2c := r.fieldToColumn()
+	wherePred, err := r.buildWherePredicate(&zero, f2c, r.meta.TableName, d.Conditions())
+	if err != nil {
+		return nil, err
+	}
+	wherePred = r.applySoftDeleteFilter(r.meta.TableName, r.meta.DeleteDateField, d.IsWithDeleted(), wherePred)
+
+	selPlan := &stmt.Select{Table: r.meta.TableName, Where: wherePred}
+	selSQL, selArgs, err := r.conn.Dialect().CompileSelect(selPlan)
+	if err != nil {
+		return nil, fmt.Errorf("repository: delete: %w", err)
+	}
+	rows, err := r.conn.Dialect().Query(ctx, r.conn, selSQL, selArgs)
+	if err != nil {
+		return nil, fmt.Errorf("repository: delete: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+
+	fkRegs := entity.ForeignKeysReferencing(r.meta.TableName)
+	results := make([]T, 0, len(rows))
+
+	for _, row := range rows {
+		item, err := r.scanRow(row)
+		if err != nil {
+			return nil, err
 		}
 
-		v := reflect.ValueOf(item).Elem()
+		if err := r.entity.TriggerBeforeDelete(ctx, &item, r.conn); err != nil {
+			return nil, err
+		}
+
 		var pkPreds []stmt.Predicate
 		var pkValue any
 		for _, col := range r.meta.Columns {
 			if pkSet[col.Name] {
-				fieldVal := v.FieldByName(col.FieldName)
-				dv, err := r.conn.Parser().ToSQL(fieldVal)
-				if err != nil {
-					return fmt.Errorf("repository: delete: column %q: %w", col.Name, err)
-				}
+				dv := row[col.Name]
 				pkPreds = append(pkPreds, stmt.Comparison{
 					Column: col.Name,
 					Op:     "eq",
@@ -773,9 +803,6 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 				})
 				pkValue = dv
 			}
-		}
-		if len(pkPreds) == 0 {
-			return fmt.Errorf("repository: cannot delete entity without primary key")
 		}
 		var wherePred stmt.Predicate
 		if len(pkPreds) == 1 {
@@ -786,12 +813,12 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 
 		conn, commit, rollback, err := r.beginCascadeTx(ctx, fkRegs)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		if err := applyDeleteCascades(ctx, conn, fkRegs, pkValue); err != nil {
 			rollback()
-			return err
+			return nil, err
 		}
 
 		var delErr error
@@ -799,7 +826,7 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 			colName, ok := f2c[r.meta.DeleteDateField]
 			if !ok {
 				rollback()
-				return fmt.Errorf("repository: delete date field %q is not mapped to any column", r.meta.DeleteDateField)
+				return nil, fmt.Errorf("repository: delete date field %q is not mapped to any column", r.meta.DeleteDateField)
 			}
 			updPlan := &stmt.Update{
 				Table: r.meta.TableName,
@@ -825,22 +852,24 @@ func (r *Repository[T]) Delete(ctx context.Context, items ...*T) error {
 		if delErr != nil {
 			rollback()
 			if r.conn.Dialect().IsConflict(delErr) {
-				if hookErr := r.entity.TriggerOnConflictDelete(ctx, item, r.conn); hookErr != nil {
-					return hookErr
+				if hookErr := r.entity.TriggerOnConflictDelete(ctx, &item, r.conn); hookErr != nil {
+					return nil, hookErr
 				}
 			}
-			return fmt.Errorf("repository: delete: %w", delErr)
+			return nil, fmt.Errorf("repository: delete: %w", delErr)
 		}
 
 		if err := commit(); err != nil {
-			return fmt.Errorf("repository: delete: commit cascade: %w", err)
+			return nil, fmt.Errorf("repository: delete: commit cascade: %w", err)
 		}
 
-		if err := r.entity.TriggerAfterDelete(ctx, item, r.conn); err != nil {
-			return err
+		if err := r.entity.TriggerAfterDelete(ctx, &item, r.conn); err != nil {
+			return nil, err
 		}
+
+		results = append(results, item)
 	}
-	return nil
+	return results, nil
 }
 
 // Restore soft-restores (sets soft-delete column back to NULL) the given items.

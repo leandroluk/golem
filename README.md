@@ -719,19 +719,27 @@ func main() {
     panic(err)
   }
 
-  // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK
+  // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK.
+  // Returns (nil, nil) if no row matches the PK anymore — that's not an error, just "gone".
   user.Age = 31
-  user, err = users.SaveOne(ctx, &user)
+  saved, err := users.SaveOne(ctx, &user)
   if err != nil {
     panic(err)
   }
+  if saved != nil {
+    user = *saved
+  }
 
-  // lookup by primary key: FindOne + golem.Eq (no dedicated FindByID, see AD-022)
+  // lookup by primary key: FindOne + golem.Eq (no dedicated FindByID, see AD-022).
+  // Returns (nil, nil) when nothing matches — not finding a row is not an error.
   found, err := users.FindOne(ctx, func(t *User, q *golem.Query[User]) {
     q.Where(golem.Eq(&t.ID, user.ID))
   })
   if err != nil {
     panic(err)
+  }
+  if found == nil {
+    panic("user vanished between Insert and FindOne")
   }
 
   // Find/FindOne take criteria — detailed in the "Query Builder" section below
@@ -748,13 +756,16 @@ func main() {
   }
   fmt.Println("total users:", total)
 
-  // User has DeleteDate declared, so this is a soft delete (sets DeletedAt), not a row deletion
-  if err := users.Delete(ctx, &found); err != nil {
+  // User has DeleteDate declared, so this is a soft delete (sets DeletedAt), not a row deletion.
+  // Delete takes a predicate (Where+WithDeleted), not entity instances — it matches then deletes.
+  if _, err := users.Delete(ctx, func(t *User, d *golem.Delete[User]) {
+    d.Where(golem.Eq(&t.ID, found.ID))
+  }); err != nil {
     panic(err)
   }
 
   // Restore undoes it: clears DeletedAt again
-  if err := users.Restore(ctx, &found); err != nil {
+  if err := users.Restore(ctx, found); err != nil {
     panic(err)
   }
 
@@ -781,13 +792,13 @@ func main() {
 > | :- | :- | :- |
 > | `Insert(ctx, e *T) (T, error)` | 1 row | inserts 1 new entity, returned with its PK filled in |
 > | `InsertMany(ctx, entities ...*T) ([]T, error)` | N rows | inserts several at once |
-> | `SaveOne(ctx, e *T) (T, error)` | 1 row | re-persists a runtime instance you already have (e.g. from a previous `Insert`/`FindOne`), by PK |
-> | `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once |
+> | `SaveOne(ctx, e *T) (*T, error)` | 1 row or nil | re-persists a runtime instance you already have (e.g. from a previous `Insert`/`FindOne`), by PK; returns `(nil, nil)` if no row matches the PK anymore — that's not an error |
+> | `SaveMany(ctx, entities ...*T) ([]T, error)` | N rows | like `SaveOne`, for several instances at once; entities with no matching row are skipped, not an error |
 > | `Update(ctx, criteria func(t *T, u *golem.Update[T])) ([]T, error)` | N rows | updates directly in the database by criteria (`Where`+`Set`), no runtime instance needed; 0 matched rows is not an error — there's no separate `UpdateOne`/`UpdateMany`, both did exactly the same query |
-> | `Delete(ctx, entities ...*T) error` | — | delete by PK; if the entity has `DeleteDate`, sets the timestamp (soft delete) instead of removing the row |
+> | `Delete(ctx, criteria func(t *T, d *golem.Delete[T])) ([]T, error)` | N rows | deletes by criteria (`Where`+`WithDeleted`), no runtime instance needed; if the entity has `DeleteDate`, sets the timestamp (soft delete) instead of removing the row; returns every row that matched |
 > | `Restore(ctx, entities ...*T) error` | — | undoes a soft delete (clears `DeleteDate`) by PK; a no-op if `DeleteDate` isn't declared |
 > | `FindMany(ctx, criteria ...func(t *T, q *golem.Query[T])) ([]T, error)` | N rows | optional criteria; without one, brings back the whole table. Detailed in the Query Builder section |
-> | `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (T, error)` | 1 row | same as `FindMany`, capped to 1 |
+> | `FindOne(ctx, criteria ...func(t *T, q *golem.Query[T])) (*T, error)` | 1 row or nil | same as `FindMany`, capped to 1; returns `(nil, nil)` when nothing matches — not finding a row is not an error |
 > | `Count(ctx, criteria ...func(t *T, c *golem.Count[T])) (int64, error)` | count | optional criteria (`Where` only); without one, counts the whole table |
 > | `Exists(ctx, criteria ...func(t *T, c *golem.Count[T])) (bool, error)` | bool | shortcut for `Count > 0` without fetching a row, same criteria as `Count` |
 >
@@ -841,14 +852,19 @@ func main() {
     panic(err)
   }
 
-  // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK
+  // SaveOne: I already have the runtime instance (came from Insert above) — persists it again by PK.
+  // Returns (nil, nil) if no row matches the PK anymore — that's not an error, just "gone".
   user.Age = 31
-  user, err = userRepo.SaveOne(ctx, &user)
+  saved, err := userRepo.SaveOne(ctx, &user)
   if err != nil {
     panic(err)
   }
+  if saved != nil {
+    user = *saved
+  }
 
-  // SaveMany: same idea, but for several runtime instances at once (variadic, like InsertMany)
+  // SaveMany: same idea, but for several runtime instances at once (variadic, like InsertMany).
+  // Instances with no matching row are skipped, not an error.
   users, err := userRepo.SaveMany(ctx, &user)
   if err != nil {
     panic(err)
@@ -879,6 +895,7 @@ func main() {
   }
   _ = users
 
+  // FindOne returns (nil, nil) when nothing matches — not finding a row is not an error.
   found, err := userRepo.FindOne(ctx, func (t *User, q *golem.Query[User]) {
     q.Select(&t.Name, &t.Email, &t.Age)
     q.Where(
@@ -895,6 +912,9 @@ func main() {
   })
   if err != nil {
     panic(err)
+  }
+  if found == nil {
+    panic("no user matched")
   }
 
   admins, err := userRepo.FindMany(ctx, func (t *User, q *golem.Query[User]) {
@@ -925,7 +945,9 @@ func main() {
   }
   fmt.Println("total adult users:", adultCount)
 
-  if err := userRepo.Delete(ctx, &found); err != nil {
+  if _, err := userRepo.Delete(ctx, func(t *User, d *golem.Delete[User]) {
+    d.Where(golem.Eq(&t.ID, found.ID))
+  }); err != nil {
     panic(err)
   }
 
@@ -1148,6 +1170,7 @@ package ex
 
 import (
   "context"
+  "fmt"
 
   "github.com/leandroluk/golem"
   postgres "github.com/leandroluk/golem/driver/postgres"
@@ -1178,6 +1201,9 @@ func main() {
     })
     if err != nil {
       return err
+    }
+    if user == nil {
+      return fmt.Errorf("user 42 not found")
     }
 
     _, err = userRepo.Update(ctx, func (u *User, upd *golem.Update[User]) {
@@ -1285,12 +1311,14 @@ func main() {
 > initial set (most common; the list grows as more dialects/cases get mapped, without breaking what
 > already exists):
 >
->  - `golem.ErrNotFound`: no matching row found (`FindOne`/`SaveOne` with no match — `Update` never triggers this, 0 matched rows is not an error)
 >  - `golem.ErrDuplicateKey`: `Unique` constraint violation (single or composite)
 >  - `golem.ErrForeignKeyViolation`: `ForeignKey` violation (points at something that doesn't exist, or deletes something still referenced)
 >
 > if the driver returns an error that doesn't match any mapped sentinel yet, the original error surfaces
 > unchanged (never forced into a generic "unknown" sentinel) — only what's already been mapped becomes a sentinel.
+>
+> Not finding a row isn't an error at all: `FindOne`/`SaveOne` return `(nil, nil)` when nothing matches,
+> so "not found" is a `nil` check, not an `errors.Is` check.
 
 ```go
 package ex
@@ -1307,12 +1335,12 @@ func handle(ctx context.Context, userRepo *golem.Repository[User]) {
   user, err := userRepo.FindOne(ctx, func(t *User, q *golem.Query[User]) {
     q.Where(golem.Eq(&t.ID, 999))
   })
-  if errors.Is(err, golem.ErrNotFound) {
-    fmt.Println("user does not exist")
-    return
-  }
   if err != nil {
     panic(err) // a real infra error (connection dropped, etc.)
+  }
+  if user == nil {
+    fmt.Println("user does not exist")
+    return
   }
 
   _, err = userRepo.Insert(ctx, &User{Email: user.Email})

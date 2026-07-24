@@ -1,5 +1,11 @@
 # Repository Core CRUD (M3, scoped) Specification
 
+> **Note:** `Delete`'s signature described below (`Delete(ctx, entities ...*T) error`) is the
+> historical M3/M11 shape. M25 changed it to a predicate-based criteria callback — see
+> `.specs/features/predicate-based-delete/`. M26 changed `FindOne`/`SaveOne` from `(T, error)` to
+> `(*T, error)`, with `(nil, nil)` on no match instead of `golem.ErrNotFound` (now removed) — see
+> STATE.md's AD-059.
+
 **Driving use case:** `examples/postgres` — insert users/posts/categories/junction rows, read a few back to prove the relations round-trip through real Postgres.
 
 ## Scope decision (SPEC_DEVIATION from ROADMAP.md's full M3 list)

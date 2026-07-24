@@ -186,19 +186,21 @@ See [Aggregations](../guides/aggregations.md).
 Deleting `user` also deletes their posts — no manual cleanup needed, per the `OnDeleteCascade` declared on `Post.OwnerUserID`'s foreign key:
 
 ```go
-if err := userRepo.Delete(ctx, &user); err != nil {
+if _, err := userRepo.Delete(ctx, func(u *User, d *query.Delete[User]) {
+	d.Where(op.Eq(&u.ID, user.ID))
+}); err != nil {
 	panic(err)
 }
 
-_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+deletedUser, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
 	q.Where(op.Eq(&u.ID, user.ID))
 })
-// errors.Is(err, golem.ErrNotFound) == true
+// deletedUser == nil, err == nil — not found is not an error
 
-_, err = postRepo.FindOne(ctx, func(p *Post, q *query.Query[Post]) {
+cascadedPost, err := postRepo.FindOne(ctx, func(p *Post, q *query.Query[Post]) {
 	q.Where(op.Eq(&p.ID, posts[0].ID))
 })
-// errors.Is(err, golem.ErrNotFound) == true — cascade-deleted along with the user
+// cascadedPost == nil, err == nil — cascade-deleted along with the user
 ```
 
 See [Relations & cascades](../guides/relations.md).

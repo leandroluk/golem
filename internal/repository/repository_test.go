@@ -163,12 +163,29 @@ type fakeDialect struct {
 	selectCalls  []*stmt.Select
 	selectResult []map[string]any
 	selectErr    error
+	// selectErrAtCall, when non-zero, makes selectErr fire only on the
+	// Nth CompileSelect call (1-indexed) instead of every call — needed to
+	// let Delete's own SELECT-to-find-rows succeed before a later
+	// restrict-check SELECT (a different CompileSelect call) fails.
+	selectErrAtCall int
+
+	// selectResults, when non-nil, lets a test drive successive Query calls
+	// with different results (e.g. Delete's own SELECT-to-find-rows call
+	// followed by applyDeleteCascades' restrict-check SELECT). Each Query
+	// call consumes the next entry; once exhausted, the last entry repeats.
+	// When nil, Query falls back to the single selectResult field above.
+	selectResults  [][]map[string]any
+	queryCallCount int
 
 	deleteCalls   []*stmt.Delete
 	deleteCompErr error
 	execCalls     []execCall
 	execErr       error
 	queryErr      error
+	// queryErrAtCall, when non-zero, makes queryErr fire only on the Nth
+	// Query call (1-indexed); see selectErrAtCall.
+	queryErrAtCall  int
+	queryTotalCalls int
 
 	beginCalls int
 	beginErr   error
@@ -201,7 +218,7 @@ func (d *fakeDialect) Update(ctx context.Context, conn golem.Conn, s *stmt.Updat
 
 func (d *fakeDialect) CompileSelect(s *stmt.Select) (string, []any, error) {
 	d.selectCalls = append(d.selectCalls, s)
-	if d.selectErr != nil {
+	if d.selectErr != nil && (d.selectErrAtCall == 0 || d.selectErrAtCall == len(d.selectCalls)) {
 		return "", nil, d.selectErr
 	}
 	return "mock-sql-select", nil, nil
@@ -216,8 +233,17 @@ func (d *fakeDialect) CompileDelete(s *stmt.Delete) (string, []any, error) {
 }
 
 func (d *fakeDialect) Query(ctx context.Context, conn golem.Conn, sql string, args []any) ([]map[string]any, error) {
-	if d.queryErr != nil {
+	d.queryTotalCalls++
+	if d.queryErr != nil && (d.queryErrAtCall == 0 || d.queryErrAtCall == d.queryTotalCalls) {
 		return nil, d.queryErr
+	}
+	if d.selectResults != nil {
+		idx := d.queryCallCount
+		if idx >= len(d.selectResults) {
+			idx = len(d.selectResults) - 1
+		}
+		d.queryCallCount++
+		return d.selectResults[idx], nil
 	}
 	return d.selectResult, nil
 }
@@ -389,17 +415,6 @@ func TestRepository_SaveOne_ValuerFieldError_Propagates(t *testing.T) {
 	}
 }
 
-func TestRepository_Delete_ValuerFieldError_Propagates(t *testing.T) {
-	d := &fakeDialect{}
-	conn := newFakeConn(t, d)
-	repo := Get(conn, valuerErrPKSubjectEntity)
-
-	in := &valuerErrPKSubject{ID: fakeValuerErrField{x: 1}}
-	if err := repo.Delete(context.Background(), in); err == nil {
-		t.Fatal("expected error from Value()")
-	}
-}
-
 func TestRepository_Restore_ValuerFieldError_Propagates(t *testing.T) {
 	d := &fakeDialect{}
 	conn := newFakeConn(t, d)
@@ -534,21 +549,21 @@ func TestRepository_FindOne_Found_ReturnsFirstResult(t *testing.T) {
 	}
 }
 
-func TestRepository_FindOne_NotFound_ReturnsErrNotFound(t *testing.T) {
+func TestRepository_FindOne_NotFound_ReturnsNilNil(t *testing.T) {
 	d := &fakeDialect{
 		selectResult: []map[string]any{},
 	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, testSubjectEntity)
 
-	_, err := repo.FindOne(context.Background(), func(t *testSubject, q *query.Query[testSubject]) {
+	got, err := repo.FindOne(context.Background(), func(t *testSubject, q *query.Query[testSubject]) {
 		q.Where(op.Eq(&t.Name, "Nobody"))
 	})
-	if err == nil {
-		t.Fatal("expected an error, got nil")
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
-	if !errors.Is(err, golem.ErrNotFound) {
-		t.Errorf("expected errors.Is(err, golem.ErrNotFound), got %v", err)
+	if got != nil {
+		t.Errorf("expected nil result, got %v", got)
 	}
 }
 
@@ -842,12 +857,15 @@ func TestRepository_FindMany_WithDeleted_SkipsSoftDeleteFilter(t *testing.T) {
 // -----------------------------------------------------------------------
 
 func TestRepository_Delete_HardDelete(t *testing.T) {
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(100), "name": "To Be Deleted"}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, testSubjectEntity)
 
-	in := &testSubject{ID: 100, Name: "To Be Deleted"}
-	err := repo.Delete(context.Background(), in)
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(100)))
+	})
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -870,6 +888,7 @@ func TestRepository_Delete_HardDelete(t *testing.T) {
 
 func TestRepository_Delete_SoftDelete(t *testing.T) {
 	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(200)}},
 		updateResult: []map[string]any{
 			{"id": int64(200)},
 		},
@@ -877,8 +896,9 @@ func TestRepository_Delete_SoftDelete(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, softDeleteSubjectEntity)
 
-	in := &softDeleteSubject{ID: 200}
-	err := repo.Delete(context.Background(), in)
+	_, err := repo.Delete(context.Background(), func(t *softDeleteSubject, del *query.Delete[softDeleteSubject]) {
+		del.Where(op.Eq(&t.ID, int64(200)))
+	})
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -1551,6 +1571,20 @@ func TestRepository_SaveMany_SuccessAndError(t *testing.T) {
 	}
 }
 
+func TestRepository_SaveMany_SkipsNotFoundItems(t *testing.T) {
+	d := &fakeDialect{updateResult: nil}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	got, err := repo.SaveMany(context.Background(), &testSubject{ID: 1, Name: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 results (not-found item skipped), got %d", len(got))
+	}
+}
+
 func TestRepository_Delete_NoPK(t *testing.T) {
 	d := &fakeDialect{}
 	conn := newFakeConn(t, d)
@@ -1560,9 +1594,76 @@ func TestRepository_Delete_NoPK(t *testing.T) {
 	})
 	repo := Get(conn, noPKEntity)
 
-	err := repo.Delete(context.Background(), &testSubject{Name: "A"})
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {})
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestRepository_Delete_BuildWherePredicateError_Propagates(t *testing.T) {
+	d := &fakeDialect{}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+	var foreign string
+
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&foreign, "a"))
+	})
+	if err == nil {
+		t.Fatal("expected buildWherePredicate error, got nil")
+	}
+}
+
+func TestRepository_Delete_CompileSelectError_Propagates(t *testing.T) {
+	wantErr := errors.New("boom: compile select")
+	d := &fakeDialect{selectErr: wantErr}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
+	}
+}
+
+func TestRepository_Delete_ScanRowError_Propagates(t *testing.T) {
+	d := &fakeDialect{
+		selectResult: []map[string]any{
+			{"id": int64(1), "name": "Ada", "email": struct{}{}}, // unconvertible to string
+		},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testSubjectEntity)
+
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	})
+	if err == nil {
+		t.Fatal("expected scanRow error for unconvertible column value, got nil")
+	}
+}
+
+func TestRepository_Delete_CompositePK_WheresAllPKColumns(t *testing.T) {
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"subject_id": int64(1), "category_id": int64(2)}},
+	}
+	conn := newFakeConn(t, d)
+	repo := Get(conn, testCompositeSubjectEntity)
+
+	_, err := repo.Delete(context.Background(), func(t *testCompositeSubject, del *query.Delete[testCompositeSubject]) {
+		del.Where(op.Eq(&t.SubjectID, int64(1)), op.Eq(&t.CategoryID, int64(2)))
+	})
+	if err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if len(d.deleteCalls) != 1 {
+		t.Fatalf("expected 1 CompileDelete call, got %d", len(d.deleteCalls))
+	}
+	logical, ok := d.deleteCalls[0].Where.(stmt.Logical)
+	if !ok || logical.Op != "and" || len(logical.Predicates) != 2 {
+		t.Errorf("expected AND of both PK columns, got %+v", d.deleteCalls[0].Where)
 	}
 }
 
@@ -1781,11 +1882,15 @@ func TestRepository_Delete_OnDeleteCascade_DeletesChildRows(t *testing.T) {
 	parent := newCascadeParentEntity("cascade_parent_delete")
 	newCascadeChildEntity("cascade_child_delete", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(5)}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 5}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(5)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
@@ -1813,11 +1918,15 @@ func TestRepository_Delete_OnDeleteSetNull_NullsChildColumn(t *testing.T) {
 	parent := newCascadeParentEntity("cascade_parent_setnull")
 	newCascadeChildEntity("cascade_child_setnull", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteSetNull))
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(9)}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 9}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(9)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
@@ -1841,12 +1950,17 @@ func TestRepository_Delete_OnDeleteRestrict_BlocksWhenChildrenExist(t *testing.T
 	newCascadeChildEntity("cascade_child_restrict_block", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteRestrict))
 
 	d := &fakeDialect{
-		selectResult: []map[string]any{{"count": int64(3)}},
+		selectResults: [][]map[string]any{
+			{{"id": int64(1)}},
+			{{"count": int64(3)}},
+		},
 	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 1})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	})
 	if !errors.Is(err, golem.ErrForeignKeyViolation) {
 		t.Fatalf("Delete: expected errors.Is(err, golem.ErrForeignKeyViolation), got %v", err)
 	}
@@ -1860,12 +1974,17 @@ func TestRepository_Delete_OnDeleteRestrict_AllowsWhenNoChildren(t *testing.T) {
 	newCascadeChildEntity("cascade_child_restrict_allow", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteRestrict))
 
 	d := &fakeDialect{
-		selectResult: []map[string]any{{"count": int64(0)}},
+		selectResults: [][]map[string]any{
+			{{"id": int64(2)}},
+			{{"count": int64(0)}},
+		},
 	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 2}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(2)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if len(d.deleteCalls) != 1 {
@@ -1877,11 +1996,15 @@ func TestRepository_Delete_OnDeleteDefault_NoCascadeSideEffects(t *testing.T) {
 	parent := newCascadeParentEntity("cascade_parent_default")
 	newCascadeChildEntity("cascade_child_default", parent, nil) // default options: OnDelete unset
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(3)}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 3}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(3)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if d.beginCalls != 0 {
@@ -1898,11 +2021,15 @@ func TestRepository_Delete_OnDeleteDefault_NoCascadeSideEffects(t *testing.T) {
 func TestRepository_Delete_NoIncomingForeignKeys_DoesNotOpenTransaction(t *testing.T) {
 	parent := newCascadeParentEntity("cascade_parent_no_fk")
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(4)}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 4}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(4)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if d.beginCalls != 0 {
@@ -1914,7 +2041,9 @@ func TestRepository_Delete_AlreadyInsideTx_ReusesIt(t *testing.T) {
 	parent := newCascadeParentEntity("cascade_parent_already_tx")
 	newCascadeChildEntity("cascade_child_already_tx", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(6)}},
+	}
 	ds := newFakeConn(t, d)
 
 	txConn, err := d.Begin(context.Background(), ds)
@@ -1925,7 +2054,9 @@ func TestRepository_Delete_AlreadyInsideTx_ReusesIt(t *testing.T) {
 	tx := golem.NewTx(d, txConn, golem.DefaultParser)
 
 	repo := Get(tx, parent)
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 6}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(6)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if d.beginCalls != 0 {
@@ -1964,18 +2095,23 @@ func TestRepository_Delete_OnDeleteRestrict_SoftDeleteAwareChild_AddsIsNullFilte
 	newCascadeChildSoftDeleteEntity("cascade_child_restrict_sd", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteRestrict))
 
 	d := &fakeDialect{
-		selectResult: []map[string]any{{"count": int64(0)}},
+		selectResults: [][]map[string]any{
+			{{"id": int64(11)}},
+			{{"count": int64(0)}},
+		},
 	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 11}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(11)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if len(d.selectCalls) != 1 {
-		t.Fatalf("expected 1 restrict-check Select call, got %d", len(d.selectCalls))
+	if len(d.selectCalls) != 2 {
+		t.Fatalf("expected 2 Select calls (Delete's find-rows SELECT + restrict-check SELECT), got %d", len(d.selectCalls))
 	}
-	logical, ok := d.selectCalls[0].Where.(stmt.Logical)
+	logical, ok := d.selectCalls[1].Where.(stmt.Logical)
 	if !ok || logical.Op != "and" || len(logical.Predicates) != 2 {
 		t.Fatalf("expected logical AND (fk eq + deleted_at IS NULL), got %+v", d.selectCalls[0].Where)
 	}
@@ -1989,11 +2125,15 @@ func TestRepository_Delete_OnDeleteCascade_SoftDeleteAwareChild_UpdatesInsteadOf
 	parent := newCascadeParentEntity("cascade_parent_cascade_sd")
 	newCascadeChildSoftDeleteEntity("cascade_child_cascade_sd", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(12)}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 12}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(12)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if len(d.updateCalls) != 1 {
@@ -2018,12 +2158,17 @@ func TestRepository_Delete_OnDeleteRestrict_EmptyRows_Continues(t *testing.T) {
 	newCascadeChildEntity("cascade_child_restrict_empty", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteRestrict))
 
 	d := &fakeDialect{
-		selectResult: nil, // zero rows returned at all (not even a {"count":0} row)
+		selectResults: [][]map[string]any{
+			{{"id": int64(13)}}, // Delete's own find-rows SELECT: finds the parent row
+			nil,                 // restrict-check SELECT: zero rows returned at all (not even a {"count":0} row)
+		},
 	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 13}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(13)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if len(d.deleteCalls) != 1 {
@@ -2036,11 +2181,17 @@ func TestRepository_Delete_OnDeleteRestrict_CompileSelectError_Propagates(t *tes
 	newCascadeChildEntity("cascade_child_restrict_compileerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteRestrict))
 
 	wantErr := errors.New("boom: compile select")
-	d := &fakeDialect{selectErr: wantErr}
+	d := &fakeDialect{
+		selectErr:       wantErr,
+		selectErrAtCall: 2, // let Delete's own find-rows SELECT succeed; fail on the restrict-check SELECT
+		selectResults:   [][]map[string]any{{{"id": int64(14)}}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 14})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(14)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2051,11 +2202,17 @@ func TestRepository_Delete_OnDeleteRestrict_QueryError_Propagates(t *testing.T) 
 	newCascadeChildEntity("cascade_child_restrict_queryerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteRestrict))
 
 	wantErr := errors.New("boom: query")
-	d := &fakeDialect{queryErr: wantErr}
+	d := &fakeDialect{
+		queryErr:       wantErr,
+		queryErrAtCall: 2, // let Delete's own find-rows Query succeed; fail on the restrict-check Query
+		selectResults:  [][]map[string]any{{{"id": int64(15)}}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 15})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(15)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2066,11 +2223,16 @@ func TestRepository_Delete_OnDeleteCascade_CompileDeleteError_Propagates(t *test
 	newCascadeChildEntity("cascade_child_cascade_compileerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
 	wantErr := errors.New("boom: compile delete")
-	d := &fakeDialect{deleteCompErr: wantErr}
+	d := &fakeDialect{
+		selectResult:  []map[string]any{{"id": int64(16)}},
+		deleteCompErr: wantErr,
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 16})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(16)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2081,11 +2243,16 @@ func TestRepository_Delete_OnDeleteCascade_ExecError_Propagates(t *testing.T) {
 	newCascadeChildEntity("cascade_child_cascade_execerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
 	wantErr := errors.New("boom: exec")
-	d := &fakeDialect{execErr: wantErr}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(17)}},
+		execErr:      wantErr,
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 17})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(17)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2096,11 +2263,16 @@ func TestRepository_Delete_OnDeleteCascade_SoftDeleteUpdateError_Propagates(t *t
 	newCascadeChildSoftDeleteEntity("cascade_child_cascade_sd_updateerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
 	wantErr := errors.New("boom: update")
-	d := &fakeDialect{updateErr: wantErr}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(18)}},
+		updateErr:    wantErr,
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 18})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(18)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2111,11 +2283,16 @@ func TestRepository_Delete_OnDeleteSetNull_UpdateError_Propagates(t *testing.T) 
 	newCascadeChildEntity("cascade_child_setnull_updateerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteSetNull))
 
 	wantErr := errors.New("boom: update")
-	d := &fakeDialect{updateErr: wantErr}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(19)}},
+		updateErr:    wantErr,
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 19})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(19)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2126,11 +2303,16 @@ func TestRepository_Delete_BeginCascadeTxError_Propagates(t *testing.T) {
 	newCascadeChildEntity("cascade_child_beginerr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
 	wantErr := errors.New("boom: begin")
-	d := &fakeDialect{beginErr: wantErr}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(20)}},
+		beginErr:     wantErr,
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 20})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(20)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2144,11 +2326,16 @@ func TestRepository_Delete_CommitCascadeTxError_Propagates(t *testing.T) {
 	newCascadeChildEntity("cascade_child_commiterr", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
 	wantErr := errors.New("boom: commit")
-	d := &fakeDialect{commitErr: wantErr}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(21)}},
+		commitErr:    wantErr,
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, parent)
 
-	err := repo.Delete(context.Background(), &cascadeParent{ID: 21})
+	_, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(21)))
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Delete: expected wrapped %v, got %v", wantErr, err)
 	}
@@ -2322,7 +2509,7 @@ func TestRepository_Update_HooksAndErrors(t *testing.T) {
 		t.Fatalf("expected after update err, got %v", err)
 	}
 
-	// len(rows) == 0 -> NotFound
+	// len(rows) == 0 -> nil, nil (not an error)
 	d.updateResult = nil
 	errEntityNoHooks := entity.New(func(s *testSubject, b *entity.Table) {
 		b.TableName("test")
@@ -2330,9 +2517,12 @@ func TestRepository_Update_HooksAndErrors(t *testing.T) {
 		b.PrimaryKey(&s.ID)
 	})
 	repoNoHooks := Get(conn, errEntityNoHooks)
-	_, err = repoNoHooks.SaveOne(context.Background(), &testSubject{ID: 4})
-	if !errors.Is(err, golem.ErrNotFound) {
-		t.Fatalf("expected NotFound, got %v", err)
+	got, err := repoNoHooks.SaveOne(context.Background(), &testSubject{ID: 4})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil result, got %v", got)
 	}
 }
 
@@ -2345,6 +2535,7 @@ func TestRepository_Delete_HooksAndErrors(t *testing.T) {
 	errEntity := entity.New(func(s *testSubject, b *entity.Table) {
 		b.TableName("test")
 		b.Col(&s.ID, golem.BIGINT())
+		b.Col(&s.Name, golem.VARCHAR(50))
 		b.PrimaryKey(&s.ID)
 	})
 	entity.AddHook(errEntity).OnConflictDelete(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
@@ -2359,27 +2550,39 @@ func TestRepository_Delete_HooksAndErrors(t *testing.T) {
 	})
 	repo := Get(conn, errEntity)
 
-	// empty
-	err := repo.Delete(context.Background())
+	// empty: no rows match the criteria
+	d.selectResult = nil
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(0)))
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// conflict delete
-	err = repo.Delete(context.Background(), &testSubject{ID: 1})
+	d.selectResult = []map[string]any{{"id": int64(1)}}
+	_, err = repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	})
 	if err == nil || err.Error() != "hook conflict delete error" {
 		t.Fatalf("expected hook conflict delete error, got %v", err)
 	}
 
 	// before delete error
-	err = repo.Delete(context.Background(), &testSubject{ID: 2, Name: "before_err"})
+	d.selectResult = []map[string]any{{"id": int64(2), "name": "before_err"}}
+	_, err = repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(2)))
+	})
 	if err == nil || err.Error() != "before delete err" {
 		t.Fatalf("expected before delete err, got %v", err)
 	}
 
 	// after delete error
 	d.execErr = nil
-	err = repo.Delete(context.Background(), &testSubject{ID: 3})
+	d.selectResult = []map[string]any{{"id": int64(3)}}
+	_, err = repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(3)))
+	})
 	if err == nil || err.Error() != "after delete err" {
 		t.Fatalf("expected after delete err, got %v", err)
 	}
@@ -2567,7 +2770,9 @@ func TestRepository_RemainingCoverage(t *testing.T) {
 
 	// Delete: composite PK
 	repoComposite := Get(conn, testCompositeSubjectEntity)
-	err = repoComposite.Delete(context.Background(), &testCompositeSubject{SubjectID: 1, CategoryID: 2})
+	_, err = repoComposite.Delete(context.Background(), func(t *testCompositeSubject, del *query.Delete[testCompositeSubject]) {
+		del.Where(op.Eq(&t.SubjectID, int64(1)), op.Eq(&t.CategoryID, int64(2)))
+	})
 	if err != nil {
 		// we might hit an exec err if we didn't clear it
 	}
@@ -2730,11 +2935,15 @@ func TestRepository_Delete_Cascade_ReusesExistingTx(t *testing.T) {
 	parent := newCascadeParentEntity("cascade_parent_reuse_tx")
 	newCascadeChildEntity("cascade_child_reuse_tx", parent, relation.NewForeignKeyOptions().OnDelete(relation.OnDeleteCascade))
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(1)}},
+	}
 	tx := golem.NewTx(d, &fakeTx{}, golem.DefaultParser)
 	repo := Get(tx, parent)
 
-	if err := repo.Delete(context.Background(), &cascadeParent{ID: 1}); err != nil {
+	if _, err := repo.Delete(context.Background(), func(t *cascadeParent, del *query.Delete[cascadeParent]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	if d.beginCalls != 0 {
@@ -2757,22 +2966,31 @@ func TestRepository_Delete_SoftDelete_DeleteDateFieldNotMapped(t *testing.T) {
 		b.DeleteDate(&s.DeletedAt) // deliberately never declared via Col()
 	})
 
-	d := &fakeDialect{}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(1)}},
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, badEntity)
 
-	err := repo.Delete(context.Background(), &badSoftDelete{ID: 1})
+	_, err := repo.Delete(context.Background(), func(t *badSoftDelete, del *query.Delete[badSoftDelete]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	})
 	if err == nil {
 		t.Fatal("expected delete-date-field-not-mapped error")
 	}
 }
 
 func TestRepository_Delete_NonConflictError(t *testing.T) {
-	d := &fakeDialect{execErr: errors.New("connection reset")}
+	d := &fakeDialect{
+		selectResult: []map[string]any{{"id": int64(1)}},
+		execErr:      errors.New("connection reset"),
+	}
 	conn := newFakeConn(t, d)
 	repo := Get(conn, testSubjectEntity)
 
-	err := repo.Delete(context.Background(), &testSubject{ID: 1})
+	_, err := repo.Delete(context.Background(), func(t *testSubject, del *query.Delete[testSubject]) {
+		del.Where(op.Eq(&t.ID, int64(1)))
+	})
 	if err == nil || !strings.Contains(err.Error(), "connection reset") {
 		t.Fatalf("expected wrapped non-conflict error, got %v", err)
 	}

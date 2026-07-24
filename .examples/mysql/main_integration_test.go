@@ -133,11 +133,14 @@ func TestBlogExample_FullFlow(t *testing.T) {
 		t.Errorf("foundUser.Email = %q, want %q", foundUser.Email, user.Email)
 	}
 
-	_, err = repository.Get(dataSource, UserEntity).FindOne(ctx, func(u *User, q *query.Query[User]) {
+	notFound, err := repository.Get(dataSource, UserEntity).FindOne(ctx, func(u *User, q *query.Query[User]) {
 		q.Where(op.Eq(&u.ID, user.ID+1_000_000))
 	})
-	if !errors.Is(err, golem.ErrNotFound) {
-		t.Errorf("FindOne(nonexistent ID): expected errors.Is(err, golem.ErrNotFound), got %v", err)
+	if err != nil {
+		t.Errorf("FindOne(nonexistent ID): expected no error, got %v", err)
+	}
+	if notFound != nil {
+		t.Errorf("FindOne(nonexistent ID): expected nil, got %v", notFound)
 	}
 
 	// Find users that have at least 1 post using join.Inner
@@ -411,22 +414,30 @@ func TestBlogExample_CascadeDeleteUser_DeletesTheirPosts(t *testing.T) {
 		t.Fatalf("Insert(Post) returned error: %v", err)
 	}
 
-	if err := userRepo.Delete(ctx, &user); err != nil {
+	if _, err := userRepo.Delete(ctx, func(u *User, d *query.Delete[User]) {
+		d.Where(op.Eq(&u.ID, user.ID))
+	}); err != nil {
 		t.Fatalf("Delete(User) returned error: %v", err)
 	}
 
-	_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+	deletedUser, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
 		q.Where(op.Eq(&u.ID, user.ID))
 	})
-	if !errors.Is(err, golem.ErrNotFound) {
-		t.Errorf("expected deleted user to be ErrNotFound, got %v", err)
+	if err != nil {
+		t.Errorf("expected no error for deleted user, got %v", err)
+	}
+	if deletedUser != nil {
+		t.Errorf("expected deleted user to be nil, got %v", deletedUser)
 	}
 
-	_, err = postRepo.FindOne(ctx, func(p *Post, q *query.Query[Post]) {
+	cascadedPost, err := postRepo.FindOne(ctx, func(p *Post, q *query.Query[Post]) {
 		q.Where(op.Eq(&p.ID, post.ID))
 	})
-	if !errors.Is(err, golem.ErrNotFound) {
-		t.Errorf("expected cascade-deleted post to be ErrNotFound, got %v", err)
+	if err != nil {
+		t.Errorf("expected no error for cascade-deleted post, got %v", err)
+	}
+	if cascadedPost != nil {
+		t.Errorf("expected cascade-deleted post to be nil, got %v", cascadedPost)
 	}
 }
 
@@ -565,7 +576,9 @@ func TestBlogExample_DeleteCountAndExists(t *testing.T) {
 		t.Errorf("expected Exists to be true")
 	}
 
-	err = repo.Delete(ctx, &inserted[0])
+	_, err = repo.Delete(ctx, func(p *TempPost, d *query.Delete[TempPost]) {
+		d.Where(op.Eq(&p.ID, inserted[0].ID))
+	})
 	if err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
@@ -660,11 +673,14 @@ func TestBlogExample_Transactions(t *testing.T) {
 		t.Fatalf("expected transaction to return txErr, got %v", err)
 	}
 
-	_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+	rolledBackUser, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
 		q.Where(op.Eq(&u.Email, "tx.failed@email.com"))
 	})
-	if !errors.Is(err, golem.ErrNotFound) {
-		t.Errorf("expected ErrNotFound for rolled back user, got %v", err)
+	if err != nil {
+		t.Errorf("expected no error for rolled back user, got %v", err)
+	}
+	if rolledBackUser != nil {
+		t.Errorf("expected rolled back user to be nil, got %v", rolledBackUser)
 	}
 
 	// 3. Panic path (rollback)
@@ -674,11 +690,14 @@ func TestBlogExample_Transactions(t *testing.T) {
 			t.Fatalf("expected panic 'panic in tx', got %v", r)
 		}
 
-		_, err = userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
+		panicUser, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
 			q.Where(op.Eq(&u.Email, "tx.panic@email.com"))
 		})
-		if !errors.Is(err, golem.ErrNotFound) {
-			t.Errorf("expected ErrNotFound for panic-rolled-back user, got %v", err)
+		if err != nil {
+			t.Errorf("expected no error for panic-rolled-back user, got %v", err)
+		}
+		if panicUser != nil {
+			t.Errorf("expected panic-rolled-back user to be nil, got %v", panicUser)
 		}
 	}()
 

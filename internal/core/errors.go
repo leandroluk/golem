@@ -2,9 +2,6 @@ package core
 
 import "errors"
 
-// ErrNotFound indicates a query (FindOne, FindMany, SaveOne, etc.) found no matching row.
-var ErrNotFound = errors.New("golem: not found")
-
 // ErrDuplicateKey indicates a write violated a unique constraint (single or composite).
 var ErrDuplicateKey = errors.New("golem: duplicate key")
 

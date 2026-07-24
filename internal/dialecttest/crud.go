@@ -135,8 +135,11 @@ func runCRUD(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema) 
 	testutil.FatalIfError(t, err, "Exists")
 	testutil.ErrorIf(t, !exists, "Exists: expected true")
 
-	err = repo.Delete(ctx, &found)
+	deleted, err := repo.Delete(ctx, func(wg *Widget, d *query.Delete[Widget]) {
+		d.Where(op.Eq(&wg.ID, found.ID))
+	})
 	testutil.FatalIfError(t, err, "Delete")
+	testutil.ErrorIf(t, len(deleted) != 1, "Delete: expected 1 row deleted, got %d", len(deleted))
 	stillExists, err := repo.Exists(ctx, func(wg *Widget, c *query.Count[Widget]) {
 		c.Where(op.Eq(&wg.ID, w.ID))
 	})

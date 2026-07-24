@@ -166,6 +166,39 @@ func (c *Count[T]) Conditions() []op.Condition {
 	return c.conditions
 }
 
+// Delete is received by a Delete criteria callback.
+type Delete[T any] struct {
+	conditions  []op.Condition
+	withDeleted bool
+}
+
+// NewDelete builds an empty Delete[T]. Used internally by repository.
+func NewDelete[T any]() *Delete[T] {
+	return &Delete[T]{}
+}
+
+// Where adds conditions (AND semantics), accumulating across multiple calls.
+func (d *Delete[T]) Where(conditions ...op.Condition) *Delete[T] {
+	d.conditions = append(d.conditions, conditions...)
+	return d
+}
+
+// WithDeleted disables the default soft-delete filter (WHERE deleted_at IS NULL).
+func (d *Delete[T]) WithDeleted() *Delete[T] {
+	d.withDeleted = true
+	return d
+}
+
+// Conditions returns every condition accumulated so far.
+func (d *Delete[T]) Conditions() []op.Condition {
+	return d.conditions
+}
+
+// IsWithDeleted returns true if soft-deletes should be ignored.
+func (d *Delete[T]) IsWithDeleted() bool {
+	return d.withDeleted
+}
+
 // IsWithDeleted returns true if soft-deletes should be ignored.
 func (c *Count[T]) IsWithDeleted() bool {
 	return c.withDeleted
