@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/internal/testutil"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/repository"
+	"github.com/leandroluk/golem/internal/testutil"
 )
 
 // runCascade proves ForeignKeyOptions.OnDelete's 3 modes (M11) against a

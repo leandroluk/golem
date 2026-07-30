@@ -6,9 +6,9 @@ import (
 	"reflect"
 
 	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/scanner"
 	"github.com/leandroluk/golem/internal/stmt"
-	"github.com/leandroluk/golem/internal/query"
 )
 
 // aggProjection is one resolved GROUP BY column or aggregate expression:

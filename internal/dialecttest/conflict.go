@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/internal/testutil"
 	"github.com/leandroluk/golem/internal/repository"
+	"github.com/leandroluk/golem/internal/testutil"
 )
 
 // runConflictDetection proves golem.ErrDuplicateKey/golem.ErrForeignKeyViolation

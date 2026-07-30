@@ -16,11 +16,11 @@ import (
 	golem "github.com/leandroluk/golem/internal/core"
 	"github.com/leandroluk/golem/internal/entity"
 	"github.com/leandroluk/golem/internal/must"
-	"github.com/leandroluk/golem/internal/scanner"
-	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/relation"
+	"github.com/leandroluk/golem/internal/scanner"
+	"github.com/leandroluk/golem/internal/stmt"
 )
 
 // Repository[T] is bound to one entity's metadata and a connection.

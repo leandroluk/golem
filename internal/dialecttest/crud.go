@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/internal/testutil"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/repository"
+	"github.com/leandroluk/golem/internal/testutil"
 )
 
 // runBindScanRoundTrip proves every golem.ColumnType kind used by Widget

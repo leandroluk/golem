@@ -6,8 +6,8 @@ import (
 	"reflect"
 
 	"github.com/leandroluk/golem/internal/entity"
-	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/internal/query"
+	"github.com/leandroluk/golem/internal/stmt"
 )
 
 // Preload fetches every J row related to items (a parent Repository[T]'s

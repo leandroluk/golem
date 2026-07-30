@@ -12,11 +12,11 @@ import (
 
 	golem "github.com/leandroluk/golem/internal/core"
 	"github.com/leandroluk/golem/internal/entity"
-	"github.com/leandroluk/golem/internal/stmt"
 	"github.com/leandroluk/golem/internal/join"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/relation"
+	"github.com/leandroluk/golem/internal/stmt"
 )
 
 // dataSourceNameCounter guarantees every newConnWithDialect call gets a
