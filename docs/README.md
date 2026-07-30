@@ -14,7 +14,7 @@
     <img src="https://pkg.go.dev/badge/github.com/leandroluk/golem.svg" alt="Go Doc" />
   </a>
   <a href="https://github.com/leandroluk/golem/releases">
-    <img src="https://img.shields.io/github/release/leandroluk/golem.svg?style=flat-square" alt="Release" />
+    <img src="https://img.shields.io/github/v/tag/leandroluk/golem.svg?style=flat-square" alt="Tag" />
   </a>
 </div>
 
