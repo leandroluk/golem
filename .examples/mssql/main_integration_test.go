@@ -278,7 +278,7 @@ func TestBlogExample_Aggregate_PostCountPerUser(t *testing.T) {
 		t.Fatalf("InsertMany(Post) returned error: %v", err)
 	}
 
-	stats, err := repository.Aggregate(ctx, postRepo, func(p *Post, res *UserPostStats, a *query.Aggregate[Post, UserPostStats]) {
+	stats, err := postRepo.Aggregate(ctx, func(p *Post, res *UserPostStats, a *query.Aggregate[Post, UserPostStats]) {
 		a.GroupBy(&p.OwnerUserID, &res.OwnerUserID)
 		a.CountAll(&res.PostCount)
 		a.Where(op.Eq(&p.OwnerUserID, user.ID))
@@ -340,7 +340,7 @@ func TestBlogExample_Preload_LoadsPostsPerUser(t *testing.T) {
 		t.Fatalf("expected 2 users, got %d", len(users))
 	}
 
-	postsByUser, err := repository.Preload(ctx, userRepo, users, PostEntity)
+	postsByUser, err := userRepo.Preload(ctx, users, PostEntity)
 	if err != nil {
 		t.Fatalf("Preload returned error: %v", err)
 	}

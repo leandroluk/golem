@@ -102,6 +102,7 @@ See [Documentation](#documentation) below for the full API (entities, repositori
 - [x] M17 - SQLite Adapter
 - [x] M18 - SQL Server (MSSQL) Adapter
 - [x] M19 - Oracle Adapter
+- [x] M29 - Go 1.27 Generic Methods Upgrade (Methods on Query, Repository, Entity, Plan)
 
 Adapter set is considered **done** at these 5 databases (Postgres, MySQL, SQLite, SQL Server,
 Oracle) — see "Next Steps" below.
@@ -433,7 +434,7 @@ var MessageEntity = golem.NewTable[Message](func(t *Message, b *golem.Table) {
   b.DeleteDate(&t.DeletedAt).Nullable().Default(nil)
 })
 
-// golem.AddHook(Entity) returns a chainable builder (same style as ForeignKeyOptions/JoinTable):
+// Entity.Hooks() returns a chainable builder (same style as ForeignKeyOptions/JoinTable):
 // each method fixes one hook slot, with no need for a wrapper type per hook (no BeforeCreateHook,
 // AfterCreateHook, etc). Available slots, all sharing the same signature
 // func(ctx context.Context, i *T, conn golem.Conn) error:
@@ -446,7 +447,7 @@ var MessageEntity = golem.NewTable[Message](func(t *Message, b *golem.Table) {
 // error from any one of them rolls back everything — including the very insert/update/delete that
 // triggered the hook.
 
-var _ = golem.AddHook(UserEntity).
+var _ = UserEntity.Hooks().
   // example hook before creating a user:
   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
     fmt.Println("before creating user ", i.Name)
@@ -462,7 +463,7 @@ var _ = golem.AddHook(UserEntity).
 
 /**
  * Note: registering the same hook slot twice triggers a panic naming the slot, e.g:
- * golem.AddHook(UserEntity).
+ * UserEntity.Hooks().
  *   BeforeCreate(func (ctx context.Context, i *User, conn golem.Conn) error {
  *     fmt.Println("before creating user ", i.Name)
  *     return nil
@@ -821,7 +822,7 @@ func main() {
 > implicit `WHERE deleted_at IS NULL`) — like every ORM with soft delete does. `.WithDeleted()` turns that
 > filter off for that query. It exists on any builder with `Where` underneath: `golem.Query[T]`
 > (`FindMany`/`FindOne`), `golem.Count[T]` (`Count`/`Exists`), `golem.Update[T]` (`Update`)
-> and `golem.Join[T]` (via JoinInner/JoinLeft/JoinRight/JoinFull). On entities without `DeleteDate`, `.WithDeleted()` is a no-op.
+> and `golem.Join[T]` (via `q0.InnerJoin`/`q0.LeftJoin`/`q0.RightJoin`/`q0.FullJoin`). On entities without `DeleteDate`, `.WithDeleted()` is a no-op.
 
 ```go
 package ex
@@ -973,11 +974,10 @@ func main() {
 
 ### Joins
 
-> `golem/join` package: `golem.JoinInner`/`golem.JoinLeft`/`golem.JoinRight`/`golem.JoinFull` (SQL's `JOIN` names — `Left`/
-> `Right`/`Full` are already "outer" by definition, no need for a separate generic `Outer`). Each one
-> takes the outer `*golem.Query[T]` (to register itself on it), the entity on the side entering the join
-> (`T` inferred from it, same as `golem.NewRepository`), and a callback for the new side. We name the builders
-> `q0` (outer), `q1` (join), etc, to make each level explicit.
+> Generic join methods directly on `*golem.Query[T]`: `q0.InnerJoin`, `q0.LeftJoin`, `q0.RightJoin`, `q0.FullJoin`
+> (SQL's `JOIN` names — `Left`/`Right`/`Full` are already "outer" by definition, no need for a separate generic `Outer`).
+> Each one takes the entity on the side entering the join (`J` inferred from it, e.g. `PostEntity`), and a callback for the new side.
+> We name the builders `q0` (outer), `q1` (join), etc, to make each level explicit.
 >
 > `q1.On(fieldPtr, fieldPtr)` compares column to column (both sides are field addresses) — different from
 > `golem.Eq(fieldPtr, value)`, which compares a column to a literal value in `Where`. That's why it's a
@@ -1009,7 +1009,7 @@ func main() {
 
   // users who have at least 1 published post (INNER: only rows matching the On condition make it in)
   users, err := golem.NewRepository(dataSource, UserEntity).FindMany(ctx, func (u *User, q0 *golem.Query[User]) {
-    golem.JoinInner(q0, PostEntity, func (p *Post, q1 *golem.Join[Post]) {
+    q0.InnerJoin(PostEntity, func (p *Post, q1 *golem.Join[Post]) {
       q1.On(&p.OwnerUserID, &u.ID)
       q1.Where(golem.Eq(&p.Published, true))
     })
@@ -1024,21 +1024,21 @@ func main() {
 
 ### Preload / Eager Loading
 
-> `golem.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to
+> `repo.Preload[J](ctx, items, targetEntity, criteria...)` fetches the rows related to
 > `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the
 > relation key — it NEVER attaches the result back onto `items` (there's no field like `user.Posts
 > []Post` on the struct; see AD-001/AD-024 in `.specs/project/STATE.md` — this is deliberate, entities
 > stay plain structs, with no navigational field).
 >
 > The join column is discovered automatically from the `ForeignKey` already declared between the two
-> entities (works in both directions: `Preload(ctx, userRepo, users, PostEntity)` — loads each user's
-> posts — or `Preload(ctx, postRepo, posts, UserEntity)` — loads each post's owner). `criteria` accepts
+> entities (works in both directions: `userRepo.Preload(ctx, users, PostEntity)` — loads each user's
+> posts — or `postRepo.Preload(ctx, posts, UserEntity)` — loads each post's owner). `criteria` accepts
 > the same `func(j *J, q *golem.Query[J])` as `FindMany` (Where/OrderBy/Limit/Offset/WithDeleted),
 > always combined (AND) with the join filter `Preload` already builds on its own.
 >
 > There's no flag like `Eager(true)` that automatically triggers `Preload` inside `FindMany`/`FindOne` —
 > there's no way to return data of different types (`J` varies by FK) hidden behind the fixed
-> `([]T, error)` signature without heavy reflection or breaking the API. Always call `golem.Preload`
+> `([]T, error)` signature without heavy reflection or breaking the API. Always call `repo.Preload`
 > explicitly. Details: `.specs/features/preload-eager-loading/design.md`.
 
 ```go
@@ -1074,7 +1074,7 @@ func main() {
   }
 
   // fetches the posts for each user returned above, grouped by User.ID
-  postsByUserID, err := golem.Preload(ctx, userRepo, users, PostEntity, func (p *Post, q *golem.Query[Post]) {
+  postsByUserID, err := userRepo.Preload(ctx, users, PostEntity, func (p *Post, q *golem.Query[Post]) {
     q.Where(golem.Eq(&p.Published, true))
     q.OrderBy(golem.Desc(&p.ID))
   })
@@ -1089,7 +1089,7 @@ func main() {
 
 ### Aggregations
 
-> `golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` —
+> `repo.Aggregate[R](ctx, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` —
 > same principle as `Preload`: `R` is any struct (doesn't need `golem.NewTable`), resolved by field pointer
 > against `t` (source, `T`) and `res` (destination, `R`), no tags.
 >
@@ -1139,7 +1139,7 @@ func main() {
   postRepo := golem.NewRepository(dataSource, PostEntity)
 
   // total (and count) of posts per category, only categories with more than 1 post
-  totals, err := golem.RunAggregate(ctx, postRepo, func (p *Post, res *CategoryTotal, a *golem.Aggregate[Post, CategoryTotal]) {
+  totals, err := postRepo.Aggregate(ctx, func (p *Post, res *CategoryTotal, a *golem.Aggregate[Post, CategoryTotal]) {
     a.GroupBy(&p.Category, &res.Category)
     a.Sum(&p.Views, &res.Total)
     a.CountAll(&res.Count)
@@ -1167,7 +1167,7 @@ func main() {
 > an error if `conn` isn't a `golem.Tx` (`golem.NewRepository(dataSource, ...)` directly doesn't count; it
 > must be `golem.NewRepository(tx, ...)` inside `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`).
 >
-> Doesn't apply to `golem.RunAggregate` — Postgres itself doesn't allow `FOR UPDATE` together with
+> Doesn't apply to `repo.Aggregate` — Postgres itself doesn't allow `FOR UPDATE` together with
 > aggregate functions.
 
 ```go

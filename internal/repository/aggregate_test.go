@@ -44,7 +44,7 @@ func TestAggregate_GroupBySumAvgCount_ScansResults(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	results, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	results, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.Avg(&o.Amount, &res.Avg)
@@ -87,7 +87,7 @@ func TestAggregate_Where_AppliesFilterAndSoftDelete(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.Where(op.Eq(&o.Category, "food"))
@@ -106,7 +106,7 @@ func TestAggregate_Having_TranslatesToAggregateComparison(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.Having(op.Gt(&res.Total, 100.0))
@@ -125,7 +125,7 @@ func TestAggregate_Having_MultipleConditions_CombinesWithAnd(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.Count(&o.Amount, &res.Cnt)
@@ -145,7 +145,7 @@ func TestAggregate_Having_UnregisteredField_ReturnsError(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Having(op.Gt(&res.Total, 100.0)) // Total was never registered via Sum/Avg/Count/CountAll
 	})
@@ -159,7 +159,7 @@ func TestAggregate_OrderBy_ByAggregateField(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.OrderBy(op.Desc(&res.Total))
@@ -178,7 +178,7 @@ func TestAggregate_OrderBy_ByGroupByField(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.OrderBy(op.Asc(&res.Category))
@@ -197,7 +197,7 @@ func TestAggregate_OrderBy_UnregisteredField_ReturnsError(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.OrderBy(op.Desc(&res.Total)) // Total was never registered
 	})
@@ -211,7 +211,7 @@ func TestAggregate_LimitOffset(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 		a.Limit(5)
@@ -235,7 +235,7 @@ func TestAggregate_BadAvgSourceFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign float64
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.Avg(&foreign, &res.Avg)
 	})
 	if err == nil {
@@ -249,7 +249,7 @@ func TestAggregate_BadCountSourceFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign float64
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.Count(&foreign, &res.Cnt)
 	})
 	if err == nil {
@@ -263,7 +263,7 @@ func TestAggregate_BadWhereFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign string
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Where(op.Eq(&foreign, "x"))
 	})
@@ -281,7 +281,7 @@ func TestAggregate_RowMissingAlias_SkipsField(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	results, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	results, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 		a.Sum(&o.Amount, &res.Total)
 	})
@@ -299,7 +299,7 @@ func TestAggregate_BadGroupBySourceFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign string
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&foreign, &res.Category)
 	})
 	if err == nil {
@@ -313,7 +313,7 @@ func TestAggregate_BadSourceFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign float64
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.Sum(&foreign, &res.Total)
 	})
 	if err == nil {
@@ -327,7 +327,7 @@ func TestAggregate_BadDestFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign float64
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.Sum(&o.Amount, &foreign)
 	})
 	if err == nil {
@@ -341,7 +341,7 @@ func TestAggregate_BadCountAllDestFieldPtr_ReturnsError(t *testing.T) {
 	repo := Get(conn, aggOrderEntity)
 
 	var foreign int64
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.CountAll(&foreign)
 	})
 	if err == nil {
@@ -364,7 +364,7 @@ func TestAggregate_UnmappedSourceField_ReturnsError(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, unmappedEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(u *unmappedSource, res *aggOrderTotal, a *query.Aggregate[unmappedSource, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(u *unmappedSource, res *aggOrderTotal, a *query.Aggregate[unmappedSource, aggOrderTotal]) {
 		a.Sum(&u.Amount, &res.Total)
 	})
 	if err == nil {
@@ -378,7 +378,7 @@ func TestAggregate_CompileSelectError_Propagates(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 	})
 	if !errors.Is(err, wantErr) {
@@ -392,7 +392,7 @@ func TestAggregate_QueryError_Propagates(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 	})
 	if !errors.Is(err, wantErr) {
@@ -409,7 +409,7 @@ func TestAggregate_ScanError_Propagates(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, aggOrderEntity)
 
-	_, err := Aggregate(context.Background(), repo, func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
+	_, err := repo.Aggregate(context.Background(), func(o *aggOrder, res *aggOrderTotal, a *query.Aggregate[aggOrder, aggOrderTotal]) {
 		a.GroupBy(&o.Category, &res.Category)
 	})
 	if err == nil {

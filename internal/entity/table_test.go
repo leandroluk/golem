@@ -311,19 +311,6 @@ func TestTable_ForeignKey_WithExplicitOptions(t *testing.T) {
 	}
 }
 
-func TestTable_ForeignKey_PanicsOnNonDescriberTarget(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("expected panic for a target that doesn't implement Describe() EntityMeta, got none")
-		}
-	}()
-
-	New(func(c *fkTestChild, b *Table) {
-		b.Col(&c.ID, golem.BIGINT())
-		b.PrimaryKey(&c.ID)
-		b.ForeignKey(&c.ParentID, "not an entity")
-	})
-}
 
 func TestTable_ForeignKey_PanicsOnCompositePrimaryKeyTarget(t *testing.T) {
 	compositeParent := New(func(p *fkTestCompositeParent, b *Table) {

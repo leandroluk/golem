@@ -1,7 +1,7 @@
 # Roadmap
 
-**Current Milestone:** nenhum em aberto — M1-M19, M22-M28 done (M20/M21 dropped).
-**Status:** M25 (Predicate-Based Delete) e M26 (FindOne/SaveOne retornam `*T`, `nil` em vez de `ErrNotFound`) fechados na mesma sessão. `task coverage` 100.0%.
+**Current Milestone:** M29 — Go 1.27 Generic Methods Upgrade & Standalone Functions Elimination.
+**Status:** ✅ DONE.
 
 Source of truth for behavior/API shape: `README.md` (this repo's root README). Each milestone below is atomic — buildable and
 testable on its own, in dependency order (later milestones assume earlier ones work).
@@ -625,6 +625,24 @@ notar que `MustFindOne`/`MustSaveOne` retornam `*T` mas `MustInsert` teria que r
   `[]T` — assinatura pública de `InsertMany`/`MustInsertMany` inalterada.
 
 Full spec: `.specs/features/insert-returns-pointer/spec.md`.
+
+---
+
+## M29 — Go 1.27 Generic Methods Upgrade & Standalone Functions Elimination
+
+**Goal:** Eliminar todas as funções globais que existiam apenas para contornar a falta de generic methods em Go (`JoinInner`, `JoinLeft`, `RunAggregate`, `Preload`, `AddHook`), transformando-as em métodos de receiver nos tipos concretos (`Query[T]`, `Repository[T]`, `Entity[T]`, `Table`, `Plan`).
+**Status:** 🏗️ In Progress — see `.specs/features/generic-methods-upgrade/` (spec, design, tasks).
+
+### Features
+
+- `Query[T].InnerJoin[J]`, `LeftJoin[J]`, `RightJoin[J]`, `FullJoin[J]` (pacote `internal/join` eliminado)
+- `Repository[T].Aggregate[R]`, `MustAggregate[R]`, `Preload[J]`, `MustPreload[J]`
+- `Entity[T].Hooks()`
+- `Table.ForeignKey[J]` compile-time type safe
+- `Plan.ScanFromMap[T]`
+- Atualização completa de `README.md` e `docs/`
+
+Full spec: `.specs/features/generic-methods-upgrade/spec.md`.
 
 ---
 

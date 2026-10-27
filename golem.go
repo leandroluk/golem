@@ -22,11 +22,8 @@
 package golem
 
 import (
-	"context"
-
 	"github.com/leandroluk/golem/internal/core"
 	"github.com/leandroluk/golem/internal/entity"
-	"github.com/leandroluk/golem/internal/join"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/relation"
@@ -113,9 +110,6 @@ var (
 // argument by memory offset against the same zero-value T instance.
 func NewTable[T any](fn func(t *T, b *Table)) *Entity[T] { return entity.New(fn) }
 
-// AddHook registers lifecycle hooks (BeforeCreate/AfterCreate/... ) against e.
-func AddHook[T any](e *Entity[T]) *HookBuilder[T] { return entity.AddHook(e) }
-
 // ---------------------------------------------------------------------------
 // internal/repository -- CRUD layer
 // ---------------------------------------------------------------------------
@@ -125,16 +119,6 @@ type Repository[T any] = repository.Repository[T]
 // NewRepository builds a Repository[T] bound to conn and e.
 func NewRepository[T any](conn Conn, e *Entity[T]) *Repository[T] {
 	return repository.Get(conn, e)
-}
-
-// RunAggregate executes an aggregate query built by fn against r.
-func RunAggregate[T, R any](ctx context.Context, r *Repository[T], fn func(t *T, res *R, a *Aggregate[T, R])) ([]R, error) {
-	return repository.Aggregate(ctx, r, fn)
-}
-
-// Preload batch-loads a related entity J for items, grouped by foreign key.
-func Preload[T, J any](ctx context.Context, r *Repository[T], items []T, target *Entity[J], criteria ...func(*J, *Query[J])) (map[any][]J, error) {
-	return repository.Preload(ctx, r, items, target, criteria...)
 }
 
 // ---------------------------------------------------------------------------
@@ -209,23 +193,3 @@ func NewUpdate[T any]() *Update[T]             { return query.NewUpdate[T]() }
 func NewCount[T any]() *Count[T]               { return query.NewCount[T]() }
 func NewDelete[T any]() *Delete[T]             { return query.NewDelete[T]() }
 func NewJoin[T any]() *Join[T]                 { return query.NewJoin[T]() }
-
-// ---------------------------------------------------------------------------
-// internal/join -- Inner/Left/Right/Full join registration
-// ---------------------------------------------------------------------------
-
-func JoinInner[T, J any](q *Query[T], target *Entity[J], fn func(j *J, q1 *Join[J])) {
-	join.Inner(q, target, fn)
-}
-
-func JoinLeft[T, J any](q *Query[T], target *Entity[J], fn func(j *J, q1 *Join[J])) {
-	join.Left(q, target, fn)
-}
-
-func JoinRight[T, J any](q *Query[T], target *Entity[J], fn func(j *J, q1 *Join[J])) {
-	join.Right(q, target, fn)
-}
-
-func JoinFull[T, J any](q *Query[T], target *Entity[J], fn func(j *J, q1 *Join[J])) {
-	join.Full(q, target, fn)
-}

@@ -41,7 +41,7 @@ func BenchmarkScanFromMap_AllPrimitives(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		_, err := scanner.ScanFromMap[User](plan, row)
+		_, err := plan.ScanFromMap[User](row)
 		if err != nil {
 			b.Fatal(err)
 		}

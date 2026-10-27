@@ -166,6 +166,11 @@ func (e *Entity[T]) Describe() EntityMeta {
 	return e.meta
 }
 
+// Hooks starts a fluent hook registration chain for this entity.
+func (e *Entity[T]) Hooks() *HookBuilder[T] {
+	return &HookBuilder[T]{entity: e}
+}
+
 // TriggerBeforeCreate runs the registered BeforeCreate hook if present.
 func (e *Entity[T]) TriggerBeforeCreate(ctx context.Context, i *T, conn golem.Conn) error {
 	if e.hooks.BeforeCreate != nil {

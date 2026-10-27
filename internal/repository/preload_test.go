@@ -56,7 +56,7 @@ func TestPreload_LoadsChildrenGroupedByParentPK(t *testing.T) {
 	userRepo := Get(conn, userEntity)
 
 	users := []preloadUser{{ID: 1}, {ID: 2}}
-	byUser, err := Preload(context.Background(), userRepo, users, postEntity)
+	byUser, err := userRepo.Preload(context.Background(), users, postEntity)
 	if err != nil {
 		t.Fatalf("Preload: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestPreload_LoadsParentGroupedByChildFK(t *testing.T) {
 		{ID: 100, OwnerID: 1},
 		{ID: 101, OwnerID: 2},
 	}
-	byPost, err := Preload(context.Background(), postRepo, posts, userEntity)
+	byPost, err := postRepo.Preload(context.Background(), posts, userEntity)
 	if err != nil {
 		t.Fatalf("Preload: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestPreload_EmptyItems_ReturnsEmptyMapNoQuery(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	byUser, err := Preload(context.Background(), userRepo, []preloadUser{}, postEntity)
+	byUser, err := userRepo.Preload(context.Background(), []preloadUser{}, postEntity)
 	if err != nil {
 		t.Fatalf("Preload: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestPreload_NoForeignKeyRegistered_ReturnsError(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, unrelatedEntity)
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, unrelatedEntity)
 	if err == nil {
 		t.Fatal("expected error for unrelated entities, got nil")
 	}
@@ -170,7 +170,7 @@ func TestPreload_CompositePKParent_ReturnsError(t *testing.T) {
 	conn := newFakeConn(t, d)
 	repo := Get(conn, compositeEntity)
 
-	_, err := Preload(context.Background(), repo, []preloadCompositeParent{{A: 1, B: 2}}, userEntity)
+	_, err := repo.Preload(context.Background(), []preloadCompositeParent{{A: 1, B: 2}}, userEntity)
 	if err == nil {
 		t.Fatal("expected error for composite-PK parent, got nil")
 	}
@@ -184,7 +184,7 @@ func TestPreload_WithCriteria_AppliesExtraFilter(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity,
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity,
 		func(p *preloadPost, q *query.Query[preloadPost]) {
 			q.Where(op.Eq(&p.Title, "A"))
 			q.Limit(5)
@@ -230,7 +230,7 @@ func TestPreload_SoftDeleteChild_AppliesFilter(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity)
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity)
 	if err != nil {
 		t.Fatalf("Preload: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestPreload_DedupesParentKeys(t *testing.T) {
 	userRepo := Get(conn, userEntity)
 
 	users := []preloadUser{{ID: 1}, {ID: 1}, {ID: 2}}
-	_, err := Preload(context.Background(), userRepo, users, postEntity)
+	_, err := userRepo.Preload(context.Background(), users, postEntity)
 	if err != nil {
 		t.Fatalf("Preload: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestPreload_CriteriaBadFieldPtr_ReturnsError(t *testing.T) {
 	userRepo := Get(conn, userEntity)
 
 	var foreign int64
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity,
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity,
 		func(p *preloadPost, q *query.Query[preloadPost]) {
 			q.Where(op.Eq(&foreign, "x"))
 		},
@@ -291,7 +291,7 @@ func TestPreload_ScanRowError_Propagates(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity)
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity)
 	if err == nil {
 		t.Fatal("expected scanRow error for unconvertible column value, got nil")
 	}
@@ -306,7 +306,7 @@ func TestPreload_CompileSelectError_Propagates(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity)
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped %v, got %v", wantErr, err)
 	}
@@ -321,7 +321,7 @@ func TestPreload_QueryError_Propagates(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity)
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected wrapped %v, got %v", wantErr, err)
 	}
@@ -335,7 +335,7 @@ func TestPreload_OrderBy_AppliesOrdering(t *testing.T) {
 	conn := newFakeConn(t, d)
 	userRepo := Get(conn, userEntity)
 
-	_, err := Preload(context.Background(), userRepo, []preloadUser{{ID: 1}}, postEntity,
+	_, err := userRepo.Preload(context.Background(), []preloadUser{{ID: 1}}, postEntity,
 		func(p *preloadPost, q *query.Query[preloadPost]) {
 			q.OrderBy(op.Desc(&p.Title))
 		},

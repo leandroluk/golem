@@ -11,14 +11,14 @@ type HookTestSubject struct {
 	ID int64
 }
 
-func TestAddHook_RegistersFluentHooks(t *testing.T) {
+func TestEntity_Hooks_RegistersFluentHooks(t *testing.T) {
 	e := New(func(s *HookTestSubject, b *Table) {
 		b.Col(&s.ID, golem.BIGINT())
 	})
 
 	fn := func(ctx context.Context, s *HookTestSubject, conn golem.Conn) error { return nil }
 
-	AddHook(e).
+	e.Hooks().
 		BeforeCreate(fn).
 		AfterCreate(fn).
 		OnConflictCreate(fn).
@@ -58,7 +58,7 @@ func TestAddHook_RegistersFluentHooks(t *testing.T) {
 	}
 }
 
-func TestAddHook_PanicsOnDuplicateRegistration(t *testing.T) {
+func TestEntity_Hooks_PanicsOnDuplicateRegistration(t *testing.T) {
 	e := New(func(s *HookTestSubject, b *Table) {
 		b.Col(&s.ID, golem.BIGINT())
 	})
@@ -75,12 +75,12 @@ func TestAddHook_PanicsOnDuplicateRegistration(t *testing.T) {
 	}()
 
 	fn := func(ctx context.Context, s *HookTestSubject, conn golem.Conn) error { return nil }
-	AddHook(e).
+	e.Hooks().
 		BeforeCreate(fn).
 		BeforeCreate(fn)
 }
 
-func TestAddHook_PanicsOnDuplicateRegistration_AllSlots(t *testing.T) {
+func TestEntity_Hooks_PanicsOnDuplicateRegistration_AllSlots(t *testing.T) {
 	fn := func(ctx context.Context, s *HookTestSubject, conn golem.Conn) error { return nil }
 
 	cases := []struct {
@@ -102,7 +102,7 @@ func TestAddHook_PanicsOnDuplicateRegistration_AllSlots(t *testing.T) {
 			e := New(func(s *HookTestSubject, b *Table) {
 				b.Col(&s.ID, golem.BIGINT())
 			})
-			hb := AddHook(e)
+			hb := e.Hooks()
 			tc.register(hb)
 
 			defer func() {

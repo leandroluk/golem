@@ -12,7 +12,6 @@ import (
 
 	golem "github.com/leandroluk/golem/internal/core"
 	"github.com/leandroluk/golem/internal/entity"
-	"github.com/leandroluk/golem/internal/join"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/relation"
@@ -778,7 +777,7 @@ func TestRepository_Update_AfterUpdateHookError_Propagates(t *testing.T) {
 		b.PrimaryKey(&s.ID)
 	})
 	wantErr := errors.New("boom: after update hook")
-	entity.AddHook(hookedEntity).AfterUpdate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
+	hookedEntity.Hooks().AfterUpdate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
 		return wantErr
 	})
 
@@ -1080,7 +1079,7 @@ func TestRepository_FindMany_WithInnerJoin(t *testing.T) {
 	repo := Get(conn, testSubjectEntity)
 
 	_, err := repo.FindMany(context.Background(), func(s *testSubject, q0 *query.Query[testSubject]) {
-		join.Inner(q0, softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
+		q0.InnerJoin( softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
 			q1.On(&sd.ID, &s.ID)
 			q1.Where(op.Eq(&sd.ID, int64(10)))
 		})
@@ -1132,7 +1131,7 @@ func TestRepository_FindMany_WithInnerJoin_DedupesFanOutByParentPK(t *testing.T)
 	repo := Get(conn, testSubjectEntity)
 
 	got, err := repo.FindMany(context.Background(), func(s *testSubject, q0 *query.Query[testSubject]) {
-		join.Inner(q0, softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
+		q0.InnerJoin( softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
 			q1.On(&sd.ID, &s.ID)
 		})
 	})
@@ -1185,7 +1184,7 @@ func TestRepository_Insert_RunsLifecycleHooks(t *testing.T) {
 	})
 
 	var calls []string
-	entity.AddHook(hookedEntity).
+	hookedEntity.Hooks().
 		BeforeCreate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
 			calls = append(calls, "before")
 			return nil
@@ -1237,7 +1236,7 @@ func TestRepository_Insert_HookErrorRollsBack(t *testing.T) {
 		b.PrimaryKey(&s.ID)
 	})
 
-	entity.AddHook(hookedEntity).
+	hookedEntity.Hooks().
 		BeforeCreate(func(ctx context.Context, s *hookedTestSubject, c golem.Conn) error {
 			return errors.New("before_error")
 		})
@@ -2373,7 +2372,7 @@ func TestRepository_Insert_TriggerErrors(t *testing.T) {
 		b.TableName("test")
 		b.Col(&s.Name, golem.VARCHAR(50))
 	})
-	entity.AddHook(errEntity).OnConflictCreate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
+	errEntity.Hooks().OnConflictCreate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
 		return errors.New("hook conflict error")
 	})
 	repo := Get(conn, errEntity)
@@ -2388,7 +2387,7 @@ func TestRepository_Insert_TriggerErrors(t *testing.T) {
 		b.TableName("test")
 		b.Col(&s.Name, golem.VARCHAR(50))
 	})
-	entity.AddHook(errEntity2).AfterCreate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
+	errEntity2.Hooks().AfterCreate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
 		return errors.New("after create error")
 	})
 	repo2 := Get(conn, errEntity2)
@@ -2446,7 +2445,7 @@ func TestRepository_FindMany_JoinErrors(t *testing.T) {
 
 	_, err = repo.FindMany(context.Background(), func(s *testSubject, q *query.Query[testSubject]) {
 		var foreign int
-		join.Inner(q, childEntity, func(j *testSubject, jq *query.Join[testSubject]) {
+		q.InnerJoin( childEntity, func(j *testSubject, jq *query.Join[testSubject]) {
 			jq.On(&foreign, &j.ID)
 		})
 	})
@@ -2456,7 +2455,7 @@ func TestRepository_FindMany_JoinErrors(t *testing.T) {
 
 	_, err = repo.FindMany(context.Background(), func(s *testSubject, q *query.Query[testSubject]) {
 		var foreign int
-		join.Inner(q, childEntity, func(j *testSubject, jq *query.Join[testSubject]) {
+		q.InnerJoin( childEntity, func(j *testSubject, jq *query.Join[testSubject]) {
 			jq.On(&s.ID, &foreign)
 		})
 	})
@@ -2477,7 +2476,7 @@ func TestRepository_Update_HooksAndErrors(t *testing.T) {
 		b.PrimaryKey(&s.ID)
 		b.Col(&s.Name, golem.VARCHAR(50))
 	})
-	entity.AddHook(errEntity).OnConflictUpdate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
+	errEntity.Hooks().OnConflictUpdate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
 		return errors.New("hook conflict update error")
 	}).BeforeUpdate(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
 		if item.Name == "before_err" {
@@ -2538,7 +2537,7 @@ func TestRepository_Delete_HooksAndErrors(t *testing.T) {
 		b.Col(&s.Name, golem.VARCHAR(50))
 		b.PrimaryKey(&s.ID)
 	})
-	entity.AddHook(errEntity).OnConflictDelete(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
+	errEntity.Hooks().OnConflictDelete(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
 		return errors.New("hook conflict delete error")
 	}).BeforeDelete(func(ctx context.Context, item *testSubject, conn golem.Conn) error {
 		if item.Name == "before_err" {
@@ -2760,7 +2759,7 @@ func TestRepository_RemainingCoverage(t *testing.T) {
 
 	// FindMany: compile join err (translateCondition err inside join)
 	_, err = repoIns.FindMany(context.Background(), func(s *testSubject, q *query.Query[testSubject]) {
-		join.Inner(q, testSubjectEntity, func(j *testSubject, jq *query.Join[testSubject]) {
+		q.InnerJoin( testSubjectEntity, func(j *testSubject, jq *query.Join[testSubject]) {
 			jq.Where(op.Eq(&unmapped, 1))
 		})
 	})
@@ -2889,7 +2888,7 @@ func TestRepository_FindMany_Join_RightFieldResolvedInJoinedEntity(t *testing.T)
 	repo := Get(conn, testSubjectEntity)
 
 	_, err := repo.FindMany(context.Background(), func(s *testSubject, q0 *query.Query[testSubject]) {
-		join.Inner(q0, softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
+		q0.InnerJoin( softDeleteSubjectEntity, func(sd *softDeleteSubject, q1 *query.Join[softDeleteSubject]) {
 			// Reversed order vs TestRepository_FindMany_WithInnerJoin: left field
 			// belongs to the parent, right field belongs to the joined entity.
 			q1.On(&s.ID, &sd.ID)

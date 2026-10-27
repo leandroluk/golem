@@ -1,6 +1,9 @@
 package query
 
-import "github.com/leandroluk/golem/internal/op"
+import (
+	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/op"
+)
 
 // Query is received by a FindMany/FindOne criteria callback.
 // Built internally by repository — never constructed directly by end users.
@@ -278,3 +281,104 @@ func (q *Query[T]) AddJoinData(jd JoinData) {
 func (q *Query[T]) Joins() []JoinData {
 	return q.joins
 }
+
+// InnerJoin registers an INNER JOIN on the parent query.
+func (q *Query[T]) InnerJoin[J any](target *entity.Entity[J], fn func(j *J, q1 *Join[J])) *Query[T] {
+	var zero J
+	jBuilder := NewJoin[J]()
+	fn(&zero, jBuilder)
+
+	meta := target.Describe()
+	f2c := make(map[string]string, len(meta.Columns))
+	for _, col := range meta.Columns {
+		f2c[col.FieldName] = col.Name
+	}
+
+	q.AddJoinData(JoinData{
+		Type:            "inner",
+		TableName:       meta.TableName,
+		Zero:            &zero,
+		OnFieldPairs:    jBuilder.Ons(),
+		Conditions:      jBuilder.Conditions(),
+		WithDeleted:     jBuilder.IsWithDeleted(),
+		DeleteDateField: meta.DeleteDateField,
+		FieldToColumn:   f2c,
+	})
+	return q
+}
+
+// LeftJoin registers a LEFT JOIN on the parent query.
+func (q *Query[T]) LeftJoin[J any](target *entity.Entity[J], fn func(j *J, q1 *Join[J])) *Query[T] {
+	var zero J
+	jBuilder := NewJoin[J]()
+	fn(&zero, jBuilder)
+
+	meta := target.Describe()
+	f2c := make(map[string]string, len(meta.Columns))
+	for _, col := range meta.Columns {
+		f2c[col.FieldName] = col.Name
+	}
+
+	q.AddJoinData(JoinData{
+		Type:            "left",
+		TableName:       meta.TableName,
+		Zero:            &zero,
+		OnFieldPairs:    jBuilder.Ons(),
+		Conditions:      jBuilder.Conditions(),
+		WithDeleted:     jBuilder.IsWithDeleted(),
+		DeleteDateField: meta.DeleteDateField,
+		FieldToColumn:   f2c,
+	})
+	return q
+}
+
+// RightJoin registers a RIGHT JOIN on the parent query.
+func (q *Query[T]) RightJoin[J any](target *entity.Entity[J], fn func(j *J, q1 *Join[J])) *Query[T] {
+	var zero J
+	jBuilder := NewJoin[J]()
+	fn(&zero, jBuilder)
+
+	meta := target.Describe()
+	f2c := make(map[string]string, len(meta.Columns))
+	for _, col := range meta.Columns {
+		f2c[col.FieldName] = col.Name
+	}
+
+	q.AddJoinData(JoinData{
+		Type:            "right",
+		TableName:       meta.TableName,
+		Zero:            &zero,
+		OnFieldPairs:    jBuilder.Ons(),
+		Conditions:      jBuilder.Conditions(),
+		WithDeleted:     jBuilder.IsWithDeleted(),
+		DeleteDateField: meta.DeleteDateField,
+		FieldToColumn:   f2c,
+	})
+	return q
+}
+
+// FullJoin registers a FULL JOIN on the parent query.
+func (q *Query[T]) FullJoin[J any](target *entity.Entity[J], fn func(j *J, q1 *Join[J])) *Query[T] {
+	var zero J
+	jBuilder := NewJoin[J]()
+	fn(&zero, jBuilder)
+
+	meta := target.Describe()
+	f2c := make(map[string]string, len(meta.Columns))
+	for _, col := range meta.Columns {
+		f2c[col.FieldName] = col.Name
+	}
+
+	q.AddJoinData(JoinData{
+		Type:            "full",
+		TableName:       meta.TableName,
+		Zero:            &zero,
+		OnFieldPairs:    jBuilder.Ons(),
+		Conditions:      jBuilder.Conditions(),
+		WithDeleted:     jBuilder.IsWithDeleted(),
+		DeleteDateField: meta.DeleteDateField,
+		FieldToColumn:   f2c,
+	})
+	return q
+}
+

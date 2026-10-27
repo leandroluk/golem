@@ -29,7 +29,7 @@ func runPreload(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schem
 	})
 	testutil.FatalIfError(t, err, "FindMany parents")
 
-	childrenByParentID, err := repository.Preload(ctx, parentRepo, parents, cascadeChildEntity)
+	childrenByParentID, err := parentRepo.Preload(ctx, parents, cascadeChildEntity)
 	testutil.FatalIfError(t, err, "Preload")
 	testutil.ErrorIf(t, len(childrenByParentID[parent.ID]) != 2, "Preload: expected 2 children for parent %d, got %d", parent.ID, len(childrenByParentID[parent.ID]))
 }

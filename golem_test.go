@@ -80,10 +80,10 @@ func TestNewTable_BuildsEntity(t *testing.T) {
 	}
 }
 
-func TestAddHook_RegistersHook(t *testing.T) {
+func TestEntity_Hooks_RegistersHook(t *testing.T) {
 	e := newGolemTestEntity()
 	called := false
-	AddHook(e).BeforeCreate(func(ctx context.Context, s *golemTestSubject, conn Conn) error {
+	e.Hooks().BeforeCreate(func(ctx context.Context, s *golemTestSubject, conn Conn) error {
 		called = true
 		return nil
 	})
@@ -104,18 +104,18 @@ func TestNewRepository_BuildsRepository(t *testing.T) {
 	}
 }
 
-func TestRunAggregate_Delegates(t *testing.T) {
+func TestRepository_Aggregate_Delegates(t *testing.T) {
 	conn := testConn(t)
 	repo := NewRepository(conn, newGolemTestEntity())
-	_, _ = RunAggregate(context.Background(), repo, func(s *golemTestSubject, res *struct{ Count int64 }, a *Aggregate[golemTestSubject, struct{ Count int64 }]) {
+	_, _ = repo.Aggregate(context.Background(), func(s *golemTestSubject, res *struct{ Count int64 }, a *Aggregate[golemTestSubject, struct{ Count int64 }]) {
 		a.CountAll(&res.Count)
 	})
 }
 
-func TestPreload_Delegates(t *testing.T) {
+func TestRepository_Preload_Delegates(t *testing.T) {
 	conn := testConn(t)
 	repo := NewRepository(conn, newGolemTestEntity())
-	_, _ = Preload(context.Background(), repo, []golemTestSubject{}, newGolemTestEntity())
+	_, _ = repo.Preload(context.Background(), []golemTestSubject{}, newGolemTestEntity())
 }
 
 func TestNewAggregate_BuildsBuilder(t *testing.T) {
@@ -175,33 +175,33 @@ func newGolemJoinEntity() *Entity[golemJoinSubject] {
 	})
 }
 
-func TestJoinInner_RegistersJoin(t *testing.T) {
+func TestQuery_InnerJoin_RegistersJoin(t *testing.T) {
 	q := NewQuery[golemTestSubject]()
-	JoinInner(q, newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
+	q.InnerJoin(newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
 	if len(q.Joins()) != 1 {
 		t.Fatalf("Joins() len = %d, want 1", len(q.Joins()))
 	}
 }
 
-func TestJoinLeft_RegistersJoin(t *testing.T) {
+func TestQuery_LeftJoin_RegistersJoin(t *testing.T) {
 	q := NewQuery[golemTestSubject]()
-	JoinLeft(q, newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
+	q.LeftJoin(newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
 	if len(q.Joins()) != 1 {
 		t.Fatalf("Joins() len = %d, want 1", len(q.Joins()))
 	}
 }
 
-func TestJoinRight_RegistersJoin(t *testing.T) {
+func TestQuery_RightJoin_RegistersJoin(t *testing.T) {
 	q := NewQuery[golemTestSubject]()
-	JoinRight(q, newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
+	q.RightJoin(newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
 	if len(q.Joins()) != 1 {
 		t.Fatalf("Joins() len = %d, want 1", len(q.Joins()))
 	}
 }
 
-func TestJoinFull_RegistersJoin(t *testing.T) {
+func TestQuery_FullJoin_RegistersJoin(t *testing.T) {
 	q := NewQuery[golemTestSubject]()
-	JoinFull(q, newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
+	q.FullJoin(newGolemJoinEntity(), func(j *golemJoinSubject, q1 *Join[golemJoinSubject]) {})
 	if len(q.Joins()) != 1 {
 		t.Fatalf("Joins() len = %d, want 1", len(q.Joins()))
 	}

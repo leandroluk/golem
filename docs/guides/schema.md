@@ -211,10 +211,10 @@ See [Relations & cascades](relations.md) for the full picture, including many-to
 
 ## Hooks
 
-`golem.AddHook(Entity)` returns a chainable builder — one method per hook slot, no wrapper type per hook:
+`Entity.Hooks()` returns a chainable builder — one method per hook slot, no wrapper type per hook:
 
 ```go
-var _ = golem.AddHook(UserEntity).
+var _ = UserEntity.Hooks().
 	BeforeCreate(func(ctx context.Context, i *User, conn golem.Conn) error {
 		fmt.Println("before creating user", i.Name)
 		return nil

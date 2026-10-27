@@ -1,6 +1,6 @@
 # Preload / eager loading
 
-`golem.Preload[T, J](ctx, repo, items, targetEntity, criteria...)` fetches the rows related to `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the relation key. It **never** attaches the result back onto `items` — there's no field like `user.Posts []Post` on the struct. Entities stay plain structs, with no navigational field.
+`repo.Preload[J](ctx, items, targetEntity, criteria...)` (and `repo.MustPreload[J]`) fetches the rows related to `items` (the result of a previous `FindMany`/`FindOne`) and returns a `map[any][]J` grouped by the relation key. It **never** attaches the result back onto `items` — there's no field like `user.Posts []Post` on the struct. Entities stay plain structs, with no navigational field.
 
 ```go
 package main
@@ -23,7 +23,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 	}
 
 	// fetches the posts for each user returned above, grouped by User.ID
-	postsByUserID, err := golem.Preload(ctx, userRepo, users, PostEntity, func(p *Post, q *golem.Query[Post]) {
+	postsByUserID, err := userRepo.Preload(ctx, users, PostEntity, func(p *Post, q *golem.Query[Post]) {
 		q.Where(golem.Eq(&p.Published, true))
 		q.OrderBy(golem.Desc(&p.ID))
 	})
@@ -42,8 +42,8 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 
 The join column is discovered automatically from the `ForeignKey` already declared between the two entities (see [Declaring schemas](schema.md#foreign-keys)) — it works in both directions:
 
-- `Preload(ctx, userRepo, users, PostEntity)` — loads each user's posts (FK on `Post.OwnerUserID → User.ID`)
-- `Preload(ctx, postRepo, posts, UserEntity)` — loads each post's owner (same FK, opposite direction)
+- `userRepo.Preload(ctx, users, PostEntity)` — loads each user's posts (FK on `Post.OwnerUserID → User.ID`)
+- `postRepo.Preload(ctx, posts, UserEntity)` — loads each post's owner (same FK, opposite direction)
 
 ## Criteria
 
@@ -51,4 +51,4 @@ The join column is discovered automatically from the `ForeignKey` already declar
 
 ## Why there's no `Eager(true)` flag
 
-Some ORMs let you mark a relation `eager: true` so it's automatically loaded inside `FindMany`/`FindOne`. Golem doesn't, on purpose: there's no way to return data of a different type (`J` varies per foreign key) hidden behind the fixed `([]T, error)` signature without heavy reflection or breaking the API. Always call `golem.Preload` explicitly, right after the `FindMany`/`FindOne` call whose results you want to enrich.
+Some ORMs let you mark a relation `eager: true` so it's automatically loaded inside `FindMany`/`FindOne`. Golem doesn't, on purpose: there's no way to return data of a different type (`J` varies per foreign key) hidden behind the fixed `([]T, error)` signature without heavy reflection or breaking the API. Always call `repo.Preload` explicitly, right after the `FindMany`/`FindOne` call whose results you want to enrich.

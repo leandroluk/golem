@@ -12,11 +12,6 @@ type HookBuilder[T any] struct {
 	entity *Entity[T]
 }
 
-// AddHook starts a fluent hook registration chain for the given entity.
-func AddHook[T any](e *Entity[T]) *HookBuilder[T] {
-	return &HookBuilder[T]{entity: e}
-}
-
 // BeforeCreate registers a hook that runs before an INSERT statement.
 func (hb *HookBuilder[T]) BeforeCreate(fn func(context.Context, *T, golem.Conn) error) *HookBuilder[T] {
 	if hb.entity.hooks.BeforeCreate != nil {

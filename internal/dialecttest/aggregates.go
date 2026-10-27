@@ -30,7 +30,7 @@ func runAggregates(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Sc
 	)
 	testutil.FatalIfError(t, err, "InsertMany")
 
-	results, err := repository.Aggregate(ctx, repo, func(w *Widget, res *aggregateResult, a *query.Aggregate[Widget, aggregateResult]) {
+	results, err := repo.Aggregate(ctx, func(w *Widget, res *aggregateResult, a *query.Aggregate[Widget, aggregateResult]) {
 		a.GroupBy(&w.Category, &res.Category)
 		a.Sum(&w.Score, &res.Total)
 		a.CountAll(&res.Count)

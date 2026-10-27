@@ -150,13 +150,13 @@ found, err := userRepo.FindOne(ctx, func(u *User, q *query.Query[User]) {
 
 // join: users who have at least 1 post
 usersWithPosts, err := userRepo.FindMany(ctx, func(u *User, q0 *query.Query[User]) {
-	join.Inner(q0, PostEntity, func(p *Post, q1 *query.Join[Post]) {
+	q0.InnerJoin(PostEntity, func(p *Post, q1 *query.Join[Post]) {
 		q1.On(&p.OwnerUserID, &u.ID)
 	})
 })
 
 // preload: each user's posts, grouped by User.ID — no navigational field on User itself
-postsByUserID, err := repository.Preload(ctx, userRepo, usersWithPosts, PostEntity)
+postsByUserID, err := userRepo.Preload(ctx, usersWithPosts, PostEntity)
 for _, u := range usersWithPosts {
 	fmt.Printf("%s has %d posts\n", u.Name, len(postsByUserID[u.ID]))
 }
@@ -172,7 +172,7 @@ type UserPostCount struct {
 	Count  int64
 }
 
-counts, err := repository.Aggregate(ctx, postRepo, func(p *Post, res *UserPostCount, a *query.Aggregate[Post, UserPostCount]) {
+counts, err := postRepo.Aggregate(ctx, func(p *Post, res *UserPostCount, a *query.Aggregate[Post, UserPostCount]) {
 	a.GroupBy(&p.OwnerUserID, &res.UserID)
 	a.CountAll(&res.Count)
 	a.OrderBy(op.Desc(&res.Count))

@@ -191,7 +191,7 @@ func (r *Repository[T]) applySoftDeleteFilter(tableName string, deleteDateField 
 // scanRow builds a new T and writes each declared column's value from row
 // (keyed by column name) onto the corresponding struct field.
 func (r *Repository[T]) scanRow(row map[string]any) (T, error) {
-	return scanner.ScanFromMap[T](r.scanPlan, row)
+	return r.scanPlan.ScanFromMap[T](row)
 }
 
 // Insert inserts a single entity. Triggers BeforeCreate/AfterCreate hooks,

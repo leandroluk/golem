@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/must"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/scanner"
 	"github.com/leandroluk/golem/internal/stmt"
@@ -28,7 +29,7 @@ type aggProjection struct {
 // R value, same mechanism as everywhere else in golem. R is never attached
 // onto T (there's nothing to attach onto — this is a read-only, shape-
 // changing query, unlike Preload).
-func Aggregate[T, R any](ctx context.Context, r *Repository[T], fn func(t *T, res *R, a *query.Aggregate[T, R])) ([]R, error) {
+func (r *Repository[T]) Aggregate[R any](ctx context.Context, fn func(t *T, res *R, a *query.Aggregate[T, R])) ([]R, error) {
 	var zeroT T
 	var zeroR R
 	a := query.NewAggregate[T, R]()
@@ -192,7 +193,7 @@ func Aggregate[T, R any](ctx context.Context, r *Repository[T], fn func(t *T, re
 
 	results := make([]R, 0, len(rows))
 	for _, row := range rows {
-		item, err := scanner.ScanFromMap[R](plan, row)
+		item, err := plan.ScanFromMap[R](row)
 		if err != nil {
 			return nil, err
 		}
@@ -200,3 +201,9 @@ func Aggregate[T, R any](ctx context.Context, r *Repository[T], fn func(t *T, re
 	}
 	return results, nil
 }
+
+// MustAggregate executes an aggregate query, panicking on any error.
+func (r *Repository[T]) MustAggregate[R any](ctx context.Context, fn func(t *T, res *R, a *query.Aggregate[T, R])) []R {
+	return must.Value(r.Aggregate(ctx, fn))
+}
+

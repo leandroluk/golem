@@ -9,14 +9,6 @@ import (
 	"github.com/leandroluk/golem/internal/relation"
 )
 
-// describer is implemented by every *entity.Entity[J] regardless of J —
-// ForeignKey's target argument is typed any (Table itself isn't generic
-// over the target's type parameter), so this is how it reaches the
-// target's already-finalized EntityMeta.
-type describer interface {
-	Describe() EntityMeta
-}
-
 // pendingColumn defers a Col() declaration's final ColumnMeta resolution
 // until after the user's callback has finished running. This is required
 // because Col returns a *Column that the caller may still chain
@@ -112,23 +104,18 @@ func (b *Table) Col(fieldPtr any, t golem.ColumnType) *Column {
 }
 
 // ForeignKey records that fieldPtr's column references target's primary
-// key. target must be a *entity.Entity[J] for some J (any concrete J works
-// — Table itself isn't parameterized over J). opts is optional; when
+// key. target must be a *Entity[J] for some J. opts is optional; when
 // omitted, relation.NewForeignKeyOptions()'s defaults apply. target's
 // primary key must be exactly one column — composite-PK targets aren't
 // supported (ForeignKey only resolves a single fieldPtr, so there's no way
 // to express a composite FK column set).
-func (b *Table) ForeignKey(fieldPtr any, target any, opts ...*relation.ForeignKeyOptions) {
+func (b *Table) ForeignKey[J any](fieldPtr any, target *Entity[J], opts ...*relation.ForeignKeyOptions) {
 	fieldName, err := ResolveField(b.zero, fieldPtr)
 	if err != nil {
 		panic(err)
 	}
 
-	d, ok := target.(describer)
-	if !ok {
-		panic(fmt.Sprintf("entity: ForeignKey target %T does not implement Describe() EntityMeta (must be *entity.Entity[J] for some J)", target))
-	}
-	targetMeta := d.Describe()
+	targetMeta := target.Describe()
 	if len(targetMeta.PrimaryKey) != 1 {
 		panic(fmt.Sprintf("entity: ForeignKey target %q has a composite or missing primary key (%v) — composite-PK FK targets are not supported", targetMeta.TableName, targetMeta.PrimaryKey))
 	}

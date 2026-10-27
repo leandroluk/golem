@@ -1,6 +1,6 @@
 # Aggregations
 
-`golem.RunAggregate[T, R](ctx, repo, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` follows the same principle as [Preload](preload.md): `R` is any struct (doesn't need `golem.NewTable`), resolved by field pointer against `t` (source, `T`) and `res` (destination, `R`) — no tags.
+`repo.Aggregate[R](ctx, func(t *T, res *R, a *golem.Aggregate[T, R]) {...}) ([]R, error)` (and its panic-on-error counterpart `repo.MustAggregate[R]`) follows the same principle as [Preload](preload.md): `R` is any struct (doesn't need `golem.NewTable`), resolved by field pointer against `t` (source, `T`) and `res` (destination, `R`) — no tags.
 
 ```go
 package main
@@ -22,7 +22,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 	postRepo := golem.NewRepository(dataSource, PostEntity)
 
 	// total views (and post count) per category, only categories with more than 1 post
-	totals, err := golem.RunAggregate(ctx, postRepo, func(p *Post, res *CategoryTotal, a *golem.Aggregate[Post, CategoryTotal]) {
+	totals, err := postRepo.Aggregate(ctx, func(p *Post, res *CategoryTotal, a *golem.Aggregate[Post, CategoryTotal]) {
 		a.GroupBy(&p.Category, &res.Category)
 		a.Sum(&p.Views, &res.Total)
 		a.CountAll(&res.Count)
@@ -58,6 +58,5 @@ func example(ctx context.Context, dataSource *golem.DataSource) error {
 
 ## Notes
 
-- You can't `HAVING` over a plain `GroupBy` column in this version — `Having`'s field pointers must reference an aggregate destination field (`Sum`/`Avg`/`Count`/`CountAll`'s target), not a `GroupBy` target.
-- `Sum`/`Avg` always come back as `float64` on the destination. On Postgres, the driver forces a `CAST(... AS DOUBLE PRECISION)` — without it, `SUM`/`AVG` over an integer column becomes `NUMERIC`, which doesn't decode directly as `float64`.
-- `MIN`/`MAX` don't exist in this version, on purpose — they'd make sense on non-numeric columns (text, date) where the float cast above would break. Revisit only with per-column-type-aware casting.
+- `Sum` and `Avg` wrap SQL projections with `CAST(... AS DOUBLE PRECISION)` so destination fields in `R` can always be typed `float64`.
+- `Having` conditions can only reference fields already declared via `Sum`/`Avg`/`Count`/`CountAll`.

@@ -1,8 +1,8 @@
 # Joins
 
-The `github.com/leandroluk/golem` package provides `golem.JoinInner`/`Left`/`Right`/`Full` — SQL's join names (`Left`/`Right`/`Full` are already "outer" by definition, so there's no separate generic `Outer`).
+`*golem.Query[T]` provides fluent join methods: `InnerJoin`, `LeftJoin`, `RightJoin`, and `FullJoin` — SQL's join names (`Left`/`Right`/`Full` are already "outer" by definition, so there's no separate generic `Outer`).
 
-Each function takes the outer `*golem.Query[T]` (to register itself on it), the entity on the joining side (`J` inferred from it, same as `golem.NewRepository`), and a callback for the new side's builder. We name the parameters `t`/`q0` (outer), `j`/`q1` (join) to keep each level explicit.
+Each method takes the target entity (`J` inferred from `*Entity[J]`) and a configuration callback for the joined side's builder. We name the parameters `u`/`q0` (outer), `p`/`q1` (join) to keep each level explicit.
 
 ```go
 package main
@@ -17,7 +17,7 @@ func example(ctx context.Context, dataSource *golem.DataSource) ([]User, error) 
 	// users who have at least 1 published post
 	// (INNER: only rows matching the On condition make it in)
 	return golem.NewRepository(dataSource, UserEntity).FindMany(ctx, func(u *User, q0 *golem.Query[User]) {
-		golem.JoinInner(q0, PostEntity, func(p *Post, q1 *golem.Join[Post]) {
+		q0.InnerJoin(PostEntity, func(p *Post, q1 *golem.Join[Post]) {
 			q1.On(&p.OwnerUserID, &u.ID)
 			q1.Where(golem.Eq(&p.Published, true))
 		})
@@ -34,14 +34,14 @@ func example(ctx context.Context, dataSource *golem.DataSource) ([]User, error) 
 
 ## Join types
 
-| Function | SQL |
+| Method | SQL |
 | --- | --- |
-| `golem.JoinInner(q0, Entity, fn)` | `INNER JOIN` |
-| `golem.JoinLeft(q0, Entity, fn)` | `LEFT JOIN` |
-| `golem.JoinRight(q0, Entity, fn)` | `RIGHT JOIN` |
-| `golem.JoinFull(q0, Entity, fn)` | `FULL JOIN` |
+| `q0.InnerJoin(Entity, fn)` | `INNER JOIN` |
+| `q0.LeftJoin(Entity, fn)` | `LEFT JOIN` |
+| `q0.RightJoin(Entity, fn)` | `RIGHT JOIN` |
+| `q0.FullJoin(Entity, fn)` | `FULL JOIN` |
 
-Multiple joins can be registered on the same outer query — call `golem.JoinInner`/etc. more than once inside the same `FindMany`/`FindOne` closure.
+Multiple joins can be registered on the same outer query — chain or call `q0.InnerJoin`/`LeftJoin`/etc. more than once inside the same `FindMany`/`FindOne` closure.
 
 ## Soft delete inside a join
 

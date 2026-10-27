@@ -35,9 +35,9 @@ Golem mirrors TypeORM's `DataSource` / `Repository` pattern (already familiar if
 - Declarative query criteria via closures (`golem.Eq`, `golem.Gt`, `golem.In`, `golem.Like`, …) — no string-built WHERE clauses
 - Automatic `CreateDate` / `UpdateDate` / soft-delete (`DeleteDate`) timestamp handling
 - Foreign keys with real `ON DELETE` behavior (`Cascade`, `SetNull`, `Restrict`) applied by `Repository[T].Delete`, not just accepted and ignored
-- Joins (`golem.JoinInner`/`Left`/`Right`/`Full`) with column-to-column `On` conditions
-- `Preload` for eager-loading related rows — returns a plain `map[any][]J`, no hidden navigational fields on your structs
-- `Aggregate` — `GroupBy`/`Sum`/`Avg`/`Count`/`CountAll`/`Having` into any destination struct, resolved by field pointer
+- Joins (`q.InnerJoin`/`LeftJoin`/`RightJoin`/`FullJoin`) with column-to-column `On` conditions
+- `Preload` on `Repository[T]` for eager-loading related rows — returns a plain `map[any][]J`, no hidden navigational fields on your structs
+- `Aggregate` on `Repository[T]` — `GroupBy`/`Sum`/`Avg`/`Count`/`CountAll`/`Having` into any destination struct, resolved by field pointer
 - Pessimistic locking (`.ForUpdate()`, `.ForNoKeyUpdate()`, `.ForShare()`, `.ForKeyShare()`, with `NoWait`/`SkipLocked`) — declared per-dialect, unsupported strengths are rejected rather than silently ignored
 - Transactions via `dataSource.Transaction(ctx, func(tx golem.Tx) error {...})`
 - Raw SQL escape hatch (`Exec` on both `golem.Conn` and `Repository[T]`) for anything the builder doesn't cover

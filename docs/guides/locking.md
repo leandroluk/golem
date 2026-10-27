@@ -50,7 +50,7 @@ A lock held by an isolated statement releases as soon as that statement finishes
 
 ## Doesn't apply to aggregations
 
-`golem.RunAggregate` doesn't expose locking — most databases (including Postgres) don't allow `FOR UPDATE` together with aggregate functions.
+`repo.Aggregate` doesn't expose locking — most databases (including Postgres) don't allow `FOR UPDATE` together with aggregate functions.
 
 ## Support matrix per adapter
 

@@ -153,7 +153,7 @@ func Compile(meta entity.EntityMeta, parser golem.Parser) *Plan {
 
 // ScanFromMap writes each column in row into a new T using the pre-compiled
 // Plan. It is a drop-in replacement for repository.scanRow.
-func ScanFromMap[T any](p *Plan, row map[string]any) (T, error) {
+func (p *Plan) ScanFromMap[T any](row map[string]any) (T, error) {
 	var result T
 	base := unsafe.Pointer(&result)
 	for i := range p.assignments {

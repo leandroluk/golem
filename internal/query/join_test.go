@@ -1,4 +1,4 @@
-package join
+package query_test
 
 import (
 	"testing"
@@ -35,10 +35,10 @@ var joinTestChildEntity = entity.New(func(c *joinTestChild, b *entity.Table) {
 	b.DeleteDate(&c.DeletedAt)
 })
 
-func TestInner_RegistersJoinData(t *testing.T) {
+func TestQuery_InnerJoin(t *testing.T) {
 	q := query.New[joinTestParent]()
 
-	Inner(q, joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
+	q.InnerJoin(joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
 		q1.On(&c.ParentID, &c.ID)
 		q1.Where(op.Eq(&c.ID, int64(5)))
 	})
@@ -77,10 +77,10 @@ func TestInner_RegistersJoinData(t *testing.T) {
 	}
 }
 
-func TestInner_WithDeleted_PropagatesFlag(t *testing.T) {
+func TestQuery_InnerJoin_WithDeleted(t *testing.T) {
 	q := query.New[joinTestParent]()
 
-	Inner(q, joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
+	q.InnerJoin(joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
 		q1.On(&c.ParentID, &c.ID)
 		q1.WithDeleted()
 	})
@@ -90,10 +90,10 @@ func TestInner_WithDeleted_PropagatesFlag(t *testing.T) {
 	}
 }
 
-func TestLeft_RegistersJoinDataWithLeftType(t *testing.T) {
+func TestQuery_LeftJoin(t *testing.T) {
 	q := query.New[joinTestParent]()
 
-	Left(q, joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
+	q.LeftJoin(joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
 		q1.On(&c.ParentID, &c.ID)
 	})
 
@@ -106,10 +106,10 @@ func TestLeft_RegistersJoinDataWithLeftType(t *testing.T) {
 	}
 }
 
-func TestRight_RegistersJoinDataWithRightType(t *testing.T) {
+func TestQuery_RightJoin(t *testing.T) {
 	q := query.New[joinTestParent]()
 
-	Right(q, joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
+	q.RightJoin(joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
 		q1.On(&c.ParentID, &c.ID)
 	})
 
@@ -122,10 +122,10 @@ func TestRight_RegistersJoinDataWithRightType(t *testing.T) {
 	}
 }
 
-func TestFull_RegistersJoinDataWithFullType(t *testing.T) {
+func TestQuery_FullJoin(t *testing.T) {
 	q := query.New[joinTestParent]()
 
-	Full(q, joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
+	q.FullJoin(joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {
 		q1.On(&c.ParentID, &c.ID)
 	})
 
@@ -135,19 +135,5 @@ func TestFull_RegistersJoinDataWithFullType(t *testing.T) {
 	}
 	if joins[0].Type != "full" {
 		t.Errorf("Type = %q, want full", joins[0].Type)
-	}
-}
-
-func TestInner_NoOnOrConditions_RegistersEmptySlices(t *testing.T) {
-	q := query.New[joinTestParent]()
-
-	Inner(q, joinTestChildEntity, func(c *joinTestChild, q1 *query.Join[joinTestChild]) {})
-
-	jd := q.Joins()[0]
-	if len(jd.OnFieldPairs) != 0 {
-		t.Errorf("expected 0 On field pairs, got %d", len(jd.OnFieldPairs))
-	}
-	if len(jd.Conditions) != 0 {
-		t.Errorf("expected 0 conditions, got %d", len(jd.Conditions))
 	}
 }

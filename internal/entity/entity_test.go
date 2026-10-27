@@ -530,7 +530,7 @@ func TestEntity_Triggers_HookRegistered_RunsIt(t *testing.T) {
 		}
 	}
 
-	AddHook(e).
+	e.Hooks().
 		BeforeCreate(record("BeforeCreate")).
 		AfterCreate(record("AfterCreate")).
 		OnConflictCreate(record("OnConflictCreate")).

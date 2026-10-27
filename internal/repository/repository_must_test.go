@@ -211,3 +211,40 @@ func TestRepository_MustExec(t *testing.T) {
 		errRepo.MustExec(context.Background(), "SELECT * FROM testsubject")
 	})
 }
+
+func TestRepository_MustAggregate(t *testing.T) {
+	d := &fakeDialect{
+		selectResult: []map[string]any{
+			{"agg_0": int64(42)},
+		},
+	}
+	repo := Get(newFakeConn(t, d), testSubjectEntity)
+	got := repo.MustAggregate(context.Background(), func(s *testSubject, res *struct{ Count int64 }, a *query.Aggregate[testSubject, struct{ Count int64 }]) {
+		a.CountAll(&res.Count)
+	})
+	if len(got) != 1 || got[0].Count != 42 {
+		t.Errorf("got = %+v", got)
+	}
+
+	errD := &fakeDialect{selectErr: assertErr}
+	errRepo := Get(newFakeConn(t, errD), testSubjectEntity)
+	mustPanic(t, func() {
+		errRepo.MustAggregate(context.Background(), func(s *testSubject, res *struct{ Count int64 }, a *query.Aggregate[testSubject, struct{ Count int64 }]) {
+			a.CountAll(&res.Count)
+		})
+	})
+}
+
+func TestRepository_MustPreload(t *testing.T) {
+	d := &fakeDialect{}
+	repo := Get(newFakeConn(t, d), testSubjectEntity)
+	got := repo.MustPreload(context.Background(), []testSubject{}, testSubjectEntity)
+	if len(got) != 0 {
+		t.Errorf("got = %+v", got)
+	}
+
+	mustPanic(t, func() {
+		repo.MustPreload(context.Background(), []testSubject{{ID: 1}}, testSubjectEntity)
+	})
+}
+

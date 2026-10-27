@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/leandroluk/golem/internal/entity"
+	"github.com/leandroluk/golem/internal/must"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/stmt"
 )
@@ -23,7 +24,7 @@ import (
 // either target references r's table, or r's own entity references
 // target's table; see design.md for why both directions are supported).
 // r's entity must have a single-column primary key.
-func Preload[T, J any](ctx context.Context, r *Repository[T], items []T, target *entity.Entity[J], criteria ...func(*J, *query.Query[J])) (map[any][]J, error) {
+func (r *Repository[T]) Preload[J any](ctx context.Context, items []T, target *entity.Entity[J], criteria ...func(*J, *query.Query[J])) (map[any][]J, error) {
 	if len(items) == 0 {
 		return map[any][]J{}, nil
 	}
@@ -112,6 +113,11 @@ func Preload[T, J any](ctx context.Context, r *Repository[T], items []T, target 
 		result[row[fkCol]] = append(result[row[fkCol]], item)
 	}
 	return result, nil
+}
+
+// MustPreload batch-loads related entities, panicking on any error.
+func (r *Repository[T]) MustPreload[J any](ctx context.Context, items []T, target *entity.Entity[J], criteria ...func(*J, *query.Query[J])) map[any][]J {
+	return must.Value(r.Preload(ctx, items, target, criteria...))
 }
 
 // resolvePreloadJoin finds the single FK relationship between parentMeta

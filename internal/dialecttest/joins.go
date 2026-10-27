@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/leandroluk/golem"
-	"github.com/leandroluk/golem/internal/join"
 	"github.com/leandroluk/golem/internal/op"
 	"github.com/leandroluk/golem/internal/query"
 	"github.com/leandroluk/golem/internal/repository"
@@ -25,7 +24,7 @@ func runJoins(t *testing.T, ctx context.Context, ds *golem.DataSource, _ Schema)
 	testutil.FatalIfError(t, err, "Insert child")
 
 	parents, err := parentRepo.FindMany(ctx, func(p *Parent, q0 *query.Query[Parent]) {
-		join.Inner(q0, cascadeChildEntity, func(c *Child, q1 *query.Join[Child]) {
+		q0.InnerJoin(cascadeChildEntity, func(c *Child, q1 *query.Join[Child]) {
 			q1.On(&c.ParentID, &p.ID)
 			q1.Where(op.Eq(&c.Name, "join-child"))
 		})
